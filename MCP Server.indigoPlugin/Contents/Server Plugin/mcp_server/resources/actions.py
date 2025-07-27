@@ -8,6 +8,7 @@ from typing import Optional
 
 from fastmcp import FastMCP
 from ..adapters.data_provider import DataProvider
+from ..common.json_encoder import safe_json_dumps
 
 
 class ActionResource:
@@ -37,11 +38,11 @@ class ActionResource:
             """List all Indigo action groups."""
             try:
                 actions = self.data_provider.get_all_actions()
-                return json.dumps(actions, indent=2)
+                return safe_json_dumps(actions)
                 
             except Exception as e:
                 self.logger.error(f"Error listing actions: {e}")
-                return json.dumps({"error": str(e)})
+                return safe_json_dumps({"error": str(e)})
         
         @self.mcp_server.resource("indigo://actions/{action_id}")
         def get_action(action_id: str) -> str:
@@ -49,10 +50,10 @@ class ActionResource:
             try:
                 action = self.data_provider.get_action(int(action_id))
                 if action is None:
-                    return json.dumps({"error": f"Action group {action_id} not found"})
+                    return safe_json_dumps({"error": f"Action group {action_id} not found"})
                 
-                return json.dumps(action, indent=2)
+                return safe_json_dumps(action)
                     
             except Exception as e:
                 self.logger.error(f"Error getting action {action_id}: {e}")
-                return json.dumps({"error": str(e)})
+                return safe_json_dumps({"error": str(e)})

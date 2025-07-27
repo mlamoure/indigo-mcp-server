@@ -4,7 +4,7 @@ Mock vector store for testing.
 
 import re
 from typing import Dict, List, Any, Optional
-from adapters.vector_store_interface import VectorStoreInterface
+from mcp_server.adapters.vector_store_interface import VectorStoreInterface
 
 
 class MockVectorStore(VectorStoreInterface):
@@ -41,7 +41,7 @@ class MockVectorStore(VectorStoreInterface):
             entity_types = ["devices", "variables", "actions"]
         
         query_lower = query.lower()
-        # Always include all entity types in results, even if empty
+        # Always include all entity types in results, even if empty (original format)
         results = {"devices": [], "variables": [], "actions": []}
         
         for entity_type in entity_types:

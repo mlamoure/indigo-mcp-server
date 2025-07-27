@@ -52,15 +52,18 @@ class SearchEntitiesHandler:
             self.logger.debug(f"Search parameters: {search_params}")
             
             # Perform vector search
-            results = self.vector_store.search(
+            raw_results = self.vector_store.search(
                 query=query,
                 entity_types=search_params["entity_types"],
                 top_k=search_params["top_k"],
                 similarity_threshold=search_params["threshold"]
             )
             
+            # Group results by entity type
+            grouped_results = self._group_results_by_type(raw_results)
+            
             # Format results
-            formatted_results = self.result_formatter.format_search_results(results, query)
+            formatted_results = self.result_formatter.format_search_results(grouped_results, query)
             
             self.logger.debug(f"Search completed: {formatted_results['total_count']} results")
             return formatted_results
@@ -68,6 +71,39 @@ class SearchEntitiesHandler:
         except Exception as e:
             self.logger.error(f"Search failed: {e}")
             return self._create_error_response(query, str(e))
+    
+    def _group_results_by_type(self, raw_results: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Group search results by entity type.
+        
+        Args:
+            raw_results: Flat list of search results from vector store
+            
+        Returns:
+            Dictionary with entity types as keys and lists of entities as values
+        """
+        grouped = {
+            "devices": [],
+            "variables": [],
+            "actions": []
+        }
+        
+        for result in raw_results:
+            # Extract entity type from result
+            entity_type = result.pop("_entity_type", "")
+            
+            # Map singular to plural
+            if entity_type == "device":
+                grouped["devices"].append(result)
+            elif entity_type == "variable":
+                grouped["variables"].append(result)
+            elif entity_type == "action":
+                grouped["actions"].append(result)
+            else:
+                # Log unknown entity type but don't fail
+                self.logger.warning(f"Unknown entity type: {entity_type}")
+        
+        return grouped
     
     def _create_error_response(self, query: str, error_message: str) -> Dict[str, Any]:
         """Create an error response for failed searches."""

@@ -8,6 +8,7 @@ from typing import Optional
 
 from fastmcp import FastMCP
 from ..adapters.data_provider import DataProvider
+from ..common.json_encoder import safe_json_dumps
 
 
 class DeviceResource:
@@ -37,11 +38,11 @@ class DeviceResource:
             """List all Indigo devices."""
             try:
                 devices = self.data_provider.get_all_devices()
-                return json.dumps(devices, indent=2)
+                return safe_json_dumps(devices)
                 
             except Exception as e:
                 self.logger.error(f"Error listing devices: {e}")
-                return json.dumps({"error": str(e)})
+                return safe_json_dumps({"error": str(e)})
         
         @self.mcp_server.resource("indigo://devices/{device_id}")
         def get_device(device_id: str) -> str:
@@ -49,10 +50,10 @@ class DeviceResource:
             try:
                 device = self.data_provider.get_device(int(device_id))
                 if device is None:
-                    return json.dumps({"error": f"Device {device_id} not found"})
+                    return safe_json_dumps({"error": f"Device {device_id} not found"})
                 
-                return json.dumps(device, indent=2)
+                return safe_json_dumps(device)
                     
             except Exception as e:
                 self.logger.error(f"Error getting device {device_id}: {e}")
-                return json.dumps({"error": str(e)})
+                return safe_json_dumps({"error": str(e)})

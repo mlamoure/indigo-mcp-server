@@ -8,6 +8,7 @@ from typing import Optional
 
 from fastmcp import FastMCP
 from ..adapters.data_provider import DataProvider
+from ..common.json_encoder import safe_json_dumps
 
 
 class VariableResource:
@@ -37,11 +38,11 @@ class VariableResource:
             """List all Indigo variables."""
             try:
                 variables = self.data_provider.get_all_variables()
-                return json.dumps(variables, indent=2)
+                return safe_json_dumps(variables)
                 
             except Exception as e:
                 self.logger.error(f"Error listing variables: {e}")
-                return json.dumps({"error": str(e)})
+                return safe_json_dumps({"error": str(e)})
         
         @self.mcp_server.resource("indigo://variables/{variable_id}")
         def get_variable(variable_id: str) -> str:
@@ -49,10 +50,10 @@ class VariableResource:
             try:
                 variable = self.data_provider.get_variable(int(variable_id))
                 if variable is None:
-                    return json.dumps({"error": f"Variable {variable_id} not found"})
+                    return safe_json_dumps({"error": f"Variable {variable_id} not found"})
                 
-                return json.dumps(variable, indent=2)
+                return safe_json_dumps(variable)
                     
             except Exception as e:
                 self.logger.error(f"Error getting variable {variable_id}: {e}")
-                return json.dumps({"error": str(e)})
+                return safe_json_dumps({"error": str(e)})

@@ -10,3 +10,4 @@ langsmith
 pydantic
 cryptography
 uvicorn[standard]
+python-dotenv

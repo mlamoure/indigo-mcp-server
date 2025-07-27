@@ -18,6 +18,7 @@ from .common.vector_store.vector_store_manager import VectorStoreManager
 from .tools.search_entities import SearchEntitiesHandler
 from .resources import DeviceResource, VariableResource, ActionResource
 from .security import AuthManager, CertManager, SecurityConfig, AccessMode
+from .common.json_encoder import safe_json_dumps
 
 
 class MCPServerCore:
@@ -199,11 +200,11 @@ class MCPServerCore:
             """
             try:
                 results = self.search_handler.search(query)
-                return json.dumps(results, indent=2)
+                return safe_json_dumps(results)
                 
             except Exception as e:
                 self.logger.error(f"Search error: {e}")
-                return json.dumps({"error": str(e), "query": query})
+                return safe_json_dumps({"error": str(e), "query": query})
     
     def _create_static_token_auth(self):
         """

@@ -4,7 +4,7 @@ Mock data provider for testing.
 
 import copy
 from typing import Dict, List, Any, Optional
-from adapters.data_provider import DataProvider
+from mcp_server.adapters.data_provider import DataProvider
 
 
 class MockDataProvider(DataProvider):

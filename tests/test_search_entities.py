@@ -34,9 +34,9 @@ class TestSearchEntitiesHandler:
         assert isinstance(result["total_count"], int)
         assert result["total_count"] >= 0
     
-    def test_search_device_specific(self, search_handler, populated_mock_vector_store):
+    def test_search_device_specific(self, search_handler, populated_real_vector_store):
         """Test device-specific searches."""
-        search_handler.vector_store = populated_mock_vector_store
+        search_handler.vector_store = populated_real_vector_store
         
         # Test light search (should match "Living Room Light")
         result = search_handler.search("find all light")
@@ -187,9 +187,9 @@ class TestSearchEntitiesHandler:
         assert result["query"] == "show few exact devices like lights"
         assert "total_count" in result
     
-    def test_search_integration_with_result_formatter(self, search_handler, populated_mock_vector_store):
+    def test_search_integration_with_result_formatter(self, search_handler, populated_real_vector_store):
         """Test integration between search handler and result formatter."""
-        search_handler.vector_store = populated_mock_vector_store
+        search_handler.vector_store = populated_real_vector_store
         
         result = search_handler.search("temperature")
         

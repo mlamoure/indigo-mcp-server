@@ -41,6 +41,7 @@ _env = Environment(
 
 # Lazy-initialize the OpenAI client
 _client = None
+_embedding_client = None
 
 # Cache for token encoders
 _token_encoders = {}
@@ -155,6 +156,22 @@ def _get_client():
     return _client
 
 
+def _get_embedding_client():
+    """Get OpenAI client for embeddings without LangSmith tracing."""
+    global _embedding_client
+    if _embedding_client is None:
+        key = os.getenv("OPENAI_API_KEY")
+        if not key:
+            raise RuntimeError(
+                "OPENAI_API_KEY must be set before calling OpenAI endpoints"
+            )
+        # Use raw OpenAI client without LangSmith wrapper for embeddings
+        # to avoid tracing overhead and noise in LangSmith traces
+        _embedding_client = OpenAI(api_key=key)
+        logger.debug("🔧 OpenAI embedding client initialized (no LangSmith tracing)")
+    return _embedding_client
+
+
 def emb_text(text: str) -> list:
     """Get embeddings for text using OpenAI's embedding model."""
     import time
@@ -168,7 +185,7 @@ def emb_text(text: str) -> list:
 
     for attempt in range(max_retries):
         try:
-            client = _get_client()
+            client = _get_embedding_client()  # Use embedding client without LangSmith
             model = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
             # Add timeout to prevent hanging
