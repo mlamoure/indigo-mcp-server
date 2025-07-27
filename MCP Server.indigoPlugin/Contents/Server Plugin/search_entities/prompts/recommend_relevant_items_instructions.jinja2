@@ -1,0 +1,34 @@
+## YOUR TASK
+You are analyzing a home automation question and recommending additional items to collect details for.
+
+{% if insufficiency_info %}
+## DATA SUFFICIENCY ANALYSIS
+**Analysis**: {{ insufficiency_info.reasoning }}
+**Missing Data**: {{ insufficiency_info.missing_data }}
+{% endif %}
+
+## INSTRUCTIONS
+Based on the Relevant Items shown in the retrieval context above, recommend additional item IDs to collect details for. Only recommend IDs that are NOT already in the relevant items lists.
+
+### Recommendation Criteria
+1. **Relevance**: Items that directly relate to the user's question
+2. **Completeness**: Items needed to provide a comprehensive answer
+3. **Context**: Items that provide necessary context or background information
+4. **Missing Data**: Items specifically mentioned in the data sufficiency analysis as missing
+
+### Guidelines
+- Focus on items that would help answer the question or address the missing data
+- Do not recommend items that are already in the current relevant items lists
+- Prioritize items most directly related to the user's intent
+- Consider both explicit mentions and implicit requirements in the question
+- For wide-scope questions, recommend representative samples rather than all items
+- For narrow-scope questions, focus on specific relevant items
+
+### Response Format
+Provide your recommendations in the structured format with:
+- **recommended_device_ids**: List of device IDs to collect details for
+- **recommended_variable_ids**: List of variable IDs to collect details for  
+- **recommended_action_ids**: List of action IDs to collect details for
+- **reasoning**: Clear explanation of why these items were recommended
+
+Analyze the provided context and recommend the most relevant additional items to collect.
