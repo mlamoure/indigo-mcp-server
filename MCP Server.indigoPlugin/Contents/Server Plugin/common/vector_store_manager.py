@@ -110,18 +110,27 @@ class VectorStoreManager:
             raise
     
     def update_now(self) -> None:
-        """Perform an immediate vector store update."""
+        """Perform an immediate vector store update with progress tracking."""
         if not self.vector_store:
             self.logger.error("Vector store not initialized")
             return
         
         try:
-            self.logger.debug("Starting vector store update...")
+            update_start = time.time()
+            self.logger.info("🔄 Starting vector store synchronization...")
             
             # Get all entity data
             entities = self.data_provider.get_all_entities_for_vector_store()
             
-            # Update vector store
+            # Count total entities for progress estimation
+            total_entities = sum(len(entity_list) for entity_list in entities.values())
+            if total_entities > 0:
+                self.logger.info(f"📊 Processing {total_entities} total entities:")
+                self.logger.info(f"   Devices: {len(entities['devices'])}")
+                self.logger.info(f"   Variables: {len(entities['variables'])}")
+                self.logger.info(f"   Actions: {len(entities['actions'])}")
+            
+            # Update vector store with enhanced processing
             self.vector_store.update_embeddings(
                 devices=entities["devices"],
                 variables=entities["variables"],
@@ -129,10 +138,16 @@ class VectorStoreManager:
             )
             
             self._last_update_time = time.time()
-            self.logger.info("Vector store update completed")
+            elapsed = self._last_update_time - update_start
+            
+            if total_entities > 10:
+                self.logger.info(f"✅ Vector store synchronization completed in {elapsed:.2f}s")
+            else:
+                self.logger.debug(f"Vector store update completed in {elapsed:.2f}s")
             
         except Exception as e:
-            self.logger.error(f"Vector store update failed: {e}")
+            self.logger.error(f"❌ Vector store update failed: {e}")
+            raise
     
     def _start_background_updates(self) -> None:
         """Start background update thread."""

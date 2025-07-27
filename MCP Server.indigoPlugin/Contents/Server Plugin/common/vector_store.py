@@ -15,6 +15,23 @@ import pyarrow as pa
 from openai import OpenAI
 
 from adapters.vector_store_interface import VectorStoreInterface
+from .progress_tracker import create_progress_tracker
+from .semantic_keywords import generate_batch_device_keywords
+
+
+# Field classification constants - define which fields are static vs dynamic
+STATIC_FIELDS = {
+    "devices": {"id", "name", "description", "model", "deviceTypeId", "pluginId", "address", "protocol"},
+    "variables": {"id", "name", "description", "folderId"},
+    "actions": {"id", "name", "description", "folderId"},
+}
+
+# Fields for embedding text generation (subset of static fields)
+EMBEDDING_FIELDS = {
+    "devices": {"name", "description", "model", "deviceTypeId", "address"},
+    "variables": {"name", "description"},
+    "actions": {"name", "description"},
+}
 
 
 class DateTimeJSONEncoder(json.JSONEncoder):
@@ -108,9 +125,37 @@ class VectorStore(VectorStoreInterface):
         self.db.create_table(table_name, empty_data)
         self.logger.debug(f"Created table: {table_name}")
     
-    def _create_embedding_text(self, entity: Dict[str, Any], entity_type: str) -> str:
+    def _create_embedding_text(self, entity: Dict[str, Any], entity_type: str, semantic_keywords: List[str] = None) -> str:
         """
-        Create text representation for embedding generation.
+        Create enhanced text representation for embedding generation with semantic keywords.
+        
+        Args:
+            entity: Entity dictionary
+            entity_type: Type of entity (devices, variables, actions)
+            semantic_keywords: Optional list of semantic keywords to include
+            
+        Returns:
+            Enhanced text string for embedding
+        """
+        # Extract only embedding-relevant fields
+        embedding_fields = EMBEDDING_FIELDS.get(entity_type, set())
+        base_data = {k: v for k, v in entity.items() if k in embedding_fields}
+        
+        # Create base text from embedding fields
+        base_text = json.dumps(base_data, sort_keys=True, cls=DateTimeJSONEncoder)
+        
+        # Add semantic keywords if provided
+        if semantic_keywords:
+            keywords_text = " ".join(semantic_keywords)
+            enhanced_text = f"{base_text} {keywords_text}"
+        else:
+            enhanced_text = base_text
+        
+        return enhanced_text
+    
+    def _create_embedding_text_legacy(self, entity: Dict[str, Any], entity_type: str) -> str:
+        """
+        Legacy method for creating simple text representation (kept for compatibility).
         
         Args:
             entity: Entity dictionary
@@ -161,9 +206,38 @@ class VectorStore(VectorStoreInterface):
             raise
     
     def _hash_entity(self, entity: Dict[str, Any]) -> str:
-        """Generate hash for entity to detect changes."""
+        """Generate hash for entity to detect changes (legacy method)."""
         # Create deterministic string representation using custom encoder
         entity_str = json.dumps(entity, sort_keys=True, cls=DateTimeJSONEncoder)
+        return hashlib.sha256(entity_str.encode()).hexdigest()
+    
+    def _get_static_fields_only(self, entity: Dict[str, Any], entity_type: str) -> Dict[str, Any]:
+        """
+        Extract only static fields from an entity for hash comparison.
+        
+        Args:
+            entity: The full entity dictionary
+            entity_type: Type of entity (devices, variables, actions)
+            
+        Returns:
+            Dictionary with only static fields
+        """
+        static_fields = STATIC_FIELDS.get(entity_type, set())
+        return {k: v for k, v in entity.items() if k in static_fields}
+    
+    def _hash_static_fields(self, entity: Dict[str, Any], entity_type: str) -> str:
+        """
+        Generate a hash using only static fields for change detection.
+        
+        Args:
+            entity: The full entity dictionary
+            entity_type: Type of entity (devices, variables, actions)
+            
+        Returns:
+            SHA256 hash of static fields only
+        """
+        static_entity = self._get_static_fields_only(entity, entity_type)
+        entity_str = json.dumps(static_entity, sort_keys=True, cls=DateTimeJSONEncoder)
         return hashlib.sha256(entity_str.encode()).hexdigest()
     
     def update_embeddings(
@@ -188,75 +262,166 @@ class VectorStore(VectorStoreInterface):
     def _update_entity_embeddings(
         self,
         table_name: str,
-        entities: List[Dict[str, Any]]
+        entities: List[Dict[str, Any]],
+        batch_size: int = 20
     ) -> None:
-        """Update embeddings for a specific entity type."""
+        """Update embeddings for a specific entity type with enhanced processing."""
+        if not entities:
+            self.logger.debug(f"No {table_name} entities to process")
+            return
+            
         try:
             table = self.db.open_table(table_name)
             
-            # Get existing entities
+            # Get existing entities with improved error handling
             existing = {}
             try:
-                for row in table.search().to_list():
-                    existing[row["id"]] = row["hash"]
-            except Exception:
-                # Table might be empty
-                pass
+                existing_rows = table.search().to_list()
+                existing = {row["id"]: row["hash"] for row in existing_rows}
+                self.logger.debug(f"Found {len(existing)} existing {table_name} records")
+            except Exception as e:
+                self.logger.debug(f"Table {table_name} appears empty or new: {e}")
             
-            # Process entities
-            records_to_add = []
-            updated_count = 0
+            # Analyze what needs updating using static field hashing
+            valid_entities = [e for e in entities if e.get("id") is not None]
+            current_ids = {e["id"] for e in valid_entities}
+            existing_ids = set(existing.keys())
             
-            for entity in entities:
-                entity_id = entity.get("id")
-                if entity_id is None:
-                    continue
-                
-                # Generate hash
-                entity_hash = self._hash_entity(entity)
-                
-                # Check if update needed
-                if entity_id in existing and existing[entity_id] == entity_hash:
-                    continue  # No change
-                
-                # Generate embedding text
-                text = self._create_embedding_text(entity, table_name)
-                
-                # Generate embedding
+            missing_entities = [e for e in valid_entities if e["id"] not in existing_ids]
+            existing_entities = [e for e in valid_entities if e["id"] in existing_ids]
+            
+            # Check which existing entities need updates
+            outdated_entities = []
+            for entity in existing_entities:
+                entity_id = entity["id"]
+                new_hash = self._hash_static_fields(entity, table_name)
+                if existing.get(entity_id) != new_hash:
+                    outdated_entities.append(entity)
+            
+            entities_to_process = missing_entities + outdated_entities
+            total_updates = len(entities_to_process)
+            
+            if total_updates == 0:
+                self.logger.debug(f"All {table_name} embeddings are up to date")
+                return
+            
+            # Show update summary
+            if total_updates > 10:
+                self.logger.info(f"📊 {table_name.title()} embedding updates required:")
+                self.logger.info(f"   New: {len(missing_entities)}")
+                self.logger.info(f"   Updates: {len(outdated_entities)}")
+                self.logger.info(f"   Total: {total_updates}")
+            
+            # Initialize progress tracking
+            progress = create_progress_tracker(
+                f"{table_name.title()} Embeddings", 
+                total_updates,
+                threshold=10
+            )
+            
+            # Generate semantic keywords in batch
+            self.logger.debug(f"Generating semantic keywords for {total_updates} {table_name}")
+            all_keywords = generate_batch_device_keywords(
+                entities_to_process, 
+                batch_size=min(15, batch_size),
+                collection_name=table_name
+            )
+            
+            # Delete outdated records first
+            if outdated_entities:
+                outdated_ids = [str(e["id"]) for e in outdated_entities]
                 try:
-                    embedding = self._generate_embedding(text)
+                    if len(outdated_ids) == 1:
+                        delete_condition = f"id = {outdated_ids[0]}"
+                    else:
+                        id_list = ", ".join(outdated_ids)
+                        delete_condition = f"id IN ({id_list})"
+                    table.delete(delete_condition)
+                    self.logger.debug(f"Deleted {len(outdated_ids)} outdated {table_name} records")
                 except Exception as e:
-                    self.logger.error(f"Failed to generate embedding for {table_name} {entity_id}: {e}")
+                    self.logger.error(f"Error deleting outdated {table_name} records: {e}")
+            
+            # Process embeddings in batches
+            records_to_add = []
+            failed_count = 0
+            
+            for i, entity in enumerate(entities_to_process):
+                try:
+                    entity_id = entity["id"]
+                    
+                    # Get semantic keywords for this entity
+                    semantic_keywords = all_keywords.get(str(entity_id), [])
+                    
+                    # Generate enhanced embedding text
+                    text = self._create_embedding_text(entity, table_name, semantic_keywords)
+                    
+                    # Generate embedding
+                    try:
+                        embedding = self._generate_embedding(text)
+                    except Exception as e:
+                        self.logger.error(f"Failed to generate embedding for {table_name} {entity_id}: {e}")
+                        failed_count += 1
+                        continue
+                    
+                    # Create record with static field hash
+                    record = {
+                        "id": entity_id,
+                        "name": entity.get("name", ""),
+                        "text": text,
+                        "data": json.dumps(entity, cls=DateTimeJSONEncoder),
+                        "hash": self._hash_static_fields(entity, table_name),
+                        "embedding": embedding
+                    }
+                    
+                    records_to_add.append(record)
+                    
+                    # Update progress
+                    progress.update(i + 1, f"processed {entity.get('name', f'ID {entity_id}')}")
+                    
+                except Exception as e:
+                    self.logger.error(f"Error processing {table_name} entity {entity.get('id', 'unknown')}: {e}")
+                    failed_count += 1
                     continue
-                
-                # Create record
-                record = {
-                    "id": entity_id,
-                    "name": entity.get("name", ""),
-                    "text": text,
-                    "data": json.dumps(entity, cls=DateTimeJSONEncoder),
-                    "hash": entity_hash,
-                    "embedding": embedding
-                }
-                
-                records_to_add.append(record)
-                updated_count += 1
             
-            # Delete outdated records
-            if existing:
-                current_ids = {e.get("id") for e in entities if e.get("id") is not None}
-                for old_id in existing:
-                    if old_id not in current_ids:
-                        table.delete(f"id = {old_id}")
-            
-            # Add new/updated records
+            # Bulk add all new records
             if records_to_add:
-                table.add(records_to_add)
-                
-            self.logger.info(f"Updated {updated_count} embeddings in {table_name}")
+                try:
+                    table.add(records_to_add)
+                    success_count = len(records_to_add)
+                    progress.complete(f"added {success_count} records")
+                except Exception as e:
+                    self.logger.error(f"Failed to bulk add {table_name} records: {e}")
+                    progress.error(f"failed to add {len(records_to_add)} records")
+                    return
+            else:
+                progress.complete("no records to add")
+            
+            # Handle removed entities
+            removed_ids = existing_ids - current_ids
+            if removed_ids:
+                try:
+                    removed_list = list(removed_ids)
+                    if len(removed_list) == 1:
+                        delete_condition = f"id = {removed_list[0]}"
+                    else:
+                        id_list = ", ".join(map(str, removed_list))
+                        delete_condition = f"id IN ({id_list})"
+                    table.delete(delete_condition)
+                    self.logger.info(f"Removed {len(removed_ids)} deleted {table_name} from vector store")
+                except Exception as e:
+                    self.logger.error(f"Error removing deleted {table_name}: {e}")
+            
+            # Final summary
+            success_count = len(records_to_add)
+            if failed_count > 0:
+                self.logger.warning(f"⚠️ {table_name.title()} update completed with {failed_count} failures")
+            
+            if success_count > 0 or failed_count > 0:
+                self.logger.info(f"✅ {table_name.title()} embeddings updated: {success_count} successful, {failed_count} failed")
             
         except Exception as e:
             self.logger.error(f"Failed to update {table_name} embeddings: {e}")
+            raise
     
     def search(
         self,
@@ -344,8 +509,8 @@ class VectorStore(VectorStoreInterface):
         try:
             table = self.db.open_table(table_name)
             
-            # Generate embedding
-            text = self._create_embedding_text(entity_data, table_name)
+            # Generate embedding using legacy method for single additions
+            text = self._create_embedding_text_legacy(entity_data, table_name)
             embedding = self._generate_embedding(text)
             
             # Create record
