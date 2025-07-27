@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Optional
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from adapters.data_provider import DataProvider
 
 

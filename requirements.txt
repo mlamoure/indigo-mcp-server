@@ -1,4 +1,4 @@
-fastmcp
+fastmcp>=2.3.0
 lancedb
 pyarrow
 openai

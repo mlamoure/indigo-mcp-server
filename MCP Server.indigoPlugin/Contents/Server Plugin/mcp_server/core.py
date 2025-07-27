@@ -2,14 +2,13 @@
 Core MCP server implementation separated from Indigo plugin logic.
 """
 
-import asyncio
 import json
 import logging
 import os
 import threading
 from typing import Optional
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 from adapters.data_provider import DataProvider
 from adapters.vector_store_interface import VectorStoreInterface
@@ -25,6 +24,7 @@ class MCPServerCore:
         self,
         data_provider: DataProvider,
         server_name: str = "indigo-mcp-server",
+        port: int = 8080,
         logger: Optional[logging.Logger] = None
     ):
         """
@@ -33,10 +33,12 @@ class MCPServerCore:
         Args:
             data_provider: Data provider for accessing entity data
             server_name: Name for the MCP server
+            port: HTTP port for the server
             logger: Optional logger instance
         """
         self.data_provider = data_provider
         self.server_name = server_name
+        self.port = port
         self.logger = logger or logging.getLogger("Plugin")
         
         # Get database path from environment variable
@@ -55,7 +57,6 @@ class MCPServerCore:
         # MCP server instance
         self.mcp_server = None
         self.mcp_thread = None
-        self._mcp_loop = None
         self._running = False
     
     def start(self) -> None:
@@ -109,10 +110,6 @@ class MCPServerCore:
         try:
             self._running = False
             
-            # Signal server to stop
-            if self._mcp_loop:
-                self._mcp_loop.call_soon_threadsafe(self._mcp_loop.stop)
-            
             # Wait for thread to finish
             if self.mcp_thread and self.mcp_thread.is_alive():
                 self.mcp_thread.join(timeout=5.0)
@@ -126,22 +123,19 @@ class MCPServerCore:
             self.logger.error(f"Error stopping MCP server: {e}")
     
     def _run_server(self) -> None:
-        """Run the MCP server in its own event loop."""
+        """Run the MCP server with HTTP transport."""
         try:
-            # Create new event loop for this thread
-            self._mcp_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._mcp_loop)
-            
-            # Run the server
-            self._mcp_loop.run_until_complete(
-                self.mcp_server.run()
+            # Run the server with HTTP transport
+            # FastMCP 2.3.0+ uses run() method with transport parameter
+            self.mcp_server.run(
+                transport="http",  # or "streamable-http" - both supported in 2.3.0+
+                host="127.0.0.1",
+                port=self.port,
+                path="/mcp"
             )
             
         except Exception as e:
             self.logger.error(f"MCP server error: {e}")
-        finally:
-            if self._mcp_loop:
-                self._mcp_loop.close()
     
     def _register_tools(self) -> None:
         """Register MCP tools."""

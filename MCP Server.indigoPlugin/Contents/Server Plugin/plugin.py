@@ -111,6 +111,7 @@ class Plugin(indigo.PluginBase):
             self.mcp_server_core = MCPServerCore(
                 data_provider=self.data_provider,
                 server_name="indigo-mcp-server",
+                port=self.server_port,
                 logger=self.logger
             )
             self.mcp_server_core.start()
@@ -252,8 +253,8 @@ class Plugin(indigo.PluginBase):
                     # Reinitialize with new configuration
                     self.mcp_server_core = MCPServerCore(
                         data_provider=self.data_provider,
-                        vector_store=self.vector_store_manager.get_vector_store(),
                         server_name="indigo-mcp-server",
+                        port=self.server_port,
                         logger=self.logger
                     )
                     self.mcp_server_core.start()
