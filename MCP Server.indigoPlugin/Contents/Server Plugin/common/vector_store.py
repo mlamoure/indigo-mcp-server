@@ -3,6 +3,7 @@ Simplified LanceDB vector store for semantic search of Indigo entities.
 Only handles embeddings for devices, variables, and actions.
 """
 
+import datetime
 import hashlib
 import json
 import logging
@@ -14,6 +15,19 @@ import pyarrow as pa
 from openai import OpenAI
 
 from adapters.vector_store_interface import VectorStoreInterface
+
+
+class DateTimeJSONEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles datetime objects."""
+    
+    def default(self, obj):
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+        elif isinstance(obj, datetime.date):
+            return obj.isoformat()
+        elif isinstance(obj, datetime.time):
+            return obj.isoformat()
+        return super().default(obj)
 
 
 class VectorStore(VectorStoreInterface):
@@ -148,8 +162,8 @@ class VectorStore(VectorStoreInterface):
     
     def _hash_entity(self, entity: Dict[str, Any]) -> str:
         """Generate hash for entity to detect changes."""
-        # Create deterministic string representation
-        entity_str = json.dumps(entity, sort_keys=True)
+        # Create deterministic string representation using custom encoder
+        entity_str = json.dumps(entity, sort_keys=True, cls=DateTimeJSONEncoder)
         return hashlib.sha256(entity_str.encode()).hexdigest()
     
     def update_embeddings(
@@ -220,7 +234,7 @@ class VectorStore(VectorStoreInterface):
                     "id": entity_id,
                     "name": entity.get("name", ""),
                     "text": text,
-                    "data": json.dumps(entity),
+                    "data": json.dumps(entity, cls=DateTimeJSONEncoder),
                     "hash": entity_hash,
                     "embedding": embedding
                 }
@@ -339,7 +353,7 @@ class VectorStore(VectorStoreInterface):
                 "id": entity_data.get("id"),
                 "name": entity_data.get("name", ""),
                 "text": text,
-                "data": json.dumps(entity_data),
+                "data": json.dumps(entity_data, cls=DateTimeJSONEncoder),
                 "hash": self._hash_entity(entity_data),
                 "embedding": embedding
             }
