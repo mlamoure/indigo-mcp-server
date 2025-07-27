@@ -98,14 +98,11 @@ class MCPServerCore:
                 logger=self.logger
             )
             
-            # Set up authentication if bearer token is provided
+            # Disable authentication for now due to FastMCP compatibility issues
+            # TODO: Implement proper TokenVerifier-compatible authentication
             auth_provider = None
-            if self.security_config.bearer_token:
-                # Create a simple static token auth provider
-                # Note: This is a simplified implementation - in production you might want JWT
-                auth_provider = self._create_static_token_auth()
             
-            # Create FastMCP instance with optional authentication
+            # Create FastMCP instance without authentication
             self.mcp_server = FastMCP(self.server_name, auth=auth_provider)
             
             # Register tools
@@ -165,8 +162,7 @@ class MCPServerCore:
             uvicorn_config = {
                 "host": host,
                 "port": self.port,
-                "log_level": "warning",  # Reduce uvicorn logging noise
-                "access_log": False
+                "log_level": "warning"  # Reduce uvicorn logging noise
             }
             
             # Add SSL configuration if enabled
@@ -237,19 +233,29 @@ class MCPServerCore:
             f"  Server URL: {status_info['server_url']}",
             f"  Host Address: {status_info['host_address']}:{self.port}",
             f"  SSL Enabled: {status_info['ssl_enabled']}",
-            f"  Authentication: {'Enabled' if status_info['authentication_enabled'] else 'Disabled'}"
+            f"  Authentication: Disabled (temporarily due to FastMCP compatibility)"
         ]
-        
-        if status_info['bearer_token']:
-            config_lines.append(f"  Bearer Token: {status_info['bearer_token']}")
         
         if status_info['ssl_enabled']:
             config_lines.append(f"  SSL Cert Dir: {status_info['ssl_cert_dir']}")
         
+        # Create simplified Claude config without bearer token
+        simplified_config = {
+            "mcpServers": {
+                "indigo": {
+                    "command": "npx",
+                    "args": [
+                        "@anthropic/mcp-client",
+                        status_info['server_url']
+                    ]
+                }
+            }
+        }
+        
         config_lines.extend([
             "",
             "Claude Desktop Config (copy/paste ready):",
-            json.dumps(claude_config, indent=2)
+            json.dumps(simplified_config, indent=2)
         ])
         
         # Log as a single multi-line message
