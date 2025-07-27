@@ -1,0 +1,6 @@
+mcp
+lancedb
+pyarrow
+openai
+pyyaml
+dicttoxml

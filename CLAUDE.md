@@ -58,10 +58,11 @@ cd /Users/mike/Mike_Sync_Documents/Programming/mike-local-development-scripts
 ./deploy_indigo_plugin_to_server.sh /Users/mike/Mike_Sync_Documents/Programming/indigo-mcp-server/MCP Server.indigoPlugin
 ```
 
-### Install Dependencies
-```bash
-pip install -r "MCP Server.indigoPlugin/Contents/Server Plugin/requirements.txt"
-```
+### Dependencies
+
+- **Requirements File Synchronization**
+  - Always keep `requirements.txt` in sync with 'MCP Server.indigoPlugin/Contents/Server Plugin/requirements.txt' and 'requirements.txt' in the root folder.
+  - When adding a new Python library via pip in the virtual environment, update BOTH requirements.txt files to ensure dependency consistency
 
 Dependencies:
 - mcp - Model Context Protocol SDK
