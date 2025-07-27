@@ -1,17 +1,7 @@
 """
-Optimized IndigoQueryAgent package.
-
-Provides intelligent home automation data retrieval with:
-- High-performance caching with background refresh
-- Semantic vector search via LanceDB integration  
-- Device property compression for efficient data transfer
-- Parallel API calls for reduced latency
+Search tool for MCP Server plugin.
 """
 
-from .main import IndigoQueryAgent
-from .cache_manager import IndigoItemsCache
+from .search_tool import SearchEntitiesTool
 
-__all__ = [
-    "IndigoQueryAgent",
-    "IndigoItemsCache",
-]
+__all__ = ["SearchEntitiesTool"]

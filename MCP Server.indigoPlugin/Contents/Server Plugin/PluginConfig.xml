@@ -1,133 +1,41 @@
 <?xml version="1.0"?>
 <PluginConfig>
-    <Field id="openai_api_key" type="textfield" defaultValue="xxxxx-xxxxx-xxxxx-xxxxx" tooltip="">
+    <!-- OpenAI Configuration -->
+    <Field id="openai_api_key" type="textfield" defaultValue="" secure="true" tooltip="Required for semantic search capabilities">
         <Label>OpenAI API Key:</Label>
     </Field>
 
-    <Field id="large_model" type="menu" defaultValue="gpt-4.1">
-        <Label>Large Model:</Label>
-        <List>
-            <Option value="gpt-4.1">gpt-4.1</Option>
-        </List>
+    <Field id="api_key_help" type="label" fontSize="small" alignWithControl="false" alignText="left">
+        <Label>Enter your OpenAI API key to enable semantic search. Get your API key from https://platform.openai.com/api-keys</Label>
     </Field>
 
-    <Field id="small_model" type="menu" defaultValue="o4-mini">
-        <Label>Small Model:</Label>
-        <List>
-            <Option value="o4-mini">o4-mini</Option>
-        </List>
+    <Field id="separator1" type="separator"/>
+
+    <!-- Debug Settings -->
+    <Field id="showDebugInfo" type="checkbox" defaultValue="false">
+        <Label>Enable debug logging:</Label>
+        <Description>Shows detailed debug information in the Event Log</Description>
     </Field>
 
-    <!-- Indigo API introduction text -->
-    <Field id="api_intro_label" type="label" fontSize="small" alignWithControl="false" alignText="left">
-        <Label>Enter the Indigo Server API URL – your Reflector URL.
-            Alternatively, if using local secrets (check Indigo Documentation), use your local server address, including
-            http/https and port.
-            For local secrets (e.g. http://localhost:8176), disable SSL validation below.
-        </Label>
-    </Field>
+    <Field id="separator2" type="separator"/>
 
-    <!-- Indigo API URL -->
-    <Field id="indigo_api_url" type="textfield" defaultValue="https://myreflector.indigodomo.net" tooltip="">
-        <Label>Indigo Server API URL:</Label>
-    </Field>
+    <!-- MCP Server Information -->
+    <Field id="mcp_info_label" type="label" fontSize="small" alignWithControl="false" alignText="left">
+        <Label>This plugin provides Model Context Protocol (MCP) support, allowing AI assistants like Claude to interact with your Indigo installation.
 
-    <!-- Disable SSL/TLS Validation -->
-    <Field id="disable_ssl_validation" type="checkbox" defaultValue="false">
-        <Label>Disable SSL/TLS Validation (for local secrets):</Label>
-    </Field>
-    <Field id="api_key" type="textfield" defaultValue="xxxxx-xxxxx-xxxxx-xxxxx" tooltip="">
-        <Label>Indigo Server API Key:</Label>
-    </Field>
+The MCP server runs automatically when the plugin starts and provides:
+• Natural language search for devices, variables, and actions
+• Read-only access to all Indigo entities
+• Semantic search powered by OpenAI embeddings
 
-    <Field type="menu" id="api_server_bind_ip" defaultValue="127.0.0.1">
-        <Label>Bind IP for Hello Indigo API server:</Label>
-        <List>
-            <Option value="127.0.0.1">Localhost only</Option>
-            <Option value="0.0.0.0">All interfaces</Option>
-        </List>
-    </Field>
-    <Field id="api_server_bind_port" type="textfield" defaultValue="8000" tooltip="">
-        <Label>Hello Indigo API server port:</Label>
-    </Field>
-
-    <Field type="checkbox"
-           id="disable_hello_ui"
-           defaultValue="false">
-        <Label>Disable the Hello Indigo UI:</Label>
-        <Description></Description>
-    </Field>
-
-    <Field enabledBindingId="disable_hello_ui" enabledBindingNegate="true" type="menu" id="hello_ui_bind_ip"
-           defaultValue="127.0.0.1">
-        <Label>Bind IP for Hello Indigo UI:</Label>
-        <List>
-            <Option value="127.0.0.1">Localhost only</Option>
-            <Option value="0.0.0.0">All interfaces</Option>
-        </List>
-    </Field>
-    <Field enabledBindingId="disable_hello_ui" enabledBindingNegate="true" id="hello_ui_bind_port" type="textfield"
-           defaultValue="9000"
-           tooltip="">
-        <Label>Hello Indigo UI port:</Label>
-    </Field>
-
-    <Field type="checkbox"
-           id="enable_influxdb"
-           defaultValue="false">
-        <Label>Enable InfluxDB Logging:</Label>
-        <Description>Enable logging device history to InfluxDB.</Description>
-    </Field>
-
-    <Field enabledBindingId="enable_influxdb" enabledBindingNegate="false" type="textfield" id="influx_url"
-           defaultValue="http://localhost">
-        <Label>InfluxDB URL:</Label>
-    </Field>
-    <Field enabledBindingId="enable_influxdb" enabledBindingNegate="false" type="textfield" id="influx_port"
-           defaultValue="8086">
-        <Label>InfluxDB Port:</Label>
-    </Field>
-    <Field enabledBindingId="enable_influxdb" enabledBindingNegate="false" type="textfield" id="influx_login"
-           defaultValue="">
-        <Label>InfluxDB Login:</Label>
-    </Field>
-    <Field enabledBindingId="enable_influxdb" enabledBindingNegate="false" type="textfield" id="influx_password"
-           defaultValue="">
-        <Label>InfluxDB Password:</Label>
-    </Field>
-    <Field enabledBindingId="enable_influxdb" enabledBindingNegate="false" type="textfield" id="influx_database"
-           defaultValue="indigo">
-        <Label>InfluxDB Database Name:</Label>
-    </Field>
-
-    <Field id="log_level" type="menu" defaultValue="20">
-        <Label>Event Logging Level:</Label>
-        <List>
-            <Option value="5">Extra Debugging Messages</Option>
-            <Option value="10">Debugging Messages</Option>
-            <Option value="20">Informational Messages</Option>
-            <Option value="30">Warning Messages</Option>
-            <Option value="40">Error Messages</Option>
-            <Option value="50">Critical Errors Only</Option>
-        </List>
-    </Field>
-
-    <Field type="checkbox"
-           id="enable_langsmith"
-           defaultValue="false">
-        <Label>Enable LangSmith Tracing:</Label>
-    </Field>
-    <Field enabledBindingId="enable_langsmith" enabledBindingNegate="false" type="textfield" id="langsmith_endpoint"
-           defaultValue="https://api.smith.langchain.com">
-        <Label>LangSmith Endpoint URL:</Label>
-    </Field>
-    <Field enabledBindingId="enable_langsmith" enabledBindingNegate="false" type="textfield" id="langsmith_api_key"
-           defaultValue="">
-        <Label>LangSmith API Key:</Label>
-    </Field>
-    <Field enabledBindingId="enable_langsmith" enabledBindingNegate="false" type="textfield" id="langsmith_project"
-           defaultValue="">
-        <Label>LangSmith Project Name:</Label>
+To use with Claude Desktop, add this to your claude_desktop_config.json:
+{
+  "mcpServers": {
+    "indigo": {
+      "command": "indigo-plugin-host",
+      "args": ["com.vtmikel.mcp_server"]
+    }
+  }
+}</Label>
     </Field>
 </PluginConfig>
-

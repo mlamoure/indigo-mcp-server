@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an Indigo MCP (Model Context Protocol) Server plugin that integrates AI models (OpenAI) with Indigo Domotics home automation system. The plugin provides API endpoints and actions for device information retrieval and appears to be designed to support LangChain/LangSmith integration and InfluxDB logging.
+This is an Indigo MCP (Model Context Protocol) Server plugin that provides AI assistants like Claude with access to Indigo Domotics home automation system. The plugin implements an MCP server with semantic search capabilities and read-only access to Indigo entities.
 
 ## Plugin Structure
 
@@ -13,28 +13,42 @@ MCP Server.indigoPlugin/
 ├── Contents/
 │   ├── Info.plist           # Plugin metadata (version, identifier, API version)
 │   └── Server Plugin/
-│       ├── plugin.py        # Main plugin implementation
-│       ├── Actions.xml      # Defines plugin actions
-│       ├── MenuItems.xml    # Defines menu items
-│       ├── PluginConfig.xml # Configuration UI definition
-│       └── requirements.txt # Python dependencies (currently empty)
+│       ├── plugin.py        # Main plugin with MCP server implementation
+│       ├── Actions.xml      # Defines plugin actions (currently unused)
+│       ├── MenuItems.xml    # Plugin menu items
+│       ├── PluginConfig.xml # Configuration UI
+│       ├── requirements.txt # Python dependencies
+│       ├── common/
+│       │   ├── __init__.py
+│       │   └── vector_store.py  # LanceDB vector store for embeddings
+│       └── search_entities/
+│           ├── __init__.py
+│           └── search_tool.py   # Natural language search tool
 ```
 
 ## Key Components
 
-### Plugin Class (plugin.py)
-- Main entry point: `Plugin` class inheriting from `indigo.PluginBase`
-- Current functionality:
-  - `get_device_info`: Returns device information in JSON/YAML/XML format
-  - Menu items for stopping/restarting servers (methods not yet implemented)
+### MCP Server (plugin.py)
+- Runs MCP server using stdio transport
+- Provides one tool: `search_entities` for natural language search
+- Provides resources for read-only access:
+  - `/devices` - List all devices
+  - `/devices/{id}` - Get specific device
+  - `/variables` - List all variables
+  - `/variables/{id}` - Get specific variable
+  - `/actions` - List all action groups
+  - `/actions/{id}` - Get specific action
 
-### Configuration (PluginConfig.xml)
-The plugin supports configuration for:
-- OpenAI API integration (API key, model selection)
-- Indigo Server API connection
-- Hello Indigo API/UI servers (ports 8000/9000)
-- InfluxDB logging
-- LangSmith tracing
+### Vector Store (common/vector_store.py)
+- Uses LanceDB for vector embeddings
+- Stores embeddings for devices, variables, and actions
+- Supports semantic search with OpenAI embeddings
+- Auto-updates when entities change
+
+### Search Tool (search_entities/search_tool.py)
+- Natural language search interface
+- Parses queries to determine search parameters
+- Returns relevance-scored results
 
 ## Development Commands
 
@@ -45,30 +59,51 @@ cd /Users/mike/Mike_Sync_Documents/Programming/mike-local-development-scripts
 ```
 
 ### Install Dependencies
-If requirements.txt is populated in the future:
 ```bash
 pip install -r "MCP Server.indigoPlugin/Contents/Server Plugin/requirements.txt"
+```
+
+Dependencies:
+- mcp - Model Context Protocol SDK
+- lancedb - Vector database
+- pyarrow - Required by LanceDB
+- openai - For embeddings
+- pyyaml - YAML support
+- dicttoxml - XML support
+
+## Plugin Configuration
+
+The plugin requires:
+- **OpenAI API Key**: For generating embeddings for semantic search
+- **Debug Mode**: Optional debug logging
+
+## MCP Integration
+
+To use with Claude Desktop, add to `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "indigo": {
+      "command": "indigo-plugin-host",
+      "args": ["com.vtmikel.mcp_server"]
+    }
+  }
+}
 ```
 
 ## Plugin Development Notes
 
 1. **Indigo API Version**: The plugin targets Indigo Server API version 3.6
-2. **Plugin Version**: Currently at 2025.0.1
+2. **Plugin Version**: 2025.0.1
 3. **Bundle ID**: com.vtmikel.mcp_server
-4. **Dependencies**: The plugin imports `dicttoxml` and `yaml` but requirements.txt is empty - these may need to be added
+4. **MCP Transport**: Uses stdio for local communication
+5. **Vector Store**: Located at `{Indigo}/Preferences/Plugins/com.vtmikel.mcp_server/vector_db`
 
-## Next Steps for Implementation
+## Testing MCP Tools
 
-Based on the configuration UI and current stub implementation, the plugin appears intended to:
-1. Implement MCP server functionality for AI model integration
-2. Add Hello Indigo API/UI server implementation
-3. Implement InfluxDB device history logging
-4. Add menu item handlers for server control
-5. Integrate with LangChain/LangSmith for tracing
-
-## Testing
-
-Currently no test framework is implemented. When adding tests, consider:
-- Unit tests for device info formatting
-- Integration tests for API endpoints
-- Mock tests for Indigo device interactions
+Example queries for testing:
+- "Find all light switches"
+- "Show me temperature sensors"
+- "List all scenes"
+- "Find devices in the bedroom"
+- "Show all variables with value true"
