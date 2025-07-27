@@ -18,28 +18,42 @@ MCP Server.indigoPlugin/
 │       ├── MenuItems.xml    # Plugin menu items
 │       ├── PluginConfig.xml # Configuration UI
 │       ├── requirements.txt # Python dependencies
-│       ├── adapters/        # Data access layer (formerly interfaces)
-│       │   ├── __init__.py
-│       │   ├── data_provider.py           # Abstract data provider interface
-│       │   ├── indigo_data_provider.py    # Indigo-specific data provider
-│       │   └── vector_store_interface.py  # Vector store interface
-│       ├── common/
-│       │   ├── __init__.py
-│       │   ├── vector_store.py         # LanceDB vector store implementation
-│       │   └── vector_store_manager.py # Vector store lifecycle management
-│       ├── mcp_server/
-│       │   ├── __init__.py
-│       │   ├── core.py     # Core MCP server implementation
-│       │   └── tools/
-│       │       ├── __init__.py
-│       │       ├── search_entities.py    # Natural language search tool
-│       │       ├── query_parser.py       # Query parsing logic
-│       │       └── result_formatter.py   # Result formatting
-│       └── resources/       # MCP resource handlers
+│       └── mcp_server/
 │           ├── __init__.py
-│           ├── devices.py   # Device resource endpoints
-│           ├── variables.py # Variable resource endpoints
-│           └── actions.py   # Action resource endpoints
+│           ├── core.py        # Core MCP server implementation
+│           ├── adapters/      # Data access layer
+│           │   ├── __init__.py
+│           │   ├── data_provider.py           # Abstract data provider interface
+│           │   ├── indigo_data_provider.py    # Indigo-specific data provider
+│           │   └── vector_store_interface.py  # Vector store interface
+│           ├── common/
+│           │   ├── __init__.py
+│           │   ├── json_encoder.py            # JSON encoding utilities
+│           │   ├── openai_client/             # OpenAI client utilities
+│           │   │   ├── __init__.py
+│           │   │   ├── main.py
+│           │   │   └── langsmith_config.py
+│           │   └── vector_store/              # Vector store implementation
+│           │       ├── __init__.py
+│           │       ├── main.py                # LanceDB vector store implementation
+│           │       ├── progress_tracker.py    # Progress tracking for vector operations
+│           │       ├── semantic_keywords.py   # Semantic keyword extraction
+│           │       └── vector_store_manager.py # Vector store lifecycle management
+│           ├── resources/     # MCP resource handlers
+│           │   ├── __init__.py
+│           │   ├── devices.py   # Device resource endpoints
+│           │   ├── variables.py # Variable resource endpoints
+│           │   └── actions.py   # Action resource endpoints
+│           ├── security/      # Security and authentication
+│           │   ├── __init__.py
+│           │   ├── auth_manager.py    # Authentication management
+│           │   ├── cert_manager.py    # Certificate management
+│           │   └── security_config.py # Security configuration
+│           └── tools/
+│               ├── __init__.py
+│               ├── search_entities.py    # Natural language search tool
+│               ├── query_parser.py       # Query parsing logic
+│               └── result_formatter.py   # Result formatting
 ```
 
 ## Key Components
@@ -56,24 +70,35 @@ MCP Server.indigoPlugin/
 - Initializes and coordinates resource handlers
 - Provides one tool: `search_entities` for natural language search
 
-### Data Access Layer (adapters/)
+### Data Access Layer (mcp_server/adapters/)
 - **IndigoDataProvider**: Accesses Indigo entities using `dict(indigo_entity)` for direct object serialization
 - **DataProvider**: Abstract interface for data access
 - **VectorStoreInterface**: Abstract interface for vector operations
 
-### Vector Store (common/)
-- **VectorStore**: LanceDB implementation with OpenAI embeddings
+### Vector Store (mcp_server/common/vector_store/)
+- **VectorStore**: LanceDB implementation with OpenAI embeddings (main.py)
 - **VectorStoreManager**: Handles lifecycle, background updates, and synchronization
+- **ProgressTracker**: Tracks vector store operation progress
+- **SemanticKeywords**: Semantic keyword extraction for enhanced search
 - Database path configured via DB_FILE environment variable
 
-### Resource Handlers (resources/)
+### OpenAI Client (mcp_server/common/openai_client/)
+- **OpenAI Client**: Centralized OpenAI API client management
+- **LangSmith Config**: Optional LangSmith integration for observability
+
+### Security Layer (mcp_server/security/)
+- **AuthManager**: Authentication and authorization management
+- **CertManager**: SSL/TLS certificate management
+- **SecurityConfig**: Security configuration settings
+
+### Resource Handlers (mcp_server/resources/)
 - **DeviceResource**: HTTP endpoints for device data
 - **VariableResource**: HTTP endpoints for variable data  
 - **ActionResource**: HTTP endpoints for action group data
 - Each provides list and individual entity endpoints
 
 ### Search System (mcp_server/tools/)
-- **SearchEntitiesHandler**: Natural language search coordination
+- **SearchEntitiesHandler**: Natural language search coordination (search_entities.py)
 - **QueryParser**: Parses user queries for entity types and parameters
 - **ResultFormatter**: Formats search results with relevance scoring
 
