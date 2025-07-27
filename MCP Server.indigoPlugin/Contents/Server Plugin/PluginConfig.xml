@@ -11,29 +11,40 @@
 
     <Field id="separator1" type="separator"/>
 
+    <!-- Server Configuration -->
+    <Field id="server_port" type="textfield" defaultValue="8080">
+        <Label>Server Port:</Label>
+        <Description>HTTP port for the FastMCP server (1024-65535)</Description>
+    </Field>
+
+    <Field id="separator2" type="separator"/>
+
     <!-- Debug Settings -->
     <Field id="showDebugInfo" type="checkbox" defaultValue="false">
         <Label>Enable debug logging:</Label>
         <Description>Shows detailed debug information in the Event Log</Description>
     </Field>
 
-    <Field id="separator2" type="separator"/>
+    <Field id="separator3" type="separator"/>
 
-    <!-- MCP Server Information -->
+    <!-- FastMCP Server Information -->
     <Field id="mcp_info_label" type="label" fontSize="small" alignWithControl="false" alignText="left">
-        <Label>This plugin provides Model Context Protocol (MCP) support, allowing AI assistants like Claude to interact with your Indigo installation.
+        <Label>This plugin provides Model Context Protocol (MCP) support using FastMCP with HTTP transport, allowing AI assistants like Claude to interact with your Indigo installation.
 
-The MCP server runs automatically when the plugin starts and provides:
+The FastMCP server runs automatically when the plugin starts and provides:
 • Natural language search for devices, variables, and actions
-• Read-only access to all Indigo entities
+• Read-only access to all Indigo entities via HTTP resources
 • Semantic search powered by OpenAI embeddings
+• HTTP transport for better performance and reliability
+
+The server will be available at: http://127.0.0.1:[configured port]
 
 To use with Claude Desktop, add this to your claude_desktop_config.json:
 {
   "mcpServers": {
     "indigo": {
-      "command": "indigo-plugin-host",
-      "args": ["com.vtmikel.mcp_server"]
+      "command": "npx",
+      "args": ["@anthropic/mcp-client", "http://127.0.0.1:8080"]
     }
   }
 }</Label>

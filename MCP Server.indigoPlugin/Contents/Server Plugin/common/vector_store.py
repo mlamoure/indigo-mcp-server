@@ -13,8 +13,10 @@ import lancedb
 import pyarrow as pa
 from openai import OpenAI
 
+from interfaces.vector_store_interface import VectorStoreInterface
 
-class VectorStore:
+
+class VectorStore(VectorStoreInterface):
     """Vector store for Indigo entities using LanceDB."""
     
     def __init__(self, db_path: str, logger: Optional[logging.Logger] = None):

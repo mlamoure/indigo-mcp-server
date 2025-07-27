@@ -16,14 +16,8 @@ import sys
 import threading
 from typing import Dict, List, Optional, Any
 
-# Add plugin directory to path for imports
-plugin_dir = os.path.dirname(os.path.abspath(__file__))
-if plugin_dir not in sys.path:
-    sys.path.insert(0, plugin_dir)
 
-from mcp import Server, Tool, Resource
-from mcp.types import TextContent, ImageContent, EmbeddedResource
-import mcp.server.stdio
+from mcp.server.fastmcp import FastMCP
 
 # Import our modules
 from common.vector_store import VectorStore
@@ -55,11 +49,12 @@ class Plugin(indigo.PluginBase):
         self.debug = plugin_prefs.get("showDebugInfo", False)
         self.openai_api_key = plugin_prefs.get("openai_api_key", "")
         
-        # MCP Server instance
+        # FastMCP Server instance
         self.mcp_server = None
         self.mcp_thread = None
         self.vector_store = None
         self.search_tool = None
+        self.server_port = plugin_prefs.get("server_port", 8080)
         
         # Set up logging
         self.logger.setLevel(logging.DEBUG if self.debug else logging.INFO)
@@ -123,71 +118,71 @@ class Plugin(indigo.PluginBase):
     ########################################
     
     def _start_mcp_server(self) -> None:
-        """Start the MCP server in a separate thread."""
+        """Start the FastMCP server."""
         try:
-            self.mcp_server = Server("indigo-mcp-server")
+            # Create FastMCP instance
+            self.mcp_server = FastMCP("indigo-mcp-server")
             
-            # Register tools
+            # Register tools and resources
             self._register_tools()
-            
-            # Register resources
             self._register_resources()
             
             # Start server in separate thread
             self.mcp_thread = threading.Thread(
                 target=self._run_mcp_server,
                 daemon=True,
-                name="MCP-Server-Thread"
+                name="FastMCP-Server-Thread"
             )
             self.mcp_thread.start()
             
-            self.logger.info("MCP server started successfully")
+            self.logger.info(f"FastMCP server started on port {self.server_port}")
             
         except Exception as e:
-            self.logger.error(f"Failed to start MCP server: {e}")
+            self.logger.error(f"Failed to start FastMCP server: {e}")
     
     def _stop_mcp_server(self) -> None:
-        """Stop the MCP server."""
+        """Stop the FastMCP server."""
         try:
             # Signal server to stop
             if hasattr(self, '_mcp_loop') and self._mcp_loop:
                 self._mcp_loop.call_soon_threadsafe(self._mcp_loop.stop)
             
             # Wait for thread to finish
-            if self.mcp_thread and self.mcp_thread.is_alive():
+            if hasattr(self, 'mcp_thread') and self.mcp_thread and self.mcp_thread.is_alive():
                 self.mcp_thread.join(timeout=5.0)
             
-            self.logger.info("MCP server stopped")
+            self.logger.info("FastMCP server stopped")
             
         except Exception as e:
-            self.logger.error(f"Error stopping MCP server: {e}")
+            self.logger.error(f"Error stopping FastMCP server: {e}")
     
     def _run_mcp_server(self) -> None:
-        """Run the MCP server event loop."""
+        """Run the FastMCP server."""
         try:
             # Create new event loop for this thread
             self._mcp_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self._mcp_loop)
             
-            # Run the server
+            # Run the server (transport is handled by the SDK)
             self._mcp_loop.run_until_complete(
-                mcp.server.stdio.stdio_server(self.mcp_server)
+                self.mcp_server.run()
             )
             
         except Exception as e:
-            self.logger.error(f"MCP server error: {e}")
+            self.logger.error(f"FastMCP server error: {e}")
         finally:
-            self._mcp_loop.close()
+            if hasattr(self, '_mcp_loop'):
+                self._mcp_loop.close()
     
     ########################################
     # MCP Tools Registration
     ########################################
     
     def _register_tools(self) -> None:
-        """Register MCP tools."""
+        """Register FastMCP tools."""
         
         @self.mcp_server.tool()
-        async def search_entities(query: str) -> str:
+        def search_entities(query: str) -> str:
             """
             Search for Indigo devices, variables, and actions using natural language.
             
@@ -198,14 +193,7 @@ class Plugin(indigo.PluginBase):
                 JSON string with search results
             """
             try:
-                # Run search in executor to avoid blocking
-                loop = asyncio.get_event_loop()
-                results = await loop.run_in_executor(
-                    None,
-                    self.search_tool.search,
-                    query
-                )
-                
+                results = self.search_tool.search(query)
                 return json.dumps(results, indent=2)
                 
             except Exception as e:
@@ -217,10 +205,10 @@ class Plugin(indigo.PluginBase):
     ########################################
     
     def _register_resources(self) -> None:
-        """Register MCP resources for read-only access to Indigo entities."""
+        """Register FastMCP resources for read-only access to Indigo entities."""
         
         @self.mcp_server.resource("devices")
-        async def list_devices() -> str:
+        def list_devices() -> str:
             """List all Indigo devices."""
             try:
                 devices = []
@@ -242,7 +230,7 @@ class Plugin(indigo.PluginBase):
                 return json.dumps({"error": str(e)})
         
         @self.mcp_server.resource("devices/{device_id}")
-        async def get_device(device_id: str) -> str:
+        def get_device(device_id: str) -> str:
             """Get details for a specific device."""
             try:
                 dev_id = int(device_id)
@@ -268,7 +256,7 @@ class Plugin(indigo.PluginBase):
                 return json.dumps({"error": str(e)})
         
         @self.mcp_server.resource("variables")
-        async def list_variables() -> str:
+        def list_variables() -> str:
             """List all Indigo variables."""
             try:
                 variables = []
@@ -288,7 +276,7 @@ class Plugin(indigo.PluginBase):
                 return json.dumps({"error": str(e)})
         
         @self.mcp_server.resource("variables/{variable_id}")
-        async def get_variable(variable_id: str) -> str:
+        def get_variable(variable_id: str) -> str:
             """Get details for a specific variable."""
             try:
                 var_id = int(variable_id)
@@ -310,7 +298,7 @@ class Plugin(indigo.PluginBase):
                 return json.dumps({"error": str(e)})
         
         @self.mcp_server.resource("actions")
-        async def list_actions() -> str:
+        def list_actions() -> str:
             """List all Indigo action groups."""
             try:
                 actions = []
@@ -329,7 +317,7 @@ class Plugin(indigo.PluginBase):
                 return json.dumps({"error": str(e)})
         
         @self.mcp_server.resource("actions/{action_id}")
-        async def get_action(action_id: str) -> str:
+        def get_action(action_id: str) -> str:
             """Get details for a specific action group."""
             try:
                 act_id = int(action_id)
@@ -425,14 +413,14 @@ class Plugin(indigo.PluginBase):
         self._update_vector_store()
     
     def show_mcp_status_menu(self) -> None:
-        """Menu action to show MCP server status."""
+        """Menu action to show FastMCP server status."""
         if self.mcp_server and self.mcp_thread and self.mcp_thread.is_alive():
-            self.logger.info("MCP Server Status: Running")
+            self.logger.info(f"FastMCP Server Status: Running on http://127.0.0.1:{self.server_port}")
             if self.vector_store:
                 stats = self.vector_store.get_stats()
                 self.logger.info(f"Vector Store Stats: {stats}")
         else:
-            self.logger.info("MCP Server Status: Not running")
+            self.logger.info("FastMCP Server Status: Not running")
     
     ########################################
     # Configuration UI Validation
@@ -452,6 +440,14 @@ class Plugin(indigo.PluginBase):
         if not api_key or api_key == "xxxxx-xxxxx-xxxxx-xxxxx":
             errors_dict["openai_api_key"] = "Please enter a valid OpenAI API key"
         
+        # Validate server port
+        try:
+            port = int(values_dict.get("server_port", 8080))
+            if port < 1024 or port > 65535:
+                errors_dict["server_port"] = "Port must be between 1024 and 65535"
+        except (ValueError, TypeError):
+            errors_dict["server_port"] = "Port must be a valid number"
+        
         return (len(errors_dict) == 0, values_dict, errors_dict)
     
     def closedPrefsConfigUi(self, values_dict: indigo.Dict, user_cancelled: bool) -> None:
@@ -466,13 +462,23 @@ class Plugin(indigo.PluginBase):
             self.debug = values_dict.get("showDebugInfo", False)
             self.logger.setLevel(logging.DEBUG if self.debug else logging.INFO)
             
-            # Check if API key changed
+            # Check if API key or port changed
             new_api_key = values_dict.get("openai_api_key", "")
+            new_port = int(values_dict.get("server_port", 8080))
+            
+            restart_needed = False
+            
             if new_api_key != self.openai_api_key:
                 self.openai_api_key = new_api_key
                 os.environ["OPENAI_API_KEY"] = self.openai_api_key
+                restart_needed = True
                 
-                # Restart MCP server with new configuration
-                self.logger.info("OpenAI API key changed, restarting MCP server...")
+            if new_port != self.server_port:
+                self.server_port = new_port
+                restart_needed = True
+                
+            if restart_needed:
+                # Restart FastMCP server with new configuration
+                self.logger.info("Configuration changed, restarting FastMCP server...")
                 self._stop_mcp_server()
                 self._start_mcp_server()
