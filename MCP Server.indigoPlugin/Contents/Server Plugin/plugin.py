@@ -239,6 +239,14 @@ class Plugin(indigo.PluginBase):
         except (ValueError, TypeError):
             errors_dict["server_port"] = "Port must be a valid number"
         
+        # Validate log level
+        try:
+            log_level = int(values_dict.get("log_level", 20))
+            if log_level not in [5, 10, 20, 30, 40, 50]:
+                errors_dict["log_level"] = "Invalid log level"
+        except (ValueError, TypeError):
+            errors_dict["log_level"] = "Log level must be a valid number"
+        
         return (len(errors_dict) == 0, values_dict, errors_dict)
     
     def closedPrefsConfigUi(self, values_dict: indigo.Dict, user_cancelled: bool) -> None:
@@ -251,7 +259,8 @@ class Plugin(indigo.PluginBase):
         if not user_cancelled:
             # Update configuration
             self.debug = values_dict.get("showDebugInfo", False)
-            self.logger.setLevel(logging.DEBUG if self.debug else logging.INFO)
+            log_level = int(values_dict.get("log_level", 20))
+            self.logger.setLevel(log_level)
             
             # Check if API key, models, LangSmith, security, or port changed
             new_api_key = values_dict.get("openai_api_key", "")

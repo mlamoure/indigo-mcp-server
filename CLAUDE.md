@@ -120,7 +120,7 @@ To use with Claude Desktop, add to `claude_desktop_config.json`:
   "mcpServers": {
     "indigo": {
       "command": "npx",
-      "args": ["@anthropic/mcp-client", "http://127.0.0.1:8080"]
+      "args": ["mcp-remote", "http://localhost:8080/mcp"]
     }
   }
 }

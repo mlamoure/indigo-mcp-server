@@ -65,6 +65,18 @@
         <Description>Shows detailed debug information in the Event Log</Description>
     </Field>
 
+    <Field id="log_level" type="menu" defaultValue="20">
+        <Label>Event Logging Level:</Label>
+        <List>
+            <Option value="5">Extra Debugging Messages</Option>
+            <Option value="10">Debugging Messages</Option>
+            <Option value="20">Informational Messages</Option>
+            <Option value="30">Warning Messages</Option>
+            <Option value="40">Error Messages</Option>
+            <Option value="50">Critical Errors Only</Option>
+        </List>
+    </Field>
+
     <Field id="separator5" type="separator"/>
 
     <!-- Server Access Configuration -->

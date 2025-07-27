@@ -121,7 +121,7 @@ class SecurityConfig:
             "mcpServers": {
                 "indigo": {
                     "command": "npx",
-                    "args": ["@anthropic/mcp-client", client_url]
+                    "args": ["mcp-remote", client_url + "/mcp"]
                 }
             }
         }

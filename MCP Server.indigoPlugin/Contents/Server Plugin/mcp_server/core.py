@@ -245,8 +245,8 @@ class MCPServerCore:
                 "indigo": {
                     "command": "npx",
                     "args": [
-                        "@anthropic/mcp-client",
-                        status_info['server_url']
+                        "mcp-remote",
+                        status_info['server_url'] + "/mcp"
                     ]
                 }
             }
@@ -254,7 +254,7 @@ class MCPServerCore:
         
         config_lines.extend([
             "",
-            "Claude Desktop Config (copy/paste ready):",
+            "Claude Desktop (or other MCP compatible tool) setup:",
             json.dumps(simplified_config, indent=2)
         ])
         
