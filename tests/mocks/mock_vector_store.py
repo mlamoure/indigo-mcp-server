@@ -4,7 +4,7 @@ Mock vector store for testing.
 
 import re
 from typing import Dict, List, Any, Optional
-from interfaces.vector_store_interface import VectorStoreInterface
+from adapters.vector_store_interface import VectorStoreInterface
 
 
 class MockVectorStore(VectorStoreInterface):

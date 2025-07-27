@@ -13,8 +13,7 @@ import os
 from typing import Optional
 
 # Import our modules
-from common.vector_store_manager import VectorStoreManager
-from interfaces.indigo_data_provider import IndigoDataProvider
+from adapters.indigo_data_provider import IndigoDataProvider
 from mcp_server.core import MCPServerCore
 
 ################################################################################
@@ -45,7 +44,6 @@ class Plugin(indigo.PluginBase):
         
         # Component instances
         self.data_provider = None
-        self.vector_store_manager = None
         self.mcp_server_core = None
         self.server_port = plugin_prefs.get("server_port", 8080)
         
@@ -67,6 +65,13 @@ class Plugin(indigo.PluginBase):
         # Set OpenAI API key in environment for the modules to use
         os.environ["OPENAI_API_KEY"] = self.openai_api_key
         
+        # Set DB_FILE environment variable for vector store
+        db_path = os.path.join(
+            indigo.server.getInstallFolderPath(),
+            "Preferences/Plugins/com.vtmikel.mcp_server/vector_db"
+        )
+        os.environ["DB_FILE"] = db_path
+        
         # Initialize data provider
         try:
             self.data_provider = IndigoDataProvider(logger=self.logger)
@@ -75,29 +80,10 @@ class Plugin(indigo.PluginBase):
             self.logger.error(f"Failed to initialize data provider: {e}")
             return
         
-        # Initialize vector store manager
-        try:
-            db_path = os.path.join(
-                indigo.server.getInstallFolderPath(),
-                "Preferences/Plugins/com.vtmikel.mcp_server/vector_db"
-            )
-            self.vector_store_manager = VectorStoreManager(
-                data_provider=self.data_provider,
-                db_path=db_path,
-                logger=self.logger,
-                update_interval=300  # 5 minutes
-            )
-            self.vector_store_manager.start()
-            self.logger.info("Vector store manager started")
-        except Exception as e:
-            self.logger.error(f"Failed to initialize vector store manager: {e}")
-            return
-        
         # Initialize and start MCP server
         try:
             self.mcp_server_core = MCPServerCore(
                 data_provider=self.data_provider,
-                vector_store=self.vector_store_manager.get_vector_store(),
                 server_name="indigo-mcp-server",
                 logger=self.logger
             )
@@ -115,9 +101,6 @@ class Plugin(indigo.PluginBase):
         
         if self.mcp_server_core:
             self.mcp_server_core.stop()
-        
-        if self.vector_store_manager:
-            self.vector_store_manager.stop()
 
     
     
@@ -131,8 +114,8 @@ class Plugin(indigo.PluginBase):
         """Menu action to show MCP server status."""
         if self.mcp_server_core and self.mcp_server_core.is_running:
             self.logger.info(f"MCP Server Status: Running on http://127.0.0.1:{self.server_port}")
-            if self.vector_store_manager:
-                stats = self.vector_store_manager.get_stats()
+            if hasattr(self.mcp_server_core, 'vector_store_manager'):
+                stats = self.mcp_server_core.vector_store_manager.get_stats()
                 self.logger.info(f"Vector Store Stats: {stats}")
         else:
             self.logger.info("MCP Server Status: Not running")

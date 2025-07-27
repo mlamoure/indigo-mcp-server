@@ -13,7 +13,7 @@ import lancedb
 import pyarrow as pa
 from openai import OpenAI
 
-from interfaces.vector_store_interface import VectorStoreInterface
+from adapters.vector_store_interface import VectorStoreInterface
 
 
 class VectorStore(VectorStoreInterface):
@@ -249,19 +249,19 @@ class VectorStore(VectorStoreInterface):
         query: str,
         entity_types: Optional[List[str]] = None,
         top_k: int = 10,
-        similarity_threshold: float = 0.0
-    ) -> Dict[str, List[Dict[str, Any]]]:
+        similarity_threshold: float = 0.7
+    ) -> List[Dict[str, Any]]:
         """
         Search for entities using semantic similarity.
         
         Args:
-            query: Search query text
-            entity_types: List of entity types to search (default: all)
-            top_k: Number of results per entity type
-            similarity_threshold: Minimum similarity score
+            query: Natural language search query
+            entity_types: Optional list of entity types to filter ('devices', 'variables', 'actions')
+            top_k: Maximum number of results to return
+            similarity_threshold: Minimum similarity score threshold
             
         Returns:
-            Dictionary with search results by entity type
+            List of search results with similarity scores
         """
         if entity_types is None:
             entity_types = ["devices", "variables", "actions"]
@@ -271,9 +271,9 @@ class VectorStore(VectorStoreInterface):
             query_embedding = self._generate_embedding(query)
         except Exception as e:
             self.logger.error(f"Failed to generate query embedding: {e}")
-            return {et: [] for et in entity_types}
+            return []
         
-        results = {}
+        all_results = []
         
         for entity_type in entity_types:
             if entity_type not in ["devices", "variables", "actions"]:
@@ -291,7 +291,6 @@ class VectorStore(VectorStoreInterface):
                 )
                 
                 # Process results
-                entities = []
                 for result in search_results:
                     # Calculate similarity score
                     cosine_distance = result.get("_distance", 0)
@@ -301,15 +300,81 @@ class VectorStore(VectorStoreInterface):
                         # Parse entity data
                         entity_data = json.loads(result["data"])
                         entity_data["_similarity_score"] = similarity_score
-                        entities.append(entity_data)
-                
-                results[entity_type] = entities
+                        entity_data["_entity_type"] = entity_type[:-1]  # Remove 's' from plural
+                        all_results.append(entity_data)
                 
             except Exception as e:
                 self.logger.error(f"Search failed for {entity_type}: {e}")
-                results[entity_type] = []
         
-        return results
+        # Sort by similarity score
+        all_results.sort(key=lambda x: x.get("_similarity_score", 0), reverse=True)
+        
+        # Limit total results
+        return all_results[:top_k]
+    
+    def add_entity(self, entity_type: str, entity_data: Dict[str, Any]) -> None:
+        """
+        Add a single entity to the vector store.
+        
+        Args:
+            entity_type: Type of entity ('device', 'variable', 'action')
+            entity_data: Entity data dictionary
+        """
+        # Convert singular to plural for table name
+        table_name = entity_type + "s" if not entity_type.endswith("s") else entity_type
+        
+        if table_name not in ["devices", "variables", "actions"]:
+            self.logger.error(f"Invalid entity type: {entity_type}")
+            return
+        
+        try:
+            table = self.db.open_table(table_name)
+            
+            # Generate embedding
+            text = self._create_embedding_text(entity_data, table_name)
+            embedding = self._generate_embedding(text)
+            
+            # Create record
+            record = {
+                "id": entity_data.get("id"),
+                "name": entity_data.get("name", ""),
+                "text": text,
+                "data": json.dumps(entity_data),
+                "hash": self._hash_entity(entity_data),
+                "embedding": embedding
+            }
+            
+            # Add to table
+            table.add([record])
+            self.logger.debug(f"Added {entity_type} {entity_data.get('id')} to vector store")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to add {entity_type} to vector store: {e}")
+    
+    def remove_entity(self, entity_type: str, entity_id: int) -> None:
+        """
+        Remove an entity from the vector store.
+        
+        Args:
+            entity_type: Type of entity ('device', 'variable', 'action')
+            entity_id: Entity ID to remove
+        """
+        # Convert singular to plural for table name
+        table_name = entity_type + "s" if not entity_type.endswith("s") else entity_type
+        
+        if table_name not in ["devices", "variables", "actions"]:
+            self.logger.error(f"Invalid entity type: {entity_type}")
+            return
+        
+        try:
+            table = self.db.open_table(table_name)
+            
+            # Delete by ID
+            table.delete(f"id = {entity_id}")
+            self.logger.debug(f"Removed {entity_type} {entity_id} from vector store")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to remove {entity_type} {entity_id} from vector store: {e}")
     
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics about the vector store."""

@@ -5,14 +5,17 @@ Core MCP server implementation separated from Indigo plugin logic.
 import asyncio
 import json
 import logging
+import os
 import threading
 from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 
-from interfaces.data_provider import DataProvider
-from interfaces.vector_store_interface import VectorStoreInterface
+from adapters.data_provider import DataProvider
+from adapters.vector_store_interface import VectorStoreInterface
+from common.vector_store_manager import VectorStoreManager
 from .tools.search_entities import SearchEntitiesHandler
+from resources import DeviceResource, VariableResource, ActionResource
 
 
 class MCPServerCore:
@@ -21,7 +24,6 @@ class MCPServerCore:
     def __init__(
         self,
         data_provider: DataProvider,
-        vector_store: VectorStoreInterface,
         server_name: str = "indigo-mcp-server",
         logger: Optional[logging.Logger] = None
     ):
@@ -30,27 +32,31 @@ class MCPServerCore:
         
         Args:
             data_provider: Data provider for accessing entity data
-            vector_store: Vector store for semantic search
             server_name: Name for the MCP server
             logger: Optional logger instance
         """
         self.data_provider = data_provider
-        self.vector_store = vector_store
         self.server_name = server_name
         self.logger = logger or logging.getLogger(__name__)
+        
+        # Get database path from environment variable
+        db_path = os.environ.get("DB_FILE")
+        if not db_path:
+            raise ValueError("DB_FILE environment variable must be set")
+        
+        # Initialize vector store manager
+        self.vector_store_manager = VectorStoreManager(
+            data_provider=data_provider,
+            db_path=db_path,
+            logger=self.logger,
+            update_interval=300  # 5 minutes
+        )
         
         # MCP server instance
         self.mcp_server = None
         self.mcp_thread = None
         self._mcp_loop = None
         self._running = False
-        
-        # Initialize components
-        self.search_handler = SearchEntitiesHandler(
-            data_provider=data_provider,
-            vector_store=vector_store,
-            logger=logger
-        )
     
     def start(self) -> None:
         """Start the MCP server."""
@@ -59,12 +65,26 @@ class MCPServerCore:
             return
         
         try:
+            # Start vector store manager
+            self.vector_store_manager.start()
+            
+            # Initialize search handler with vector store
+            self.search_handler = SearchEntitiesHandler(
+                data_provider=self.data_provider,
+                vector_store=self.vector_store_manager.get_vector_store(),
+                logger=self.logger
+            )
+            
             # Create FastMCP instance
             self.mcp_server = FastMCP(self.server_name)
             
-            # Register tools and resources
+            # Register tools
             self._register_tools()
-            self._register_resources()
+            
+            # Initialize resource handlers
+            self.device_resource = DeviceResource(self.mcp_server, self.data_provider, self.logger)
+            self.variable_resource = VariableResource(self.mcp_server, self.data_provider, self.logger)
+            self.action_resource = ActionResource(self.mcp_server, self.data_provider, self.logger)
             
             # Start server in separate thread
             self.mcp_thread = threading.Thread(
@@ -96,6 +116,9 @@ class MCPServerCore:
             # Wait for thread to finish
             if self.mcp_thread and self.mcp_thread.is_alive():
                 self.mcp_thread.join(timeout=5.0)
+            
+            # Stop vector store manager
+            self.vector_store_manager.stop()
             
             self.logger.info("MCP server stopped")
             
@@ -142,83 +165,6 @@ class MCPServerCore:
                 self.logger.error(f"Search error: {e}")
                 return json.dumps({"error": str(e), "query": query})
     
-    def _register_resources(self) -> None:
-        """Register MCP resources for read-only access to Indigo entities."""
-        
-        @self.mcp_server.resource("indigo://devices")
-        def list_devices() -> str:
-            """List all Indigo devices."""
-            try:
-                devices = self.data_provider.get_all_devices()
-                return json.dumps(devices, indent=2)
-                
-            except Exception as e:
-                self.logger.error(f"Error listing devices: {e}")
-                return json.dumps({"error": str(e)})
-        
-        @self.mcp_server.resource("indigo://devices/{device_id}")
-        def get_device(device_id: str) -> str:
-            """Get details for a specific device."""
-            try:
-                device = self.data_provider.get_device(int(device_id))
-                if device is None:
-                    return json.dumps({"error": f"Device {device_id} not found"})
-                
-                return json.dumps(device, indent=2)
-                    
-            except Exception as e:
-                self.logger.error(f"Error getting device {device_id}: {e}")
-                return json.dumps({"error": str(e)})
-        
-        @self.mcp_server.resource("indigo://variables")
-        def list_variables() -> str:
-            """List all Indigo variables."""
-            try:
-                variables = self.data_provider.get_all_variables()
-                return json.dumps(variables, indent=2)
-                
-            except Exception as e:
-                self.logger.error(f"Error listing variables: {e}")
-                return json.dumps({"error": str(e)})
-        
-        @self.mcp_server.resource("indigo://variables/{variable_id}")
-        def get_variable(variable_id: str) -> str:
-            """Get details for a specific variable."""
-            try:
-                variable = self.data_provider.get_variable(int(variable_id))
-                if variable is None:
-                    return json.dumps({"error": f"Variable {variable_id} not found"})
-                
-                return json.dumps(variable, indent=2)
-                    
-            except Exception as e:
-                self.logger.error(f"Error getting variable {variable_id}: {e}")
-                return json.dumps({"error": str(e)})
-        
-        @self.mcp_server.resource("indigo://actions")
-        def list_actions() -> str:
-            """List all Indigo action groups."""
-            try:
-                actions = self.data_provider.get_all_actions()
-                return json.dumps(actions, indent=2)
-                
-            except Exception as e:
-                self.logger.error(f"Error listing actions: {e}")
-                return json.dumps({"error": str(e)})
-        
-        @self.mcp_server.resource("indigo://actions/{action_id}")
-        def get_action(action_id: str) -> str:
-            """Get details for a specific action group."""
-            try:
-                action = self.data_provider.get_action(int(action_id))
-                if action is None:
-                    return json.dumps({"error": f"Action group {action_id} not found"})
-                
-                return json.dumps(action, indent=2)
-                    
-            except Exception as e:
-                self.logger.error(f"Error getting action {action_id}: {e}")
-                return json.dumps({"error": str(e)})
     
     @property
     def is_running(self) -> bool:

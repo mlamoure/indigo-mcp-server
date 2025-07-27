@@ -7,6 +7,9 @@ import tempfile
 import os
 from typing import Generator
 
+# Import tests package to set up path
+import tests
+
 from tests.mocks.mock_data_provider import MockDataProvider
 from tests.mocks.mock_vector_store import MockVectorStore
 from mcp_server.tools.search_entities import SearchEntitiesHandler

@@ -4,7 +4,7 @@ Mock data provider for testing.
 
 import copy
 from typing import Dict, List, Any, Optional
-from interfaces.data_provider import DataProvider
+from adapters.data_provider import DataProvider
 
 
 class MockDataProvider(DataProvider):
@@ -164,3 +164,16 @@ class MockDataProvider(DataProvider):
     def add_action(self, action: Dict[str, Any]) -> None:
         """Add an action to the mock data."""
         self.actions.append(action)
+    
+    def get_all_entities_for_vector_store(self) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get all entities formatted for vector store updates.
+        
+        Returns:
+            Dictionary with 'devices', 'variables', 'actions' keys
+        """
+        return {
+            "devices": self.get_all_devices(),
+            "variables": self.get_all_variables(),
+            "actions": self.get_all_actions()
+        }

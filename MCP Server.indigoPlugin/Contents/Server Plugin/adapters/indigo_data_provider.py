@@ -36,17 +36,7 @@ class IndigoDataProvider(DataProvider):
         try:
             for dev_id in indigo.devices:
                 dev = indigo.devices[dev_id]
-                devices.append({
-                    "id": dev.id,
-                    "name": dev.name,
-                    "description": dev.description,
-                    "model": dev.model,
-                    "type": dev.deviceTypeId,
-                    "address": dev.address,
-                    "enabled": dev.enabled,
-                    "states": dict(dev.states) if hasattr(dev, 'states') else {},
-                    "protocol": dev.protocol
-                })
+                devices.append(dict(dev))
         except Exception as e:
             self.logger.error(f"Error getting all devices: {e}")
             
@@ -65,17 +55,7 @@ class IndigoDataProvider(DataProvider):
         try:
             if device_id in indigo.devices:
                 dev = indigo.devices[device_id]
-                return {
-                    "id": dev.id,
-                    "name": dev.name,
-                    "description": dev.description,
-                    "model": dev.model,
-                    "type": dev.deviceTypeId,
-                    "address": dev.address,
-                    "enabled": dev.enabled,
-                    "states": dict(dev.states) if hasattr(dev, 'states') else {},
-                    "protocol": dev.protocol
-                }
+                return dict(dev)
         except Exception as e:
             self.logger.error(f"Error getting device {device_id}: {e}")
             
@@ -92,13 +72,7 @@ class IndigoDataProvider(DataProvider):
         try:
             for var_id in indigo.variables:
                 var = indigo.variables[var_id]
-                variables.append({
-                    "id": var.id,
-                    "name": var.name,
-                    "value": var.value,
-                    "folderId": var.folderId,
-                    "readOnly": var.readOnly
-                })
+                variables.append(dict(var))
         except Exception as e:
             self.logger.error(f"Error getting all variables: {e}")
             
@@ -117,13 +91,7 @@ class IndigoDataProvider(DataProvider):
         try:
             if variable_id in indigo.variables:
                 var = indigo.variables[variable_id]
-                return {
-                    "id": var.id,
-                    "name": var.name,
-                    "value": var.value,
-                    "folderId": var.folderId,
-                    "readOnly": var.readOnly
-                }
+                return dict(var)
         except Exception as e:
             self.logger.error(f"Error getting variable {variable_id}: {e}")
             
@@ -140,12 +108,7 @@ class IndigoDataProvider(DataProvider):
         try:
             for action_id in indigo.actionGroups:
                 action = indigo.actionGroups[action_id]
-                actions.append({
-                    "id": action.id,
-                    "name": action.name,
-                    "folderId": action.folderId,
-                    "description": action.description if hasattr(action, 'description') else ""
-                })
+                actions.append(dict(action))
         except Exception as e:
             self.logger.error(f"Error getting all actions: {e}")
             
@@ -164,12 +127,7 @@ class IndigoDataProvider(DataProvider):
         try:
             if action_id in indigo.actionGroups:
                 action = indigo.actionGroups[action_id]
-                return {
-                    "id": action.id,
-                    "name": action.name,
-                    "folderId": action.folderId,
-                    "description": action.description if hasattr(action, 'description') else ""
-                }
+                return dict(action)
         except Exception as e:
             self.logger.error(f"Error getting action {action_id}: {e}")
             

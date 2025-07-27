@@ -13,43 +13,69 @@ MCP Server.indigoPlugin/
 ├── Contents/
 │   ├── Info.plist           # Plugin metadata (version, identifier, API version)
 │   └── Server Plugin/
-│       ├── plugin.py        # Main plugin with MCP server implementation
+│       ├── plugin.py        # Main plugin entry point
 │       ├── Actions.xml      # Defines plugin actions (currently unused)
 │       ├── MenuItems.xml    # Plugin menu items
 │       ├── PluginConfig.xml # Configuration UI
 │       ├── requirements.txt # Python dependencies
+│       ├── adapters/        # Data access layer (formerly interfaces)
+│       │   ├── __init__.py
+│       │   ├── data_provider.py           # Abstract data provider interface
+│       │   ├── indigo_data_provider.py    # Indigo-specific data provider
+│       │   └── vector_store_interface.py  # Vector store interface
 │       ├── common/
 │       │   ├── __init__.py
-│       │   └── vector_store.py  # LanceDB vector store for embeddings
-│       └── search_entities/
+│       │   ├── vector_store.py         # LanceDB vector store implementation
+│       │   └── vector_store_manager.py # Vector store lifecycle management
+│       ├── mcp_server/
+│       │   ├── __init__.py
+│       │   ├── core.py     # Core MCP server implementation
+│       │   └── tools/
+│       │       ├── __init__.py
+│       │       ├── search_entities.py    # Natural language search tool
+│       │       ├── query_parser.py       # Query parsing logic
+│       │       └── result_formatter.py   # Result formatting
+│       └── resources/       # MCP resource handlers
 │           ├── __init__.py
-│           └── search_tool.py   # Natural language search tool
+│           ├── devices.py   # Device resource endpoints
+│           ├── variables.py # Variable resource endpoints
+│           └── actions.py   # Action resource endpoints
 ```
 
 ## Key Components
 
-### FastMCP Server (plugin.py)
-- Runs FastMCP server using HTTP transport for better performance and reliability
-- Configurable HTTP port (default: 8080)
+### Plugin Entry Point (plugin.py)
+- Main Indigo plugin class with lifecycle management
+- Sets up environment variables for vector store database path (DB_FILE)
+- Initializes data provider and delegates MCP server management to MCPServerCore
+- Handles plugin configuration and validation
+
+### MCP Server Core (mcp_server/core.py)
+- Core MCP server implementation using FastMCP with HTTP transport
+- Manages vector store lifecycle through VectorStoreManager
+- Initializes and coordinates resource handlers
 - Provides one tool: `search_entities` for natural language search
-- Provides resources for read-only access via HTTP endpoints:
-  - `/devices` - List all devices
-  - `/devices/{id}` - Get specific device
-  - `/variables` - List all variables
-  - `/variables/{id}` - Get specific variable
-  - `/actions` - List all action groups
-  - `/actions/{id}` - Get specific action
 
-### Vector Store (common/vector_store.py)
-- Uses LanceDB for vector embeddings
-- Stores embeddings for devices, variables, and actions
-- Supports semantic search with OpenAI embeddings
-- Auto-updates when entities change
+### Data Access Layer (adapters/)
+- **IndigoDataProvider**: Accesses Indigo entities using `dict(indigo_entity)` for direct object serialization
+- **DataProvider**: Abstract interface for data access
+- **VectorStoreInterface**: Abstract interface for vector operations
 
-### Search Tool (search_entities/search_tool.py)
-- Natural language search interface
-- Parses queries to determine search parameters
-- Returns relevance-scored results
+### Vector Store (common/)
+- **VectorStore**: LanceDB implementation with OpenAI embeddings
+- **VectorStoreManager**: Handles lifecycle, background updates, and synchronization
+- Database path configured via DB_FILE environment variable
+
+### Resource Handlers (resources/)
+- **DeviceResource**: HTTP endpoints for device data
+- **VariableResource**: HTTP endpoints for variable data  
+- **ActionResource**: HTTP endpoints for action group data
+- Each provides list and individual entity endpoints
+
+### Search System (mcp_server/tools/)
+- **SearchEntitiesHandler**: Natural language search coordination
+- **QueryParser**: Parses user queries for entity types and parameters
+- **ResultFormatter**: Formats search results with relevance scoring
 
 ## Development Commands
 
@@ -79,6 +105,12 @@ The plugin requires:
 - **OpenAI API Key**: For generating embeddings for semantic search
 - **Server Port**: HTTP port for FastMCP server (default: 8080, range: 1024-65535)
 - **Debug Mode**: Optional debug logging
+
+## Environment Variables
+
+The plugin uses the following environment variables (set automatically by the plugin):
+- **DB_FILE**: Path to the LanceDB vector database directory
+- **OPENAI_API_KEY**: OpenAI API key for embeddings generation
 
 ## MCP Integration
 
