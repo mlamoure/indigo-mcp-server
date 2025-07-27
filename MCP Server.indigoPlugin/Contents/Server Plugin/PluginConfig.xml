@@ -1,12 +1,15 @@
 <?xml version="1.0"?>
 <PluginConfig>
     <!-- OpenAI Configuration -->
-    <Field id="openai_api_key" type="textfield" defaultValue="" secure="true" tooltip="Required for semantic search capabilities">
+    <Field id="openai_api_key" type="textfield" defaultValue="" secure="true"
+           tooltip="Required for semantic search capabilities">
         <Label>OpenAI API Key:</Label>
     </Field>
 
     <Field id="api_key_help" type="label" fontSize="small" alignWithControl="false" alignText="left">
-        <Label>Enter your OpenAI API key to enable semantic search. Get your API key from https://platform.openai.com/api-keys</Label>
+        <Label>Enter your OpenAI API key to enable semantic search. Get your API key from
+            https://platform.openai.com/api-keys
+        </Label>
     </Field>
 
     <Field id="separator1" type="separator"/>
@@ -23,18 +26,15 @@
     <Field id="large_model" type="menu" defaultValue="gpt-4o">
         <Label>Large Model:</Label>
         <List>
-            <Option value="gpt-4o">gpt-4o</Option>
-            <Option value="gpt-4o-mini">gpt-4o-mini</Option>
-            <Option value="gpt-4-turbo">gpt-4-turbo</Option>
-            <Option value="gpt-4">gpt-4</Option>
+            <Option value="gpt-4o">gpt-4.1</Option>
+            <Option value="o3">o3</Option>
         </List>
     </Field>
 
     <Field id="small_model" type="menu" defaultValue="gpt-4o-mini">
         <Label>Small Model:</Label>
         <List>
-            <Option value="gpt-4o-mini">gpt-4o-mini</Option>
-            <Option value="gpt-3.5-turbo">gpt-3.5-turbo</Option>
+            <Option value="o4-mini">o4-mini</Option>
         </List>
     </Field>
 
@@ -44,13 +44,16 @@
     <Field type="checkbox" id="enable_langsmith" defaultValue="false">
         <Label>Enable LangSmith Tracing:</Label>
     </Field>
-    <Field enabledBindingId="enable_langsmith" enabledBindingNegate="false" type="textfield" id="langsmith_endpoint" defaultValue="https://api.smith.langchain.com">
+    <Field enabledBindingId="enable_langsmith" enabledBindingNegate="false" type="textfield" id="langsmith_endpoint"
+           defaultValue="https://api.smith.langchain.com">
         <Label>LangSmith Endpoint URL:</Label>
     </Field>
-    <Field enabledBindingId="enable_langsmith" enabledBindingNegate="false" type="textfield" id="langsmith_api_key" defaultValue="">
+    <Field enabledBindingId="enable_langsmith" enabledBindingNegate="false" type="textfield" id="langsmith_api_key"
+           defaultValue="">
         <Label>LangSmith API Key:</Label>
     </Field>
-    <Field enabledBindingId="enable_langsmith" enabledBindingNegate="false" type="textfield" id="langsmith_project" defaultValue="">
+    <Field enabledBindingId="enable_langsmith" enabledBindingNegate="false" type="textfield" id="langsmith_project"
+           defaultValue="">
         <Label>LangSmith Project Name:</Label>
     </Field>
 
@@ -66,24 +69,26 @@
 
     <!-- FastMCP Server Information -->
     <Field id="mcp_info_label" type="label" fontSize="small" alignWithControl="false" alignText="left">
-        <Label>This plugin provides Model Context Protocol (MCP) support using FastMCP with HTTP transport, allowing AI assistants like Claude to interact with your Indigo installation.
+        <Label>This plugin provides Model Context Protocol (MCP) support using FastMCP with HTTP transport, allowing AI
+            assistants like Claude to interact with your Indigo installation.
 
-The FastMCP server runs automatically when the plugin starts and provides:
-• Natural language search for devices, variables, and actions
-• Read-only access to all Indigo entities via HTTP resources
-• Semantic search powered by OpenAI embeddings
-• HTTP transport for better performance and reliability
+            The FastMCP server runs automatically when the plugin starts and provides:
+            • Natural language search for devices, variables, and actions
+            • Read-only access to all Indigo entities via HTTP resources
+            • Semantic search powered by OpenAI embeddings
+            • HTTP transport for better performance and reliability
 
-The server will be available at: http://127.0.0.1:[configured port]
+            The server will be available at: http://127.0.0.1:[configured port]
 
-To use with Claude Desktop, add this to your claude_desktop_config.json:
-{
-  "mcpServers": {
-    "indigo": {
-      "command": "npx",
-      "args": ["@anthropic/mcp-client", "http://127.0.0.1:8080"]
-    }
-  }
-}</Label>
+            To use with Claude Desktop, add this to your claude_desktop_config.json:
+            {
+            "mcpServers": {
+            "indigo": {
+            "command": "npx",
+            "args": ["@anthropic/mcp-client", "http://127.0.0.1:[configured port]"]
+            }
+            }
+            }
+        </Label>
     </Field>
 </PluginConfig>
