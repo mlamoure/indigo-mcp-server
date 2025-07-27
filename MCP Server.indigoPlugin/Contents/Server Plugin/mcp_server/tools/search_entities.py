@@ -5,8 +5,8 @@ Search entities handler for natural language search of Indigo entities.
 import logging
 from typing import Dict, List, Any, Optional
 
-from adapters.data_provider import DataProvider
-from adapters.vector_store_interface import VectorStoreInterface
+from ..adapters.data_provider import DataProvider
+from ..adapters.vector_store_interface import VectorStoreInterface
 from .query_parser import QueryParser
 from .result_formatter import ResultFormatter
 

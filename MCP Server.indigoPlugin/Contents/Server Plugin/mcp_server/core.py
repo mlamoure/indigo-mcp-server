@@ -6,15 +6,18 @@ import json
 import logging
 import os
 import threading
+import uvicorn
 from typing import Optional
 
 from fastmcp import FastMCP
+from fastmcp.server.auth import BearerAuthProvider
 
-from adapters.data_provider import DataProvider
-from adapters.vector_store_interface import VectorStoreInterface
-from common.vector_store.vector_store_manager import VectorStoreManager
+from .adapters.data_provider import DataProvider
+from .adapters.vector_store_interface import VectorStoreInterface
+from .common.vector_store.vector_store_manager import VectorStoreManager
 from .tools.search_entities import SearchEntitiesHandler
-from resources import DeviceResource, VariableResource, ActionResource
+from .resources import DeviceResource, VariableResource, ActionResource
+from .security import AuthManager, CertManager, SecurityConfig, AccessMode
 
 
 class MCPServerCore:
@@ -25,6 +28,8 @@ class MCPServerCore:
         data_provider: DataProvider,
         server_name: str = "indigo-mcp-server",
         port: int = 8080,
+        access_mode: AccessMode = AccessMode.LOCAL_ONLY,
+        bearer_token: Optional[str] = None,
         logger: Optional[logging.Logger] = None
     ):
         """
@@ -34,6 +39,8 @@ class MCPServerCore:
             data_provider: Data provider for accessing entity data
             server_name: Name for the MCP server
             port: HTTP port for the server
+            access_mode: Server access mode (local only or remote access)
+            bearer_token: Bearer token for authentication
             logger: Optional logger instance
         """
         self.data_provider = data_provider
@@ -45,6 +52,21 @@ class MCPServerCore:
         db_path = os.environ.get("DB_FILE")
         if not db_path:
             raise ValueError("DB_FILE environment variable must be set")
+        
+        # Initialize security configuration
+        base_security_path = os.path.dirname(db_path)
+        self.security_config = SecurityConfig(
+            base_path=base_security_path,
+            access_mode=access_mode,
+            bearer_token=bearer_token,
+            logger=self.logger
+        )
+        
+        # Initialize certificate manager for SSL/TLS
+        self.cert_manager = CertManager(
+            cert_dir=self.security_config.get_ssl_cert_dir(),
+            logger=self.logger
+        )
         
         # Initialize vector store manager
         self.vector_store_manager = VectorStoreManager(
@@ -76,8 +98,15 @@ class MCPServerCore:
                 logger=self.logger
             )
             
-            # Create FastMCP instance
-            self.mcp_server = FastMCP(self.server_name)
+            # Set up authentication if bearer token is provided
+            auth_provider = None
+            if self.security_config.bearer_token:
+                # Create a simple static token auth provider
+                # Note: This is a simplified implementation - in production you might want JWT
+                auth_provider = self._create_static_token_auth()
+            
+            # Create FastMCP instance with optional authentication
+            self.mcp_server = FastMCP(self.server_name, auth=auth_provider)
             
             # Register tools
             self._register_tools()
@@ -86,6 +115,10 @@ class MCPServerCore:
             self.device_resource = DeviceResource(self.mcp_server, self.data_provider, self.logger)
             self.variable_resource = VariableResource(self.mcp_server, self.data_provider, self.logger)
             self.action_resource = ActionResource(self.mcp_server, self.data_provider, self.logger)
+            
+            # Ensure SSL certificates if SSL is enabled
+            if self.security_config.is_ssl_enabled():
+                self.cert_manager.ensure_certificates()
             
             # Start server in separate thread
             self.mcp_thread = threading.Thread(
@@ -96,7 +129,8 @@ class MCPServerCore:
             self.mcp_thread.start()
             self._running = True
             
-            self.logger.info(f"MCP server '{self.server_name}' started")
+            # Log comprehensive configuration
+            self._log_server_configuration()
             
         except Exception as e:
             self.logger.error(f"Failed to start MCP server: {e}")
@@ -123,15 +157,31 @@ class MCPServerCore:
             self.logger.error(f"Error stopping MCP server: {e}")
     
     def _run_server(self) -> None:
-        """Run the MCP server with HTTP transport."""
+        """Run the MCP server with HTTP transport and optional SSL."""
         try:
-            # Run the server with HTTP transport
-            # FastMCP 2.3.0+ uses run() method with transport parameter
+            host = self.security_config.get_host_address()
+            
+            # Prepare uvicorn configuration
+            uvicorn_config = {
+                "host": host,
+                "port": self.port,
+                "log_level": "warning",  # Reduce uvicorn logging noise
+                "access_log": False
+            }
+            
+            # Add SSL configuration if enabled
+            if self.security_config.is_ssl_enabled():
+                cert_file, key_file = self.cert_manager.ensure_certificates()
+                uvicorn_config.update({
+                    "ssl_keyfile": key_file,
+                    "ssl_certfile": cert_file
+                })
+            
+            # Use FastMCP's built-in HTTP server with uvicorn configuration
+            # FastMCP handles the ASGI app internally
             self.mcp_server.run(
-                transport="http",  # or "streamable-http" - both supported in 2.3.0+
-                host="127.0.0.1",
-                port=self.port,
-                path="/mcp"
+                transport="http",
+                **uvicorn_config
             )
             
         except Exception as e:
@@ -159,8 +209,57 @@ class MCPServerCore:
                 self.logger.error(f"Search error: {e}")
                 return json.dumps({"error": str(e), "query": query})
     
+    def _create_static_token_auth(self):
+        """
+        Create a static token authentication provider.
+        Note: This is a simplified implementation for static tokens.
+        """
+        class StaticTokenAuth:
+            def __init__(self, token):
+                self.token = token
+            
+            def __call__(self, request):
+                auth_header = request.headers.get("Authorization", "")
+                expected = f"Bearer {self.token}"
+                return auth_header == expected
+        
+        return StaticTokenAuth(self.security_config.bearer_token)
+    
+    def _log_server_configuration(self) -> None:
+        """Log comprehensive server configuration for easy copy/paste."""
+        status_info = self.security_config.get_status_info(self.port)
+        claude_config = self.security_config.get_claude_desktop_config(self.port)
+        
+        # Create formatted configuration message
+        config_lines = [
+            "MCP Server Configuration:",
+            f"  Access Mode: {status_info['access_mode'].replace('_', ' ').title()}",
+            f"  Server URL: {status_info['server_url']}",
+            f"  Host Address: {status_info['host_address']}:{self.port}",
+            f"  SSL Enabled: {status_info['ssl_enabled']}",
+            f"  Authentication: {'Enabled' if status_info['authentication_enabled'] else 'Disabled'}"
+        ]
+        
+        if status_info['bearer_token']:
+            config_lines.append(f"  Bearer Token: {status_info['bearer_token']}")
+        
+        if status_info['ssl_enabled']:
+            config_lines.append(f"  SSL Cert Dir: {status_info['ssl_cert_dir']}")
+        
+        config_lines.extend([
+            "",
+            "Claude Desktop Config (copy/paste ready):",
+            json.dumps(claude_config, indent=2)
+        ])
+        
+        # Log as a single multi-line message
+        self.logger.info("\n".join(config_lines))
     
     @property
     def is_running(self) -> bool:
         """Check if the MCP server is running."""
         return self._running
+    
+    def get_security_config(self) -> SecurityConfig:
+        """Get the security configuration."""
+        return self.security_config

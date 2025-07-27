@@ -67,28 +67,26 @@
 
     <Field id="separator5" type="separator"/>
 
-    <!-- FastMCP Server Information -->
-    <Field id="mcp_info_label" type="label" fontSize="small" alignWithControl="false" alignText="left">
-        <Label>This plugin provides Model Context Protocol (MCP) support using FastMCP with HTTP transport, allowing AI
-            assistants like Claude to interact with your Indigo installation.
+    <!-- Server Access Configuration -->
+    <Field id="access_mode" type="menu" defaultValue="local_only">
+        <Label>Server Access Mode:</Label>
+        <List>
+            <Option value="local_only">Local Only (127.0.0.1)</Option>
+            <Option value="remote_access">Remote Access (HTTP only)</Option>
+        </List>
+    </Field>
 
-            The FastMCP server runs automatically when the plugin starts and provides:
-            • Natural language search for devices, variables, and actions
-            • Read-only access to all Indigo entities via HTTP resources
-            • Semantic search powered by OpenAI embeddings
-            • HTTP transport for better performance and reliability
+    <Field id="separator6" type="separator"/>
 
-            The server will be available at: http://127.0.0.1:[configured port]
+    <!-- Security Configuration -->
+    <Field id="bearer_token" type="textfield" defaultValue="" readonly="true">
+        <Label>Bearer Token (Auto-generated):</Label>
+        <Description>Authentication token for secure access</Description>
+    </Field>
 
-            To use with Claude Desktop, add this to your claude_desktop_config.json:
-            {
-            "mcpServers": {
-            "indigo": {
-            "command": "npx",
-            "args": ["@anthropic/mcp-client", "http://127.0.0.1:[configured port]"]
-            }
-            }
-            }
-        </Label>
+    <Field id="regenerate_token_button" type="button">
+        <Label>Regenerate Bearer Token</Label>
+        <Title>Generate New Token</Title>
+        <CallbackMethod>regenerate_bearer_token_button</CallbackMethod>
     </Field>
 </PluginConfig>

@@ -9,8 +9,8 @@ import threading
 import time
 from typing import Optional, Dict, Any
 
-from adapters.data_provider import DataProvider
-from adapters.vector_store_interface import VectorStoreInterface
+from ...adapters.data_provider import DataProvider
+from ...adapters.vector_store_interface import VectorStoreInterface
 from .main import VectorStore
 
 

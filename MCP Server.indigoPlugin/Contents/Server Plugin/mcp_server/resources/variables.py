@@ -7,7 +7,7 @@ import logging
 from typing import Optional
 
 from fastmcp import FastMCP
-from adapters.data_provider import DataProvider
+from ..adapters.data_provider import DataProvider
 
 
 class VariableResource:

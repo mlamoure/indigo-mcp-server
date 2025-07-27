@@ -13,7 +13,7 @@ from typing import List, Dict, Any, Optional
 import lancedb
 import pyarrow as pa
 
-from adapters.vector_store_interface import VectorStoreInterface
+from ...adapters.vector_store_interface import VectorStoreInterface
 from ..openai_client.main import emb_text
 from .progress_tracker import create_progress_tracker
 from .semantic_keywords import generate_batch_device_keywords

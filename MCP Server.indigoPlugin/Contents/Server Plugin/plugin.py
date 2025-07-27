@@ -13,9 +13,10 @@ import os
 from typing import Optional
 
 # Import our modules
-from adapters.indigo_data_provider import IndigoDataProvider
+from mcp_server.adapters.indigo_data_provider import IndigoDataProvider
 from mcp_server.core import MCPServerCore
-from common.openai_client.langsmith_config import get_langsmith_config
+from mcp_server.common.openai_client.langsmith_config import get_langsmith_config
+from mcp_server.security import AuthManager, AccessMode
 
 ################################################################################
 class Plugin(indigo.PluginBase):
@@ -51,9 +52,14 @@ class Plugin(indigo.PluginBase):
         self.langsmith_api_key = plugin_prefs.get("langsmith_api_key", "")
         self.langsmith_project = plugin_prefs.get("langsmith_project", "")
         
+        # Security configuration
+        self.access_mode = plugin_prefs.get("access_mode", "local_only")
+        self.bearer_token = plugin_prefs.get("bearer_token", "")
+        
         # Component instances
         self.data_provider = None
         self.mcp_server_core = None
+        self.auth_manager = AuthManager(logger=self.logger)
         self.server_port = plugin_prefs.get("server_port", 8080)
         
         # Set up logging
@@ -70,6 +76,14 @@ class Plugin(indigo.PluginBase):
         if not self.openai_api_key or self.openai_api_key == "xxxxx-xxxxx-xxxxx-xxxxx":
             self.logger.error("OpenAI API key not configured. Please set it in plugin configuration.")
             return
+        
+        # Generate bearer token if not set
+        if not self.bearer_token:
+            self.bearer_token = self.auth_manager.generate_bearer_token()
+            # Save to plugin preferences
+            plugin_prefs = self.pluginPrefs
+            plugin_prefs["bearer_token"] = self.bearer_token
+            self.logger.info("Generated new bearer token for MCP server authentication")
         
         # Set OpenAI API key in environment for the modules to use
         os.environ["OPENAI_API_KEY"] = self.openai_api_key
@@ -108,10 +122,15 @@ class Plugin(indigo.PluginBase):
         
         # Initialize and start MCP server
         try:
+            # Convert access mode string to enum
+            access_mode = AccessMode.REMOTE_ACCESS if self.access_mode == "remote_access" else AccessMode.LOCAL_ONLY
+            
             self.mcp_server_core = MCPServerCore(
                 data_provider=self.data_provider,
                 server_name="indigo-mcp-server",
                 port=self.server_port,
+                access_mode=access_mode,
+                bearer_token=self.bearer_token,
                 logger=self.logger
             )
             self.mcp_server_core.start()
@@ -140,12 +159,59 @@ class Plugin(indigo.PluginBase):
     def show_mcp_status_menu(self) -> None:
         """Menu action to show MCP server status."""
         if self.mcp_server_core and self.mcp_server_core.is_running:
-            self.logger.info(f"MCP Server Status: Running on http://127.0.0.1:{self.server_port}")
+            security_config = self.mcp_server_core.get_security_config()
+            status_info = security_config.get_status_info(self.server_port)
+            
+            status_lines = [
+                f"MCP Server Status: Running",
+                f"  Server URL: {status_info['server_url']}",
+                f"  Access Mode: {status_info['access_mode'].replace('_', ' ').title()}",
+                f"  SSL Enabled: {status_info['ssl_enabled']}",
+                f"  Authentication: {'Enabled' if status_info['authentication_enabled'] else 'Disabled'}"
+            ]
+            
             if hasattr(self.mcp_server_core, 'vector_store_manager'):
                 stats = self.mcp_server_core.vector_store_manager.get_stats()
-                self.logger.info(f"Vector Store Stats: {stats}")
+                status_lines.append(f"  Vector Store Stats: {stats}")
+            
+            self.logger.info("\n".join(status_lines))
         else:
             self.logger.info("MCP Server Status: Not running")
+    
+    def regenerate_bearer_token_menu(self) -> None:
+        """Menu action to regenerate bearer token."""
+        try:
+            # Generate new token
+            new_token = self.auth_manager.generate_bearer_token()
+            
+            # Update instance variable
+            self.bearer_token = new_token
+            
+            # Save to plugin preferences
+            plugin_prefs = self.pluginPrefs
+            plugin_prefs["bearer_token"] = new_token
+            
+            self.logger.info(f"New bearer token generated: {new_token}")
+            self.logger.info("Restart the plugin to apply the new token to the MCP server")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to regenerate bearer token: {e}")
+    
+    def regenerate_bearer_token_button(self, values_dict: indigo.Dict) -> indigo.Dict:
+        """Button action to regenerate bearer token."""
+        try:
+            # Generate new token
+            new_token = self.auth_manager.generate_bearer_token()
+            
+            # Update values dict
+            values_dict["bearer_token"] = new_token
+            
+            self.logger.info("New bearer token generated")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to regenerate bearer token: {e}")
+        
+        return values_dict
     
     ########################################
     # Configuration UI Validation
@@ -187,11 +253,15 @@ class Plugin(indigo.PluginBase):
             self.debug = values_dict.get("showDebugInfo", False)
             self.logger.setLevel(logging.DEBUG if self.debug else logging.INFO)
             
-            # Check if API key, models, LangSmith, or port changed
+            # Check if API key, models, LangSmith, security, or port changed
             new_api_key = values_dict.get("openai_api_key", "")
             new_large_model = values_dict.get("large_model", "gpt-4o")
             new_small_model = values_dict.get("small_model", "gpt-4o-mini")
             new_port = int(values_dict.get("server_port", 8080))
+            
+            # Security configuration
+            new_access_mode = values_dict.get("access_mode", "local_only")
+            new_bearer_token = values_dict.get("bearer_token", "")
             
             # LangSmith configuration
             new_enable_langsmith = values_dict.get("enable_langsmith", False)
@@ -218,6 +288,15 @@ class Plugin(indigo.PluginBase):
                 
             if new_port != self.server_port:
                 self.server_port = new_port
+                restart_needed = True
+                
+            # Check security configuration changes
+            if new_access_mode != self.access_mode:
+                self.access_mode = new_access_mode
+                restart_needed = True
+                
+            if new_bearer_token != self.bearer_token:
+                self.bearer_token = new_bearer_token
                 restart_needed = True
                 
             # Check LangSmith configuration changes
@@ -251,10 +330,13 @@ class Plugin(indigo.PluginBase):
                 if self.mcp_server_core:
                     self.mcp_server_core.stop()
                     # Reinitialize with new configuration
+                    access_mode = AccessMode.REMOTE_ACCESS if self.access_mode == "remote_access" else AccessMode.LOCAL_ONLY
                     self.mcp_server_core = MCPServerCore(
                         data_provider=self.data_provider,
                         server_name="indigo-mcp-server",
                         port=self.server_port,
+                        access_mode=access_mode,
+                        bearer_token=self.bearer_token,
                         logger=self.logger
                     )
                     self.mcp_server_core.start()

@@ -8,3 +8,5 @@ tiktoken
 jinja2
 langsmith
 pydantic
+cryptography
+uvicorn[standard]

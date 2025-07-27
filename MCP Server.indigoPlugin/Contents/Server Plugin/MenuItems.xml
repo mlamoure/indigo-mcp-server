@@ -5,4 +5,8 @@
         <Name>Show MCP Server Status</Name>
         <CallbackMethod>show_mcp_status_menu</CallbackMethod>
     </MenuItem>
+    <MenuItem id="regenerate_bearer_token">
+        <Name>Regenerate Bearer Token</Name>
+        <CallbackMethod>regenerate_bearer_token_menu</CallbackMethod>
+    </MenuItem>
 </MenuItems>
