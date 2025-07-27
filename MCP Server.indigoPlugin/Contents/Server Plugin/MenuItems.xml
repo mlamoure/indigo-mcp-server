@@ -1,10 +1,6 @@
 <?xml version="1.0"?>
 <!-- Menu items for the MCP Server plugin -->
 <MenuItems>
-    <MenuItem id="update_vector_store">
-        <Name>Update Vector Store</Name>
-        <CallbackMethod>update_vector_store_menu</CallbackMethod>
-    </MenuItem>
     <MenuItem id="show_mcp_status">
         <Name>Show MCP Server Status</Name>
         <CallbackMethod>show_mcp_status_menu</CallbackMethod>

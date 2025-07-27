@@ -8,20 +8,14 @@ try:
 except ImportError:
     pass
 
-import asyncio
-import json
 import logging
 import os
-import sys
-import threading
-from typing import Dict, List, Optional, Any
-
-
-from mcp.server.fastmcp import FastMCP
+from typing import Optional
 
 # Import our modules
-from common.vector_store import VectorStore
-from search_entities.search_tool import SearchEntitiesTool
+from common.vector_store_manager import VectorStoreManager
+from interfaces.indigo_data_provider import IndigoDataProvider
+from mcp_server.core import MCPServerCore
 
 ################################################################################
 class Plugin(indigo.PluginBase):
@@ -49,11 +43,10 @@ class Plugin(indigo.PluginBase):
         self.debug = plugin_prefs.get("showDebugInfo", False)
         self.openai_api_key = plugin_prefs.get("openai_api_key", "")
         
-        # FastMCP Server instance
-        self.mcp_server = None
-        self.mcp_thread = None
-        self.vector_store = None
-        self.search_tool = None
+        # Component instances
+        self.data_provider = None
+        self.vector_store_manager = None
+        self.mcp_server_core = None
         self.server_port = plugin_prefs.get("server_port", 8080)
         
         # Set up logging
@@ -74,31 +67,45 @@ class Plugin(indigo.PluginBase):
         # Set OpenAI API key in environment for the modules to use
         os.environ["OPENAI_API_KEY"] = self.openai_api_key
         
-        # Initialize vector store
+        # Initialize data provider
+        try:
+            self.data_provider = IndigoDataProvider(logger=self.logger)
+            self.logger.info("Data provider initialized")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize data provider: {e}")
+            return
+        
+        # Initialize vector store manager
         try:
             db_path = os.path.join(
                 indigo.server.getInstallFolderPath(),
                 "Preferences/Plugins/com.vtmikel.mcp_server/vector_db"
             )
-            self.vector_store = VectorStore(db_path, logger=self.logger)
-            self.logger.info(f"Vector store initialized at: {db_path}")
+            self.vector_store_manager = VectorStoreManager(
+                data_provider=self.data_provider,
+                db_path=db_path,
+                logger=self.logger,
+                update_interval=300  # 5 minutes
+            )
+            self.vector_store_manager.start()
+            self.logger.info("Vector store manager started")
         except Exception as e:
-            self.logger.error(f"Failed to initialize vector store: {e}")
+            self.logger.error(f"Failed to initialize vector store manager: {e}")
             return
         
-        # Initialize search tool
+        # Initialize and start MCP server
         try:
-            self.search_tool = SearchEntitiesTool(self.vector_store, logger=self.logger)
-            self.logger.info("Search tool initialized")
+            self.mcp_server_core = MCPServerCore(
+                data_provider=self.data_provider,
+                vector_store=self.vector_store_manager.get_vector_store(),
+                server_name="indigo-mcp-server",
+                logger=self.logger
+            )
+            self.mcp_server_core.start()
+            self.logger.info("MCP server core started")
         except Exception as e:
-            self.logger.error(f"Failed to initialize search tool: {e}")
+            self.logger.error(f"Failed to start MCP server core: {e}")
             return
-        
-        # Start MCP server
-        self._start_mcp_server()
-        
-        # Initial vector store update
-        self._update_vector_store()
 
     def shutdown(self) -> None:
         """
@@ -106,321 +113,29 @@ class Plugin(indigo.PluginBase):
         """
         self.logger.info("MCP Server plugin shutting down...")
         
-        if self.mcp_server:
-            # Stop the MCP server
-            self._stop_mcp_server()
+        if self.mcp_server_core:
+            self.mcp_server_core.stop()
         
-        if self.vector_store:
-            self.vector_store.close()
+        if self.vector_store_manager:
+            self.vector_store_manager.stop()
 
-    ########################################
-    # MCP Server Management
-    ########################################
     
-    def _start_mcp_server(self) -> None:
-        """Start the FastMCP server."""
-        try:
-            # Create FastMCP instance
-            self.mcp_server = FastMCP("indigo-mcp-server")
-            
-            # Register tools and resources
-            self._register_tools()
-            self._register_resources()
-            
-            # Start server in separate thread
-            self.mcp_thread = threading.Thread(
-                target=self._run_mcp_server,
-                daemon=True,
-                name="FastMCP-Server-Thread"
-            )
-            self.mcp_thread.start()
-            
-            self.logger.info(f"FastMCP server started on port {self.server_port}")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to start FastMCP server: {e}")
     
-    def _stop_mcp_server(self) -> None:
-        """Stop the FastMCP server."""
-        try:
-            # Signal server to stop
-            if hasattr(self, '_mcp_loop') and self._mcp_loop:
-                self._mcp_loop.call_soon_threadsafe(self._mcp_loop.stop)
-            
-            # Wait for thread to finish
-            if hasattr(self, 'mcp_thread') and self.mcp_thread and self.mcp_thread.is_alive():
-                self.mcp_thread.join(timeout=5.0)
-            
-            self.logger.info("FastMCP server stopped")
-            
-        except Exception as e:
-            self.logger.error(f"Error stopping FastMCP server: {e}")
     
-    def _run_mcp_server(self) -> None:
-        """Run the FastMCP server."""
-        try:
-            # Create new event loop for this thread
-            self._mcp_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._mcp_loop)
-            
-            # Run the server (transport is handled by the SDK)
-            self._mcp_loop.run_until_complete(
-                self.mcp_server.run()
-            )
-            
-        except Exception as e:
-            self.logger.error(f"FastMCP server error: {e}")
-        finally:
-            if hasattr(self, '_mcp_loop'):
-                self._mcp_loop.close()
-    
-    ########################################
-    # MCP Tools Registration
-    ########################################
-    
-    def _register_tools(self) -> None:
-        """Register FastMCP tools."""
-        
-        @self.mcp_server.tool()
-        def search_entities(query: str) -> str:
-            """
-            Search for Indigo devices, variables, and actions using natural language.
-            
-            Args:
-                query: Natural language search query
-                
-            Returns:
-                JSON string with search results
-            """
-            try:
-                results = self.search_tool.search(query)
-                return json.dumps(results, indent=2)
-                
-            except Exception as e:
-                self.logger.error(f"Search error: {e}")
-                return json.dumps({"error": str(e)})
-    
-    ########################################
-    # MCP Resources Registration
-    ########################################
-    
-    def _register_resources(self) -> None:
-        """Register FastMCP resources for read-only access to Indigo entities."""
-        
-        @self.mcp_server.resource("devices")
-        def list_devices() -> str:
-            """List all Indigo devices."""
-            try:
-                devices = []
-                for dev_id in indigo.devices:
-                    dev = indigo.devices[dev_id]
-                    devices.append({
-                        "id": dev.id,
-                        "name": dev.name,
-                        "address": dev.address,
-                        "enabled": dev.enabled,
-                        "deviceTypeId": dev.deviceTypeId,
-                        "states": dict(dev.states) if hasattr(dev, 'states') else {}
-                    })
-                
-                return json.dumps(devices, indent=2)
-                
-            except Exception as e:
-                self.logger.error(f"Error listing devices: {e}")
-                return json.dumps({"error": str(e)})
-        
-        @self.mcp_server.resource("devices/{device_id}")
-        def get_device(device_id: str) -> str:
-            """Get details for a specific device."""
-            try:
-                dev_id = int(device_id)
-                if dev_id in indigo.devices:
-                    dev = indigo.devices[dev_id]
-                    device_info = {
-                        "id": dev.id,
-                        "name": dev.name,
-                        "address": dev.address,
-                        "enabled": dev.enabled,
-                        "deviceTypeId": dev.deviceTypeId,
-                        "model": dev.model,
-                        "protocol": dev.protocol,
-                        "states": dict(dev.states) if hasattr(dev, 'states') else {},
-                        "description": dev.description
-                    }
-                    return json.dumps(device_info, indent=2)
-                else:
-                    return json.dumps({"error": f"Device {device_id} not found"})
-                    
-            except Exception as e:
-                self.logger.error(f"Error getting device {device_id}: {e}")
-                return json.dumps({"error": str(e)})
-        
-        @self.mcp_server.resource("variables")
-        def list_variables() -> str:
-            """List all Indigo variables."""
-            try:
-                variables = []
-                for var_id in indigo.variables:
-                    var = indigo.variables[var_id]
-                    variables.append({
-                        "id": var.id,
-                        "name": var.name,
-                        "value": var.value,
-                        "folderId": var.folderId
-                    })
-                
-                return json.dumps(variables, indent=2)
-                
-            except Exception as e:
-                self.logger.error(f"Error listing variables: {e}")
-                return json.dumps({"error": str(e)})
-        
-        @self.mcp_server.resource("variables/{variable_id}")
-        def get_variable(variable_id: str) -> str:
-            """Get details for a specific variable."""
-            try:
-                var_id = int(variable_id)
-                if var_id in indigo.variables:
-                    var = indigo.variables[var_id]
-                    variable_info = {
-                        "id": var.id,
-                        "name": var.name,
-                        "value": var.value,
-                        "folderId": var.folderId,
-                        "readOnly": var.readOnly
-                    }
-                    return json.dumps(variable_info, indent=2)
-                else:
-                    return json.dumps({"error": f"Variable {variable_id} not found"})
-                    
-            except Exception as e:
-                self.logger.error(f"Error getting variable {variable_id}: {e}")
-                return json.dumps({"error": str(e)})
-        
-        @self.mcp_server.resource("actions")
-        def list_actions() -> str:
-            """List all Indigo action groups."""
-            try:
-                actions = []
-                for action_id in indigo.actionGroups:
-                    action = indigo.actionGroups[action_id]
-                    actions.append({
-                        "id": action.id,
-                        "name": action.name,
-                        "folderId": action.folderId
-                    })
-                
-                return json.dumps(actions, indent=2)
-                
-            except Exception as e:
-                self.logger.error(f"Error listing actions: {e}")
-                return json.dumps({"error": str(e)})
-        
-        @self.mcp_server.resource("actions/{action_id}")
-        def get_action(action_id: str) -> str:
-            """Get details for a specific action group."""
-            try:
-                act_id = int(action_id)
-                if act_id in indigo.actionGroups:
-                    action = indigo.actionGroups[act_id]
-                    action_info = {
-                        "id": action.id,
-                        "name": action.name,
-                        "folderId": action.folderId,
-                        "description": action.description if hasattr(action, 'description') else ""
-                    }
-                    return json.dumps(action_info, indent=2)
-                else:
-                    return json.dumps({"error": f"Action group {action_id} not found"})
-                    
-            except Exception as e:
-                self.logger.error(f"Error getting action {action_id}: {e}")
-                return json.dumps({"error": str(e)})
-    
-    ########################################
-    # Vector Store Management
-    ########################################
-    
-    def _update_vector_store(self) -> None:
-        """Update the vector store with current Indigo entities."""
-        try:
-            self.logger.info("Updating vector store...")
-            
-            # Collect all entities
-            devices_data = self._get_all_devices()
-            variables_data = self._get_all_variables()
-            actions_data = self._get_all_actions()
-            
-            # Update vector store
-            self.vector_store.update_embeddings(
-                devices=devices_data,
-                variables=variables_data, 
-                actions=actions_data
-            )
-            
-            self.logger.info("Vector store update complete")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to update vector store: {e}")
-    
-    def _get_all_devices(self) -> List[Dict[str, Any]]:
-        """Get all devices for vector store."""
-        devices = []
-        for dev_id in indigo.devices:
-            dev = indigo.devices[dev_id]
-            devices.append({
-                "id": dev.id,
-                "name": dev.name,
-                "description": dev.description,
-                "model": dev.model,
-                "type": dev.deviceTypeId,
-                "address": dev.address
-            })
-        return devices
-    
-    def _get_all_variables(self) -> List[Dict[str, Any]]:
-        """Get all variables for vector store."""
-        variables = []
-        for var_id in indigo.variables:
-            var = indigo.variables[var_id]
-            variables.append({
-                "id": var.id,
-                "name": var.name,
-                "value": var.value,
-                "folderId": var.folderId
-            })
-        return variables
-    
-    def _get_all_actions(self) -> List[Dict[str, Any]]:
-        """Get all action groups for vector store."""
-        actions = []
-        for action_id in indigo.actionGroups:
-            action = indigo.actionGroups[action_id]
-            actions.append({
-                "id": action.id,
-                "name": action.name,
-                "folderId": action.folderId,
-                "description": action.description if hasattr(action, 'description') else ""
-            })
-        return actions
     
     ########################################
     # Menu Actions
     ########################################
     
-    def update_vector_store_menu(self) -> None:
-        """Menu action to manually update the vector store."""
-        self._update_vector_store()
-    
     def show_mcp_status_menu(self) -> None:
-        """Menu action to show FastMCP server status."""
-        if self.mcp_server and self.mcp_thread and self.mcp_thread.is_alive():
-            self.logger.info(f"FastMCP Server Status: Running on http://127.0.0.1:{self.server_port}")
-            if self.vector_store:
-                stats = self.vector_store.get_stats()
+        """Menu action to show MCP server status."""
+        if self.mcp_server_core and self.mcp_server_core.is_running:
+            self.logger.info(f"MCP Server Status: Running on http://127.0.0.1:{self.server_port}")
+            if self.vector_store_manager:
+                stats = self.vector_store_manager.get_stats()
                 self.logger.info(f"Vector Store Stats: {stats}")
         else:
-            self.logger.info("FastMCP Server Status: Not running")
+            self.logger.info("MCP Server Status: Not running")
     
     ########################################
     # Configuration UI Validation
@@ -478,7 +193,15 @@ class Plugin(indigo.PluginBase):
                 restart_needed = True
                 
             if restart_needed:
-                # Restart FastMCP server with new configuration
-                self.logger.info("Configuration changed, restarting FastMCP server...")
-                self._stop_mcp_server()
-                self._start_mcp_server()
+                # Restart MCP server with new configuration
+                self.logger.info("Configuration changed, restarting MCP server...")
+                if self.mcp_server_core:
+                    self.mcp_server_core.stop()
+                    # Reinitialize with new configuration
+                    self.mcp_server_core = MCPServerCore(
+                        data_provider=self.data_provider,
+                        vector_store=self.vector_store_manager.get_vector_store(),
+                        server_name="indigo-mcp-server",
+                        logger=self.logger
+                    )
+                    self.mcp_server_core.start()

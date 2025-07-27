@@ -1,4 +1,4 @@
-mcp[cli]
+fastmcp
 lancedb
 pyarrow
 openai
