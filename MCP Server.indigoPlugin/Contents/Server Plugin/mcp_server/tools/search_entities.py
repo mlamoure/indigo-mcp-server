@@ -30,7 +30,7 @@ class SearchEntitiesHandler:
         """
         self.data_provider = data_provider
         self.vector_store = vector_store
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger("Plugin")
         self.query_parser = QueryParser()
         self.result_formatter = ResultFormatter()
     

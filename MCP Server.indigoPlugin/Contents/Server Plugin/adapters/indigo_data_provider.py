@@ -23,7 +23,7 @@ class IndigoDataProvider(DataProvider):
         Args:
             logger: Optional logger instance
         """
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger("Plugin")
     
     def get_all_devices(self) -> List[Dict[str, Any]]:
         """

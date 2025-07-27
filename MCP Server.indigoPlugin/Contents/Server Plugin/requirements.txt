@@ -4,3 +4,7 @@ pyarrow
 openai
 pyyaml
 dicttoxml
+tiktoken
+jinja2
+langsmith
+pydantic

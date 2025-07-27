@@ -13,7 +13,7 @@ from mcp.server.fastmcp import FastMCP
 
 from adapters.data_provider import DataProvider
 from adapters.vector_store_interface import VectorStoreInterface
-from common.vector_store_manager import VectorStoreManager
+from common.vector_store.vector_store_manager import VectorStoreManager
 from .tools.search_entities import SearchEntitiesHandler
 from resources import DeviceResource, VariableResource, ActionResource
 
@@ -37,7 +37,7 @@ class MCPServerCore:
         """
         self.data_provider = data_provider
         self.server_name = server_name
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger("Plugin")
         
         # Get database path from environment variable
         db_path = os.environ.get("DB_FILE")

@@ -24,7 +24,7 @@ class VariableResource:
         """
         self.mcp_server = mcp_server
         self.data_provider = data_provider
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger("Plugin")
         
         # Register resources
         self._register_resources()

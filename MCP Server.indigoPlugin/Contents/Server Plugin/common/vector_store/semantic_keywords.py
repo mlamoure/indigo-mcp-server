@@ -6,7 +6,7 @@ Generates contextual keywords based on device types, capabilities, and relations
 import logging
 from typing import List, Dict, Any, Set
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("Plugin")
 
 
 def generate_batch_device_keywords(

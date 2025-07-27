@@ -12,9 +12,9 @@ from typing import List, Dict, Any, Optional
 
 import lancedb
 import pyarrow as pa
-from openai import OpenAI
 
 from adapters.vector_store_interface import VectorStoreInterface
+from ..openai_client.main import emb_text
 from .progress_tracker import create_progress_tracker
 from .semantic_keywords import generate_batch_device_keywords
 
@@ -59,25 +59,13 @@ class VectorStore(VectorStoreInterface):
             logger: Optional logger instance
         """
         self.db_path = db_path
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger("Plugin")
         self.dimension = 1536  # text-embedding-3-small dimension
         self.db = None
-        self.openai_client = None
         
         # Initialize database
         self._init_database()
-        
-        # Initialize OpenAI client
-        self._init_openai_client()
     
-    def _init_openai_client(self) -> None:
-        """Initialize OpenAI client for embeddings."""
-        try:
-            self.openai_client = OpenAI()
-            self.logger.debug("OpenAI client initialized")
-        except Exception as e:
-            self.logger.error(f"Failed to initialize OpenAI client: {e}")
-            raise
     
     def _init_database(self) -> None:
         """Initialize LanceDB database and create tables if needed."""
@@ -193,13 +181,9 @@ class VectorStore(VectorStoreInterface):
         return " | ".join(parts)
     
     def _generate_embedding(self, text: str) -> List[float]:
-        """Generate embedding for text using OpenAI."""
+        """Generate embedding for text using common OpenAI client."""
         try:
-            response = self.openai_client.embeddings.create(
-                model="text-embedding-3-small",
-                input=text
-            )
-            return response.data[0].embedding
+            return emb_text(text)
             
         except Exception as e:
             self.logger.error(f"Failed to generate embedding: {e}")

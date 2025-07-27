@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any
 
 from adapters.data_provider import DataProvider
 from adapters.vector_store_interface import VectorStoreInterface
-from .vector_store import VectorStore
+from .main import VectorStore
 
 
 class VectorStoreManager:
@@ -35,7 +35,7 @@ class VectorStoreManager:
         """
         self.data_provider = data_provider
         self.db_path = db_path
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger("Plugin")
         self.update_interval = update_interval
         
         # Vector store instance

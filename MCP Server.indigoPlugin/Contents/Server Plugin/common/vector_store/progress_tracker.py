@@ -7,7 +7,7 @@ import logging
 import time
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("Plugin")
 
 
 class ProgressTracker:

@@ -15,6 +15,7 @@ from typing import Optional
 # Import our modules
 from adapters.indigo_data_provider import IndigoDataProvider
 from mcp_server.core import MCPServerCore
+from common.openai_client.langsmith_config import get_langsmith_config
 
 ################################################################################
 class Plugin(indigo.PluginBase):
@@ -41,6 +42,14 @@ class Plugin(indigo.PluginBase):
         # Plugin configuration
         self.debug = plugin_prefs.get("showDebugInfo", False)
         self.openai_api_key = plugin_prefs.get("openai_api_key", "")
+        self.large_model = plugin_prefs.get("large_model", "gpt-4o")
+        self.small_model = plugin_prefs.get("small_model", "gpt-4o-mini")
+        
+        # LangSmith configuration
+        self.enable_langsmith = plugin_prefs.get("enable_langsmith", False)
+        self.langsmith_endpoint = plugin_prefs.get("langsmith_endpoint", "https://api.smith.langchain.com")
+        self.langsmith_api_key = plugin_prefs.get("langsmith_api_key", "")
+        self.langsmith_project = plugin_prefs.get("langsmith_project", "")
         
         # Component instances
         self.data_provider = None
@@ -64,6 +73,23 @@ class Plugin(indigo.PluginBase):
         
         # Set OpenAI API key in environment for the modules to use
         os.environ["OPENAI_API_KEY"] = self.openai_api_key
+        
+        # Set model environment variables
+        os.environ["LARGE_MODEL"] = self.large_model
+        os.environ["SMALL_MODEL"] = self.small_model
+        os.environ["OPENAI_EMBEDDING_MODEL"] = "text-embedding-3-small"
+        
+        # Set LangSmith environment variables
+        if self.enable_langsmith:
+            os.environ["LANGSMITH_TRACING"] = "true"
+            os.environ["LANGSMITH_ENDPOINT"] = self.langsmith_endpoint
+            os.environ["LANGSMITH_API_KEY"] = self.langsmith_api_key
+            os.environ["LANGSMITH_PROJECT"] = self.langsmith_project
+        else:
+            os.environ["LANGSMITH_TRACING"] = "false"
+            
+        # Initialize LangSmith configuration
+        self.langsmith_config = get_langsmith_config()
         
         # Set DB_FILE environment variable for vector store
         db_path = os.path.join(
@@ -160,9 +186,17 @@ class Plugin(indigo.PluginBase):
             self.debug = values_dict.get("showDebugInfo", False)
             self.logger.setLevel(logging.DEBUG if self.debug else logging.INFO)
             
-            # Check if API key or port changed
+            # Check if API key, models, LangSmith, or port changed
             new_api_key = values_dict.get("openai_api_key", "")
+            new_large_model = values_dict.get("large_model", "gpt-4o")
+            new_small_model = values_dict.get("small_model", "gpt-4o-mini")
             new_port = int(values_dict.get("server_port", 8080))
+            
+            # LangSmith configuration
+            new_enable_langsmith = values_dict.get("enable_langsmith", False)
+            new_langsmith_endpoint = values_dict.get("langsmith_endpoint", "https://api.smith.langchain.com")
+            new_langsmith_api_key = values_dict.get("langsmith_api_key", "")
+            new_langsmith_project = values_dict.get("langsmith_project", "")
             
             restart_needed = False
             
@@ -171,8 +205,43 @@ class Plugin(indigo.PluginBase):
                 os.environ["OPENAI_API_KEY"] = self.openai_api_key
                 restart_needed = True
                 
+            if new_large_model != self.large_model:
+                self.large_model = new_large_model
+                os.environ["LARGE_MODEL"] = self.large_model
+                restart_needed = True
+                
+            if new_small_model != self.small_model:
+                self.small_model = new_small_model
+                os.environ["SMALL_MODEL"] = self.small_model
+                restart_needed = True
+                
             if new_port != self.server_port:
                 self.server_port = new_port
+                restart_needed = True
+                
+            # Check LangSmith configuration changes
+            if (new_enable_langsmith != self.enable_langsmith or
+                new_langsmith_endpoint != self.langsmith_endpoint or
+                new_langsmith_api_key != self.langsmith_api_key or
+                new_langsmith_project != self.langsmith_project):
+                
+                self.enable_langsmith = new_enable_langsmith
+                self.langsmith_endpoint = new_langsmith_endpoint
+                self.langsmith_api_key = new_langsmith_api_key
+                self.langsmith_project = new_langsmith_project
+                
+                # Update LangSmith environment variables
+                if self.enable_langsmith:
+                    os.environ["LANGSMITH_TRACING"] = "true"
+                    os.environ["LANGSMITH_ENDPOINT"] = self.langsmith_endpoint
+                    os.environ["LANGSMITH_API_KEY"] = self.langsmith_api_key
+                    os.environ["LANGSMITH_PROJECT"] = self.langsmith_project
+                else:
+                    os.environ["LANGSMITH_TRACING"] = "false"
+                
+                # Reinitialize LangSmith configuration with new settings
+                self.langsmith_config = get_langsmith_config()
+                
                 restart_needed = True
                 
             if restart_needed:
