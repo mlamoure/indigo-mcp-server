@@ -94,3 +94,89 @@ class DataProvider(ABC):
             Action group dictionary or None if not found
         """
         pass
+    
+    @abstractmethod
+    def turn_on_device(self, device_id: int) -> Dict[str, Any]:
+        """
+        Turn on a device.
+        
+        Args:
+            device_id: The device ID to turn on
+            
+        Returns:
+            Dictionary with:
+            - changed: Whether the state changed
+            - previous: Previous state
+            - current: Current state
+            - error: Error message if operation failed
+        """
+        pass
+    
+    @abstractmethod
+    def turn_off_device(self, device_id: int) -> Dict[str, Any]:
+        """
+        Turn off a device.
+        
+        Args:
+            device_id: The device ID to turn off
+            
+        Returns:
+            Dictionary with:
+            - changed: Whether the state changed
+            - previous: Previous state
+            - current: Current state
+            - error: Error message if operation failed
+        """
+        pass
+    
+    @abstractmethod
+    def set_device_brightness(self, device_id: int, brightness: float) -> Dict[str, Any]:
+        """
+        Set brightness level for a dimmer device.
+        
+        Args:
+            device_id: The device ID
+            brightness: Brightness level (0-1 or 0-100)
+            
+        Returns:
+            Dictionary with:
+            - changed: Whether the brightness changed
+            - previous: Previous brightness level
+            - current: Current brightness level
+            - error: Error message if operation failed
+        """
+        pass
+    
+    @abstractmethod
+    def update_variable(self, variable_id: int, value: Any) -> Dict[str, Any]:
+        """
+        Update a variable's value.
+        
+        Args:
+            variable_id: The variable ID
+            value: The new value
+            
+        Returns:
+            Dictionary with:
+            - previous: Previous value
+            - current: Current value
+            - error: Error message if operation failed
+        """
+        pass
+    
+    @abstractmethod
+    def execute_action_group(self, action_group_id: int, delay: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Execute an action group.
+        
+        Args:
+            action_group_id: The action group ID
+            delay: Optional delay in seconds before execution
+            
+        Returns:
+            Dictionary with:
+            - success: Whether execution was successful
+            - job_id: Job ID if available
+            - error: Error message if operation failed
+        """
+        pass

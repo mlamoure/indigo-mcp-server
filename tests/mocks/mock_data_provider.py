@@ -177,3 +177,109 @@ class MockDataProvider(DataProvider):
             "variables": self.get_all_variables(),
             "actions": self.get_all_actions()
         }
+    
+    def turn_on_device(self, device_id: int) -> Dict[str, Any]:
+        """Mock turning on a device."""
+        device = self.get_device(device_id)
+        if not device:
+            return {"error": f"Device {device_id} not found"}
+        
+        previous_state = device.get("states", {}).get("onOffState", False)
+        
+        # Update device state in mock data
+        for dev in self.devices:
+            if dev["id"] == device_id:
+                dev["states"]["onOffState"] = True
+                break
+        
+        return {
+            "changed": not previous_state,
+            "previous": previous_state,
+            "current": True
+        }
+    
+    def turn_off_device(self, device_id: int) -> Dict[str, Any]:
+        """Mock turning off a device."""
+        device = self.get_device(device_id)
+        if not device:
+            return {"error": f"Device {device_id} not found"}
+        
+        previous_state = device.get("states", {}).get("onOffState", True)
+        
+        # Update device state in mock data
+        for dev in self.devices:
+            if dev["id"] == device_id:
+                dev["states"]["onOffState"] = False
+                break
+        
+        return {
+            "changed": previous_state,
+            "previous": previous_state,
+            "current": False
+        }
+    
+    def set_device_brightness(self, device_id: int, brightness: float) -> Dict[str, Any]:
+        """Mock setting device brightness."""
+        device = self.get_device(device_id)
+        if not device:
+            return {"error": f"Device {device_id} not found"}
+        
+        # Check if device supports brightness
+        if device.get("deviceTypeId") != "dimmer":
+            return {"error": f"Device {device_id} does not support brightness control"}
+        
+        # Normalize brightness value
+        if 0 <= brightness <= 1:
+            brightness_value = int(brightness * 100)
+        elif 0 <= brightness <= 100:
+            brightness_value = int(brightness)
+        else:
+            return {"error": f"Invalid brightness value: {brightness}. Must be 0-1 or 0-100"}
+        
+        previous_brightness = device.get("states", {}).get("brightness", 0)
+        
+        # Update device brightness in mock data
+        for dev in self.devices:
+            if dev["id"] == device_id:
+                dev["states"]["brightness"] = brightness_value
+                break
+        
+        return {
+            "changed": previous_brightness != brightness_value,
+            "previous": previous_brightness,
+            "current": brightness_value
+        }
+    
+    def update_variable(self, variable_id: int, value: Any) -> Dict[str, Any]:
+        """Mock updating a variable."""
+        variable = self.get_variable(variable_id)
+        if not variable:
+            return {"error": f"Variable {variable_id} not found"}
+        
+        # Check if variable is read-only
+        if variable.get("readOnly", False):
+            return {"error": f"Variable {variable_id} is read-only"}
+        
+        previous_value = variable.get("value", "")
+        
+        # Update variable value in mock data
+        for var in self.variables:
+            if var["id"] == variable_id:
+                var["value"] = str(value)
+                break
+        
+        return {
+            "previous": previous_value,
+            "current": str(value)
+        }
+    
+    def execute_action_group(self, action_group_id: int, delay: Optional[int] = None) -> Dict[str, Any]:
+        """Mock executing an action group."""
+        action = self.get_action(action_group_id)
+        if not action:
+            return {"error": f"Action group {action_group_id} not found", "success": False}
+        
+        return {
+            "success": True,
+            "job_id": None
+        }

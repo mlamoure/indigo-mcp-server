@@ -16,6 +16,9 @@ from .adapters.data_provider import DataProvider
 from .adapters.vector_store_interface import VectorStoreInterface
 from .common.vector_store.vector_store_manager import VectorStoreManager
 from .tools.search_entities import SearchEntitiesHandler
+from .tools.device_control import DeviceControlHandler
+from .tools.variable_control import VariableControlHandler
+from .tools.action_control import ActionControlHandler
 from .resources import DeviceResource, VariableResource, ActionResource
 from .security import AuthManager, CertManager, SecurityConfig, AccessMode
 from .common.json_encoder import safe_json_dumps
@@ -97,6 +100,20 @@ class MCPServerCore:
             self.search_handler = SearchEntitiesHandler(
                 data_provider=self.data_provider,
                 vector_store=self.vector_store_manager.get_vector_store(),
+                logger=self.logger
+            )
+            
+            # Initialize control handlers
+            self.device_control_handler = DeviceControlHandler(
+                data_provider=self.data_provider,
+                logger=self.logger
+            )
+            self.variable_control_handler = VariableControlHandler(
+                data_provider=self.data_provider,
+                logger=self.logger
+            )
+            self.action_control_handler = ActionControlHandler(
+                data_provider=self.data_provider,
                 logger=self.logger
             )
             
@@ -230,6 +247,99 @@ class MCPServerCore:
             except Exception as e:
                 self.logger.error(f"Search error: {e}")
                 return safe_json_dumps({"error": str(e), "query": query})
+        
+        @self.mcp_server.tool()
+        def device_turn_on(device_id: int) -> str:
+            """
+            Turn on a device.
+            
+            Args:
+                device_id: The ID of the device to turn on
+                
+            Returns:
+                JSON string with operation results
+            """
+            try:
+                result = self.device_control_handler.turn_on(device_id)
+                return safe_json_dumps(result)
+            except Exception as e:
+                self.logger.error(f"Device turn on error: {e}")
+                return safe_json_dumps({"error": str(e)})
+        
+        @self.mcp_server.tool()
+        def device_turn_off(device_id: int) -> str:
+            """
+            Turn off a device.
+            
+            Args:
+                device_id: The ID of the device to turn off
+                
+            Returns:
+                JSON string with operation results
+            """
+            try:
+                result = self.device_control_handler.turn_off(device_id)
+                return safe_json_dumps(result)
+            except Exception as e:
+                self.logger.error(f"Device turn off error: {e}")
+                return safe_json_dumps({"error": str(e)})
+        
+        @self.mcp_server.tool()
+        def device_set_brightness(device_id: int, brightness: float) -> str:
+            """
+            Set the brightness level of a dimmable device.
+            
+            Args:
+                device_id: The ID of the device
+                brightness: Brightness level (0-1 or 0-100)
+                
+            Returns:
+                JSON string with operation results
+            """
+            try:
+                result = self.device_control_handler.set_brightness(device_id, brightness)
+                return safe_json_dumps(result)
+            except Exception as e:
+                self.logger.error(f"Device set brightness error: {e}")
+                return safe_json_dumps({"error": str(e)})
+        
+        @self.mcp_server.tool()
+        def variable_update(variable_id: int, value: str) -> str:
+            """
+            Update a variable's value.
+            
+            Args:
+                variable_id: The ID of the variable to update
+                value: The new value for the variable
+                
+            Returns:
+                JSON string with operation results
+            """
+            try:
+                result = self.variable_control_handler.update(variable_id, value)
+                return safe_json_dumps(result)
+            except Exception as e:
+                self.logger.error(f"Variable update error: {e}")
+                return safe_json_dumps({"error": str(e)})
+        
+        @self.mcp_server.tool()
+        def action_execute_group(action_group_id: int, delay: int = None) -> str:
+            """
+            Execute an action group.
+            
+            Args:
+                action_group_id: The ID of the action group to execute
+                delay: Optional delay in seconds before execution
+                
+            Returns:
+                JSON string with operation results
+            """
+            try:
+                result = self.action_control_handler.execute(action_group_id, delay)
+                return safe_json_dumps(result)
+            except Exception as e:
+                self.logger.error(f"Action execute error: {e}")
+                return safe_json_dumps({"error": str(e), "success": False})
     
     def _create_static_token_auth(self):
         """

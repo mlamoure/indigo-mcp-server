@@ -56,9 +56,7 @@ validate_test_environment()
 
 from tests.mocks.mock_data_provider import MockDataProvider
 from tests.mocks.mock_vector_store import MockVectorStore
-from mcp_server.tools.search_entities import SearchEntitiesHandler
-from mcp_server.tools.query_parser import QueryParser
-from mcp_server.tools.result_formatter import ResultFormatter
+from mcp_server.tools.search_entities import SearchEntitiesHandler, QueryParser, ResultFormatter
 from mcp_server.common.vector_store.main import VectorStore
 
 
