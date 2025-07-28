@@ -19,6 +19,7 @@ from .tools.search_entities import SearchEntitiesHandler
 from .resources import DeviceResource, VariableResource, ActionResource
 from .security import AuthManager, CertManager, SecurityConfig, AccessMode
 from .common.json_encoder import safe_json_dumps
+from .common.indigo_device_types import IndigoDeviceType, IndigoEntityType
 
 
 class MCPServerCore:
@@ -188,18 +189,42 @@ class MCPServerCore:
         """Register MCP tools."""
         
         @self.mcp_server.tool()
-        def search_entities(query: str) -> str:
+        def search_entities(
+            query: str,
+            device_types: list[str] = None,
+            entity_types: list[str] = None
+        ) -> str:
             """
             Search for Indigo devices, variables, and actions using natural language.
             
             Args:
                 query: Natural language search query
+                device_types: Optional list of device types to filter by (dimmer, relay, sensor, etc.)
+                entity_types: Optional list of entity types to search (device, variable, action)
                 
             Returns:
                 JSON string with search results
             """
             try:
-                results = self.search_handler.search(query)
+                # Validate device types
+                if device_types:
+                    invalid_device_types = [dt for dt in device_types if not IndigoDeviceType.is_valid_type(dt)]
+                    if invalid_device_types:
+                        return safe_json_dumps({
+                            "error": f"Invalid device types: {invalid_device_types}. Valid types: {IndigoDeviceType.get_all_types()}",
+                            "query": query
+                        })
+                
+                # Validate entity types
+                if entity_types:
+                    invalid_entity_types = [et for et in entity_types if not IndigoEntityType.is_valid_type(et)]
+                    if invalid_entity_types:
+                        return safe_json_dumps({
+                            "error": f"Invalid entity types: {invalid_entity_types}. Valid types: {IndigoEntityType.get_all_types()}",
+                            "query": query
+                        })
+                
+                results = self.search_handler.search(query, device_types, entity_types)
                 return safe_json_dumps(results)
                 
             except Exception as e:

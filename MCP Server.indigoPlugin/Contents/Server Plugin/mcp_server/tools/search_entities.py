@@ -3,7 +3,7 @@ Search entities handler for natural language search of Indigo entities.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Set
 
 from ..adapters.data_provider import DataProvider
 from ..adapters.vector_store_interface import VectorStoreInterface
@@ -34,21 +34,33 @@ class SearchEntitiesHandler:
         self.query_parser = QueryParser()
         self.result_formatter = ResultFormatter()
     
-    def search(self, query: str) -> Dict[str, Any]:
+    def search(
+        self, 
+        query: str,
+        device_types: Optional[List[str]] = None,
+        entity_types: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
         """
-        Search for Indigo entities using natural language.
+        Search for Indigo entities using natural language with optional filtering.
         
         Args:
             query: Natural language search query
+            device_types: Optional list of device types to filter by
+            entity_types: Optional list of entity types to search
             
         Returns:
             Dictionary with formatted search results
         """
         try:
-            self.logger.debug(f"Processing search query: {query}")
+            # Log query and parameters
+            self.logger.info(f"🔍 Search query: '{query}'")
+            if device_types:
+                self.logger.info(f"🔍 Device type filter: {device_types}")
+            if entity_types:
+                self.logger.info(f"🔍 Entity type filter: {entity_types}")
             
             # Parse query to determine search parameters
-            search_params = self.query_parser.parse(query)
+            search_params = self.query_parser.parse(query, device_types, entity_types)
             self.logger.debug(f"Search parameters: {search_params}")
             
             # Perform vector search
@@ -59,13 +71,20 @@ class SearchEntitiesHandler:
                 similarity_threshold=search_params["threshold"]
             )
             
+            # Apply device type filtering if specified
+            if device_types and "devices" in search_params["entity_types"]:
+                raw_results = self._filter_devices_by_type(raw_results, device_types)
+            
             # Group results by entity type
             grouped_results = self._group_results_by_type(raw_results)
+            
+            # Log result counts
+            self._log_search_results(grouped_results)
             
             # Format results
             formatted_results = self.result_formatter.format_search_results(grouped_results, query)
             
-            self.logger.debug(f"Search completed: {formatted_results['total_count']} results")
+            self.logger.info(f"🔍 Total results returned: {formatted_results['total_count']}")
             return formatted_results
             
         except Exception as e:
@@ -104,6 +123,49 @@ class SearchEntitiesHandler:
                 self.logger.warning(f"Unknown entity type: {entity_type}")
         
         return grouped
+    
+    def _filter_devices_by_type(self, raw_results: List[Dict[str, Any]], device_types: List[str]) -> List[Dict[str, Any]]:
+        """
+        Filter device results by device type.
+        
+        Args:
+            raw_results: Raw search results from vector store
+            device_types: List of device types to filter by
+            
+        Returns:
+            Filtered results containing only devices matching the specified types
+        """
+        filtered_results = []
+        device_type_set = set(device_types)
+        
+        for result in raw_results:
+            # Only filter device entities
+            if result.get("_entity_type") == "device":
+                device_type_id = result.get("deviceTypeId", "")
+                if device_type_id in device_type_set:
+                    filtered_results.append(result)
+            else:
+                # Keep non-device entities unchanged
+                filtered_results.append(result)
+        
+        return filtered_results
+    
+    def _log_search_results(self, grouped_results: Dict[str, List[Dict[str, Any]]]) -> None:
+        """
+        Log search result counts by entity type.
+        
+        Args:
+            grouped_results: Results grouped by entity type
+        """
+        for entity_type, entities in grouped_results.items():
+            count = len(entities)
+            if count > 0:
+                # Get entity names for logging (up to 10)
+                names = [entity.get("name", entity.get("id", "unknown")) for entity in entities]
+                names_for_log = names[:10]
+                more_text = f" (and {count - 10} more)" if count > 10 else ""
+                
+                self.logger.info(f"🔍 Found {count} {entity_type}: {', '.join(names_for_log)}{more_text}")
     
     def _create_error_response(self, query: str, error_message: str) -> Dict[str, Any]:
         """Create an error response for failed searches."""

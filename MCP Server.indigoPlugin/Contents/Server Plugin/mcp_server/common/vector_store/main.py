@@ -360,7 +360,7 @@ class VectorStore(VectorStoreInterface):
                     records_to_add.append(record)
                     
                     # Update progress
-                    progress.update(i + 1, f"processed {entity.get('name', f'ID {entity_id}')}")
+                    progress.update(i + 1)
                     
                 except Exception as e:
                     self.logger.error(f"Error processing {table_name} entity {entity.get('id', 'unknown')}: {e}")

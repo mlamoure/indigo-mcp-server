@@ -2,28 +2,37 @@
 Query parser for natural language search queries.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 
 class QueryParser:
     """Parses natural language queries to extract search parameters."""
     
-    def parse(self, query: str) -> Dict[str, Any]:
+    def parse(
+        self, 
+        query: str, 
+        device_types: Optional[List[str]] = None,
+        entity_types: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
         """
         Parse query to extract search parameters.
         
         Args:
             query: Natural language search query
+            device_types: Optional list of device types to filter by
+            entity_types: Optional list of entity types to search
             
         Returns:
             Dictionary with search parameters:
-            - entity_types: List of entity types to search
+            - entity_types: List of entity types to search (plural form for vector store)
+            - device_types: List of device types to filter by
             - top_k: Maximum number of results
             - threshold: Similarity threshold
         """
         # Default parameters
         params = {
             "entity_types": ["devices", "variables", "actions"],
+            "device_types": device_types or [],
             "top_k": 10,
             "threshold": 0.3
         }
@@ -31,8 +40,17 @@ class QueryParser:
         # Convert to lowercase for analysis
         query_lower = query.lower()
         
-        # Determine entity types to search
-        params["entity_types"] = self._extract_entity_types(query_lower)
+        # Determine entity types to search - use explicit parameter if provided, otherwise parse from query
+        if entity_types:
+            # Convert singular entity types to plural for vector store compatibility
+            plural_mapping = {
+                "device": "devices",
+                "variable": "variables", 
+                "action": "actions"
+            }
+            params["entity_types"] = [plural_mapping.get(et, et) for et in entity_types]
+        else:
+            params["entity_types"] = self._extract_entity_types(query_lower)
         
         # Adjust result count based on query
         params["top_k"] = self._extract_result_count(query_lower)

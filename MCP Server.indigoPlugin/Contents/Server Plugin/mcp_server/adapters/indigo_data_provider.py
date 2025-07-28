@@ -11,6 +11,7 @@ import logging
 from typing import Dict, List, Any, Optional
 
 from .data_provider import DataProvider
+from ..common.json_encoder import filter_json, KEYS_TO_KEEP_MINIMAL_DEVICES
 
 
 class IndigoDataProvider(DataProvider):
@@ -30,7 +31,7 @@ class IndigoDataProvider(DataProvider):
         Get all devices from Indigo.
         
         Returns:
-            List of device dictionaries with standard fields
+            List of device dictionaries with minimal fields
         """
         devices = []
         try:
@@ -40,7 +41,8 @@ class IndigoDataProvider(DataProvider):
         except Exception as e:
             self.logger.error(f"Error getting all devices: {e}")
             
-        return devices
+        # Apply filtering to return only minimal keys
+        return filter_json(devices, KEYS_TO_KEEP_MINIMAL_DEVICES)
     
     def get_device(self, device_id: int) -> Optional[Dict[str, Any]]:
         """
@@ -133,15 +135,32 @@ class IndigoDataProvider(DataProvider):
             
         return None
     
+    def get_all_devices_unfiltered(self) -> List[Dict[str, Any]]:
+        """
+        Get all devices from Indigo with complete data (unfiltered for vector store).
+        
+        Returns:
+            List of complete device dictionaries
+        """
+        devices = []
+        try:
+            for dev_id in indigo.devices:
+                dev = indigo.devices[dev_id]
+                devices.append(dict(dev))
+        except Exception as e:
+            self.logger.error(f"Error getting all devices (unfiltered): {e}")
+            
+        return devices
+    
     def get_all_entities_for_vector_store(self) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Get all entities formatted for vector store updates.
+        Get all entities formatted for vector store updates with complete data.
         
         Returns:
             Dictionary with 'devices', 'variables', 'actions' keys
         """
         return {
-            "devices": self.get_all_devices(),
+            "devices": self.get_all_devices_unfiltered(),
             "variables": self.get_all_variables(),
             "actions": self.get_all_actions()
         }
