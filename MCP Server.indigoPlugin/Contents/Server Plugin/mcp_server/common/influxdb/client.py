@@ -8,7 +8,7 @@ from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
 
 from influxdb import InfluxDBClient as InfluxClient
-from influxdb.exceptions import InfluxDBError
+from influxdb.exceptions import InfluxDBClientError, InfluxDBServerError
 
 
 class InfluxDBClient:
@@ -137,7 +137,7 @@ class InfluxDBClient:
                 
                 return formatted_results
                 
-        except InfluxDBError as e:
+        except (InfluxDBClientError, InfluxDBServerError) as e:
             self.logger.error(f"InfluxDB query error: {e}")
             raise RuntimeError(f"InfluxDB query failed: {e}")
         except Exception as e:
