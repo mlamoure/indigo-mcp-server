@@ -49,11 +49,13 @@ MCP Server.indigoPlugin/
 │           │   ├── auth_manager.py    # Authentication management
 │           │   ├── cert_manager.py    # Certificate management
 │           │   └── security_config.py # Security configuration
-│           └── tools/
+│           └── tools/         # MCP tool implementations
 │               ├── __init__.py
-│               ├── search_entities.py    # Natural language search tool
-│               ├── query_parser.py       # Query parsing logic
-│               └── result_formatter.py   # Result formatting
+│               └── search_entities/      # Natural language search tool library
+│                   ├── __init__.py
+│                   ├── main.py           # SearchEntitiesHandler implementation
+│                   ├── query_parser.py   # Query parsing logic
+│                   └── result_formatter.py # Result formatting
 ```
 
 ## Key Components
@@ -98,9 +100,10 @@ MCP Server.indigoPlugin/
 - Each provides list and individual entity endpoints
 
 ### Search System (mcp_server/tools/)
-- **SearchEntitiesHandler**: Natural language search coordination (search_entities.py)
-- **QueryParser**: Parses user queries for entity types and parameters
-- **ResultFormatter**: Formats search results with relevance scoring
+- **search_entities/**: Natural language search tool library
+  - **SearchEntitiesHandler**: Natural language search coordination (main.py)
+  - **QueryParser**: Parses user queries for entity types and parameters
+  - **ResultFormatter**: Formats search results with relevance scoring
 
 ## Development Commands
 
