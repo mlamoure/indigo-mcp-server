@@ -110,3 +110,145 @@ class TestQueryParser:
         assert result1["entity_types"] == result2["entity_types"]
         assert result1["top_k"] == result2["top_k"]
         assert result1["threshold"] == result2["threshold"]
+
+
+class TestQueryParserEnhancedFeatures:
+    """Test cases for the enhanced QueryParser features."""
+    
+    def test_parse_with_device_types_parameter(self, query_parser):
+        """Test parsing with explicit device_types parameter."""
+        result = query_parser.parse("find lights", device_types=["dimmer", "relay"])
+        
+        assert result["device_types"] == ["dimmer", "relay"]
+        assert result["entity_types"] == ["devices"]  # Should detect devices from query
+        assert result["top_k"] == 10  # Default
+        assert result["threshold"] == 0.3  # Default
+    
+    def test_parse_with_entity_types_parameter(self, query_parser):
+        """Test parsing with explicit entity_types parameter."""
+        result = query_parser.parse("search query", entity_types=["device", "variable"])
+        
+        assert result["entity_types"] == ["devices", "variables"]  # Should convert to plural
+        assert result["device_types"] == []  # Default empty
+        assert result["top_k"] == 10  # Default
+        assert result["threshold"] == 0.3  # Default
+    
+    def test_parse_with_both_parameters(self, query_parser):
+        """Test parsing with both device_types and entity_types parameters."""
+        result = query_parser.parse(
+            "find stuff", 
+            device_types=["sensor", "thermostat"],
+            entity_types=["device"]
+        )
+        
+        assert result["device_types"] == ["sensor", "thermostat"]
+        assert result["entity_types"] == ["devices"]  # Singular to plural conversion
+        assert result["top_k"] == 10  # Default
+        assert result["threshold"] == 0.3  # Default
+    
+    def test_entity_type_singular_to_plural_conversion(self, query_parser):
+        """Test conversion of singular entity types to plural."""
+        test_cases = [
+            (["device"], ["devices"]),
+            (["variable"], ["variables"]),
+            (["action"], ["actions"]),
+            (["device", "variable"], ["devices", "variables"]),
+            (["device", "variable", "action"], ["devices", "variables", "actions"])
+        ]
+        
+        for input_types, expected_output in test_cases:
+            result = query_parser.parse("test", entity_types=input_types)
+            assert result["entity_types"] == expected_output
+    
+    def test_explicit_entity_types_override_query_parsing(self, query_parser):
+        """Test that explicit entity_types parameter overrides query-based detection."""
+        # Query contains "devices" keyword but entity_types parameter should override
+        result = query_parser.parse("find all devices", entity_types=["variable"])
+        
+        assert result["entity_types"] == ["variables"]  # Should use parameter, not query detection
+        assert result["top_k"] == 50  # Should still detect "all" from query
+    
+    def test_device_types_parameter_with_empty_list(self, query_parser):
+        """Test device_types parameter with empty list."""
+        result = query_parser.parse("test query", device_types=[])
+        
+        assert result["device_types"] == []
+        assert result["entity_types"] == ["devices", "variables", "actions"]  # Default
+    
+    def test_entity_types_parameter_with_empty_list(self, query_parser):
+        """Test entity_types parameter with empty list."""
+        result = query_parser.parse("test query", entity_types=[])
+        
+        assert result["entity_types"] == []  # Should use empty list
+        assert result["device_types"] == []  # Default
+    
+    def test_none_parameters_use_defaults(self, query_parser):
+        """Test that None parameters use default behavior."""
+        result = query_parser.parse("find all lights", device_types=None, entity_types=None)
+        
+        # Should behave like original parse method
+        assert result["device_types"] == []  # Default empty
+        assert result["entity_types"] == ["devices"]  # Should detect from query
+        assert result["top_k"] == 50  # Should detect "all" from query
+    
+    def test_preserve_query_based_parameters_when_not_overridden(self, query_parser):
+        """Test that query-based parameter detection still works when not overridden."""
+        result = query_parser.parse(
+            "show few exact devices", 
+            device_types=["dimmer"]  # Only override device_types
+        )
+        
+        assert result["device_types"] == ["dimmer"]  # From parameter
+        assert result["entity_types"] == ["devices"]  # From query detection
+        assert result["top_k"] == 5  # From query detection ("few")
+        assert result["threshold"] == 0.7  # From query detection ("exact")
+    
+    def test_backward_compatibility(self, query_parser):
+        """Test that existing functionality remains unchanged."""
+        # Test original method signature
+        result_old = query_parser.parse("find all exact lights")
+        result_new = query_parser.parse("find all exact lights", device_types=None, entity_types=None)
+        
+        # Results should be identical
+        assert result_old["entity_types"] == result_new["entity_types"]
+        assert result_old["top_k"] == result_new["top_k"]
+        assert result_old["threshold"] == result_new["threshold"]
+        assert result_old["device_types"] == result_new["device_types"]
+    
+    def test_device_types_parameter_validation_ready(self, query_parser):
+        """Test that device_types parameter accepts various formats."""
+        # Test single device type
+        result = query_parser.parse("test", device_types=["dimmer"])
+        assert result["device_types"] == ["dimmer"]
+        
+        # Test multiple device types
+        result = query_parser.parse("test", device_types=["dimmer", "sensor", "relay"])
+        assert result["device_types"] == ["dimmer", "sensor", "relay"]
+        
+        # Test empty list
+        result = query_parser.parse("test", device_types=[])
+        assert result["device_types"] == []
+    
+    def test_entity_types_parameter_validation_ready(self, query_parser):
+        """Test that entity_types parameter accepts various formats."""
+        # Test single entity type
+        result = query_parser.parse("test", entity_types=["device"])
+        assert result["entity_types"] == ["devices"]
+        
+        # Test multiple entity types
+        result = query_parser.parse("test", entity_types=["device", "variable"])
+        assert result["entity_types"] == ["devices", "variables"]
+        
+        # Test empty list
+        result = query_parser.parse("test", entity_types=[])
+        assert result["entity_types"] == []
+    
+    def test_malformed_entity_types_handled_gracefully(self, query_parser):
+        """Test that malformed entity types are handled gracefully."""
+        # Test unknown entity types (should pass through unchanged)
+        result = query_parser.parse("test", entity_types=["unknown", "device"])
+        assert result["entity_types"] == ["unknown", "devices"]  # Only device gets converted
+        
+        # Test already plural entity types (should pass through unchanged)
+        result = query_parser.parse("test", entity_types=["devices", "variables"])
+        assert result["entity_types"] == ["devices", "variables"]

@@ -5,8 +5,8 @@ Search entities handler for natural language search of Indigo entities.
 import logging
 from typing import Dict, List, Any, Optional, Set
 
-from ..adapters.data_provider import DataProvider
-from ..adapters.vector_store_interface import VectorStoreInterface
+from ...adapters.data_provider import DataProvider
+from ...adapters.vector_store_interface import VectorStoreInterface
 from .query_parser import QueryParser
 from .result_formatter import ResultFormatter
 
@@ -72,7 +72,7 @@ class SearchEntitiesHandler:
             )
             
             # Apply device type filtering if specified
-            if device_types and "devices" in search_params["entity_types"]:
+            if device_types is not None and "devices" in search_params["entity_types"]:
                 raw_results = self._filter_devices_by_type(raw_results, device_types)
             
             # Group results by entity type

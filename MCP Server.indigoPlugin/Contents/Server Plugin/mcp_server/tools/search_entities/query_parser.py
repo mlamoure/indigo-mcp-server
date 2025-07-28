@@ -41,7 +41,7 @@ class QueryParser:
         query_lower = query.lower()
         
         # Determine entity types to search - use explicit parameter if provided, otherwise parse from query
-        if entity_types:
+        if entity_types is not None:
             # Convert singular entity types to plural for vector store compatibility
             plural_mapping = {
                 "device": "devices",
