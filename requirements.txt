@@ -11,3 +11,6 @@ pydantic
 cryptography
 uvicorn[standard]
 python-dotenv
+langgraph==0.6.0
+influxdb==5.3.2
+pandas>=2.0.0

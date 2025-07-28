@@ -52,6 +52,14 @@ class Plugin(indigo.PluginBase):
         self.langsmith_api_key = plugin_prefs.get("langsmith_api_key", "")
         self.langsmith_project = plugin_prefs.get("langsmith_project", "")
         
+        # InfluxDB configuration
+        self.enable_influxdb = plugin_prefs.get("enable_influxdb", False)
+        self.influx_url = plugin_prefs.get("influx_url", "http://localhost")
+        self.influx_port = plugin_prefs.get("influx_port", "8086")
+        self.influx_login = plugin_prefs.get("influx_login", "")
+        self.influx_password = plugin_prefs.get("influx_password", "")
+        self.influx_database = plugin_prefs.get("influx_database", "indigo")
+        
         # Security configuration
         self.access_mode = plugin_prefs.get("access_mode", "local_only")
         self.bearer_token = plugin_prefs.get("bearer_token", "")
@@ -64,6 +72,106 @@ class Plugin(indigo.PluginBase):
         
         # Set up logging
         self.logger.setLevel(logging.DEBUG if self.debug else logging.INFO)
+    
+    def test_connections(self) -> bool:
+        """
+        Test connections to required and optional services.
+        
+        Returns:
+            True if all required connections are successful, False otherwise
+        """
+        self.logger.info("Testing service connections...")
+        all_required_connections_ok = True
+        
+        # Test OpenAI API key (required)
+        self.logger.info("Testing OpenAI API connection...")
+        try:
+            import openai
+            
+            # Validate API key format
+            if not self.openai_api_key or self.openai_api_key == "xxxxx-xxxxx-xxxxx-xxxxx":
+                self.logger.error("OpenAI API key is not configured or is placeholder")
+                all_required_connections_ok = False
+            else:
+                # Set API key temporarily for testing
+                test_client = openai.OpenAI(api_key=self.openai_api_key)
+                
+                # Make a minimal API call to test connectivity
+                try:
+                    # Use a very small embedding request to test the connection
+                    response = test_client.embeddings.create(
+                        model="text-embedding-3-small",
+                        input="test",
+                        timeout=10.0
+                    )
+                    if response and response.data:
+                        self.logger.info("✅ OpenAI API connection successful")
+                    else:
+                        self.logger.error("❌ OpenAI API returned invalid response")
+                        all_required_connections_ok = False
+                except Exception as api_error:
+                    self.logger.error(f"❌ OpenAI API connection failed: {api_error}")
+                    all_required_connections_ok = False
+                    
+        except ImportError:
+            self.logger.error("❌ OpenAI library not available")
+            all_required_connections_ok = False
+        except Exception as e:
+            self.logger.error(f"❌ OpenAI connection test failed: {e}")
+            all_required_connections_ok = False
+        
+        # Test InfluxDB connection (optional, only if enabled)
+        if self.enable_influxdb:
+            self.logger.info("Testing InfluxDB connection...")
+            try:
+                from influxdb import InfluxDBClient
+                
+                # Validate InfluxDB configuration
+                if not self.influx_url or not self.influx_port:
+                    self.logger.warning("⚠️ InfluxDB enabled but URL or port not configured")
+                else:
+                    try:
+                        port = int(self.influx_port)
+                        client = InfluxDBClient(
+                            host=self.influx_url.replace("http://", "").replace("https://", ""),
+                            port=port,
+                            username=self.influx_login if self.influx_login else None,
+                            password=self.influx_password if self.influx_password else None,
+                            database=self.influx_database,
+                            timeout=10
+                        )
+                        
+                        # Test connection with ping
+                        result = client.ping()
+                        if result:
+                            self.logger.info("✅ InfluxDB connection successful")
+                            
+                            # Test database access
+                            try:
+                                client.get_list_database()
+                                self.logger.info("✅ InfluxDB database access successful")
+                            except Exception as db_error:
+                                self.logger.warning(f"⚠️ InfluxDB database access failed: {db_error}")
+                                
+                        else:
+                            self.logger.warning("⚠️ InfluxDB ping failed - historical data analysis will be unavailable")
+                            
+                        client.close()
+                        
+                    except ValueError as ve:
+                        self.logger.warning(f"⚠️ InfluxDB port configuration error: {ve}")
+                    except Exception as influx_error:
+                        self.logger.warning(f"⚠️ InfluxDB connection failed: {influx_error}")
+                        self.logger.warning("Historical data analysis will be unavailable")
+                        
+            except ImportError:
+                self.logger.warning("⚠️ InfluxDB library not available - historical data analysis will be unavailable")
+            except Exception as e:
+                self.logger.warning(f"⚠️ InfluxDB connection test failed: {e}")
+        else:
+            self.logger.info("InfluxDB disabled - historical data analysis will not be available")
+        
+        return all_required_connections_ok
 
     ########################################
     def startup(self) -> None:
@@ -72,9 +180,9 @@ class Plugin(indigo.PluginBase):
         """
         self.logger.info("MCP Server plugin starting up...")
         
-        # Validate configuration
-        if not self.openai_api_key or self.openai_api_key == "xxxxx-xxxxx-xxxxx-xxxxx":
-            self.logger.error("OpenAI API key not configured. Please set it in plugin configuration.")
+        # Test connections before proceeding
+        if not self.test_connections():
+            self.logger.error("Required service connections failed. Plugin startup aborted.")
             return
         
         # Generate bearer token if not set
@@ -101,6 +209,18 @@ class Plugin(indigo.PluginBase):
             os.environ["LANGSMITH_PROJECT"] = self.langsmith_project
         else:
             os.environ["LANGSMITH_TRACING"] = "false"
+            
+        # Set InfluxDB environment variables if enabled
+        if self.enable_influxdb:
+            os.environ["INFLUXDB_HOST"] = self.influx_url.replace("http://", "").replace("https://", "")
+            os.environ["INFLUXDB_PORT"] = str(self.influx_port)
+            os.environ["INFLUXDB_USERNAME"] = self.influx_login
+            os.environ["INFLUXDB_PASSWORD"] = self.influx_password
+            os.environ["INFLUXDB_DATABASE"] = self.influx_database
+            os.environ["INFLUXDB_ENABLED"] = "true"
+            self.logger.info("InfluxDB environment variables configured")
+        else:
+            os.environ["INFLUXDB_ENABLED"] = "false"
             
         # Initialize LangSmith configuration
         self.langsmith_config = get_langsmith_config()
@@ -247,6 +367,30 @@ class Plugin(indigo.PluginBase):
         except (ValueError, TypeError):
             errors_dict["log_level"] = "Log level must be a valid number"
         
+        # Validate InfluxDB configuration if enabled
+        if values_dict.get("enable_influxdb", False):
+            influx_url = values_dict.get("influx_url", "").strip()
+            influx_port = values_dict.get("influx_port", "").strip()
+            influx_database = values_dict.get("influx_database", "").strip()
+            
+            if not influx_url:
+                errors_dict["influx_url"] = "InfluxDB URL is required when InfluxDB is enabled"
+            elif not (influx_url.startswith("http://") or influx_url.startswith("https://")):
+                errors_dict["influx_url"] = "InfluxDB URL must start with http:// or https://"
+            
+            if not influx_port:
+                errors_dict["influx_port"] = "InfluxDB port is required when InfluxDB is enabled"
+            else:
+                try:
+                    port = int(influx_port)
+                    if port < 1 or port > 65535:
+                        errors_dict["influx_port"] = "InfluxDB port must be between 1 and 65535"
+                except (ValueError, TypeError):
+                    errors_dict["influx_port"] = "InfluxDB port must be a valid number"
+            
+            if not influx_database:
+                errors_dict["influx_database"] = "InfluxDB database name is required when InfluxDB is enabled"
+        
         return (len(errors_dict) == 0, values_dict, errors_dict)
     
     def closedPrefsConfigUi(self, values_dict: indigo.Dict, user_cancelled: bool) -> None:
@@ -277,6 +421,14 @@ class Plugin(indigo.PluginBase):
             new_langsmith_endpoint = values_dict.get("langsmith_endpoint", "https://api.smith.langchain.com")
             new_langsmith_api_key = values_dict.get("langsmith_api_key", "")
             new_langsmith_project = values_dict.get("langsmith_project", "")
+            
+            # InfluxDB configuration
+            new_enable_influxdb = values_dict.get("enable_influxdb", False)
+            new_influx_url = values_dict.get("influx_url", "http://localhost")
+            new_influx_port = values_dict.get("influx_port", "8086")
+            new_influx_login = values_dict.get("influx_login", "")
+            new_influx_password = values_dict.get("influx_password", "")
+            new_influx_database = values_dict.get("influx_database", "indigo")
             
             restart_needed = False
             
@@ -330,6 +482,34 @@ class Plugin(indigo.PluginBase):
                 
                 # Reinitialize LangSmith configuration with new settings
                 self.langsmith_config = get_langsmith_config()
+                
+                restart_needed = True
+            
+            # Check InfluxDB configuration changes
+            if (new_enable_influxdb != self.enable_influxdb or
+                new_influx_url != self.influx_url or
+                new_influx_port != self.influx_port or
+                new_influx_login != self.influx_login or
+                new_influx_password != self.influx_password or
+                new_influx_database != self.influx_database):
+                
+                self.enable_influxdb = new_enable_influxdb
+                self.influx_url = new_influx_url
+                self.influx_port = new_influx_port
+                self.influx_login = new_influx_login
+                self.influx_password = new_influx_password
+                self.influx_database = new_influx_database
+                
+                # Update InfluxDB environment variables
+                if self.enable_influxdb:
+                    os.environ["INFLUXDB_HOST"] = self.influx_url.replace("http://", "").replace("https://", "")
+                    os.environ["INFLUXDB_PORT"] = str(self.influx_port)
+                    os.environ["INFLUXDB_USERNAME"] = self.influx_login
+                    os.environ["INFLUXDB_PASSWORD"] = self.influx_password
+                    os.environ["INFLUXDB_DATABASE"] = self.influx_database
+                    os.environ["INFLUXDB_ENABLED"] = "true"
+                else:
+                    os.environ["INFLUXDB_ENABLED"] = "false"
                 
                 restart_needed = True
                 

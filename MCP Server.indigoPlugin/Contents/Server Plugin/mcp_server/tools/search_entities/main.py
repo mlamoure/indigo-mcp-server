@@ -7,11 +7,12 @@ from typing import Dict, List, Any, Optional, Set
 
 from ...adapters.data_provider import DataProvider
 from ...adapters.vector_store_interface import VectorStoreInterface
+from ..base_handler import BaseToolHandler
 from .query_parser import QueryParser
 from .result_formatter import ResultFormatter
 
 
-class SearchEntitiesHandler:
+class SearchEntitiesHandler(BaseToolHandler):
     """Handler for searching Indigo entities with semantic search."""
     
     def __init__(
@@ -28,9 +29,9 @@ class SearchEntitiesHandler:
             vector_store: Vector store instance for semantic search
             logger: Optional logger instance
         """
+        super().__init__(tool_name="search_entities", logger=logger)
         self.data_provider = data_provider
         self.vector_store = vector_store
-        self.logger = logger or logging.getLogger("Plugin")
         self.query_parser = QueryParser()
         self.result_formatter = ResultFormatter()
     
@@ -53,15 +54,15 @@ class SearchEntitiesHandler:
         """
         try:
             # Log query and parameters
-            self.logger.info(f"🔍 Search query: '{query}'")
+            self.info_log(f"Search query: '{query}'")
             if device_types:
-                self.logger.info(f"🔍 Device type filter: {device_types}")
+                self.info_log(f"Device type filter: {device_types}")
             if entity_types:
-                self.logger.info(f"🔍 Entity type filter: {entity_types}")
+                self.info_log(f"Entity type filter: {entity_types}")
             
             # Parse query to determine search parameters
             search_params = self.query_parser.parse(query, device_types, entity_types)
-            self.logger.debug(f"Search parameters: {search_params}")
+            self.debug_log(f"Search parameters: {search_params}")
             
             # Perform vector search
             raw_results = self.vector_store.search(
@@ -84,12 +85,11 @@ class SearchEntitiesHandler:
             # Format results
             formatted_results = self.result_formatter.format_search_results(grouped_results, query)
             
-            self.logger.info(f"🔍 Total results returned: {formatted_results['total_count']}")
+            self.info_log(f"Total results returned: {formatted_results['total_count']}")
             return formatted_results
             
         except Exception as e:
-            self.logger.error(f"Search failed: {e}")
-            return self._create_error_response(query, str(e))
+            return self.handle_exception(e, f"searching for '{query}'")
     
     def _group_results_by_type(self, raw_results: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
         """
@@ -120,7 +120,7 @@ class SearchEntitiesHandler:
                 grouped["actions"].append(result)
             else:
                 # Log unknown entity type but don't fail
-                self.logger.warning(f"Unknown entity type: {entity_type}")
+                self.warning_log(f"Unknown entity type: {entity_type}")
         
         return grouped
     
@@ -165,18 +165,4 @@ class SearchEntitiesHandler:
                 names_for_log = names[:10]
                 more_text = f" (and {count - 10} more)" if count > 10 else ""
                 
-                self.logger.info(f"🔍 Found {count} {entity_type}: {', '.join(names_for_log)}{more_text}")
-    
-    def _create_error_response(self, query: str, error_message: str) -> Dict[str, Any]:
-        """Create an error response for failed searches."""
-        return {
-            "error": error_message,
-            "query": query,
-            "summary": "Search failed",
-            "total_count": 0,
-            "results": {
-                "devices": [],
-                "variables": [],
-                "actions": []
-            }
-        }
+                self.info_log(f"Found {count} {entity_type}: {', '.join(names_for_log)}{more_text}")

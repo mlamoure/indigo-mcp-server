@@ -19,6 +19,7 @@ from .tools.search_entities import SearchEntitiesHandler
 from .tools.device_control import DeviceControlHandler
 from .tools.variable_control import VariableControlHandler
 from .tools.action_control import ActionControlHandler
+from .tools.historical_analysis import HistoricalAnalysisHandler
 from .resources import DeviceResource, VariableResource, ActionResource
 from .security import AuthManager, CertManager, SecurityConfig, AccessMode
 from .common.json_encoder import safe_json_dumps
@@ -113,6 +114,10 @@ class MCPServerCore:
                 logger=self.logger
             )
             self.action_control_handler = ActionControlHandler(
+                data_provider=self.data_provider,
+                logger=self.logger
+            )
+            self.historical_analysis_handler = HistoricalAnalysisHandler(
                 data_provider=self.data_provider,
                 logger=self.logger
             )
@@ -339,6 +344,34 @@ class MCPServerCore:
                 return safe_json_dumps(result)
             except Exception as e:
                 self.logger.error(f"Action execute error: {e}")
+                return safe_json_dumps({"error": str(e), "success": False})
+        
+        @self.mcp_server.tool()
+        def analyze_historical_data(
+            query: str,
+            device_names: list[str],
+            time_range_days: int = 30
+        ) -> str:
+            """
+            Analyze historical device data using natural language queries and LangGraph workflow.
+            
+            Args:
+                query: Natural language query about device behavior or patterns
+                device_names: List of device names to analyze
+                time_range_days: Number of days to analyze (1-365, default: 30)
+                
+            Returns:
+                JSON string with analysis results and insights
+            """
+            try:
+                result = self.historical_analysis_handler.analyze_historical_data(
+                    query=query,
+                    device_names=device_names,
+                    time_range_days=time_range_days
+                )
+                return safe_json_dumps(result)
+            except Exception as e:
+                self.logger.error(f"Historical analysis error: {e}")
                 return safe_json_dumps({"error": str(e), "success": False})
     
     def _create_static_token_auth(self):
