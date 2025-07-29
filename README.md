@@ -5,8 +5,6 @@ your home automation system through natural language queries.
 
 ## What It Does
 
-[![Indigo MCP Demo](https://img.shields.io/badge/Watch%20Demo-Click%20Here-blue?style=for-the-badge)](static/Indigo%20MCP.mov)
-
 The Indigo MCP Server Plugin bridges the gap between AI assistants and your Indigo home automation system by providing
 ways to search, and take action on your devices, variables, and actions.
 
