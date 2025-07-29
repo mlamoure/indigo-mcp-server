@@ -134,18 +134,6 @@ AI-powered historical data analysis using LangGraph workflow:
     - Supports complex pattern recognition queries
 - **Output**: Detailed analysis results with insights and visualizations
 
-#### Supported Device Types
-
-- `dimmer` - Dimmable lights and controls
-- `relay` - On/off switches and relays
-- `sensor` - Temperature, motion, contact sensors
-- `thermostat` - HVAC controls
-- `sprinkler` - Irrigation controls
-- `multiio` - Multi-input/output devices
-- `speedcontrol` - Variable speed controls
-- `io` - Input/output devices
-- `device` - All device types
-
 ## MCP Client Setup
 
 ### Claude Desktop Configuration
