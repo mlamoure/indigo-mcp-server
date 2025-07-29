@@ -445,11 +445,12 @@ class VectorStore(VectorStoreInterface):
             try:
                 table = self.db.open_table(entity_type)
                 
-                # Perform vector search
+                # Perform vector search with large limit to get all potential matches
+                # We'll filter by similarity threshold after getting results
                 search_results = (
                     table.search(query_embedding)
                     .metric("cosine")
-                    .limit(top_k)
+                    .limit(1000)  # Large limit to capture all potential matches
                     .to_list()
                 )
                 
@@ -469,11 +470,11 @@ class VectorStore(VectorStoreInterface):
             except Exception as e:
                 self.logger.error(f"Search failed for {entity_type}: {e}")
         
-        # Sort by similarity score
+        # Sort by similarity score (highest first)
         all_results.sort(key=lambda x: x.get("_similarity_score", 0), reverse=True)
         
-        # Limit total results
-        return all_results[:top_k]
+        # Return all results above similarity threshold (no top_k limit)
+        return all_results
     
     def add_entity(self, entity_type: str, entity_data: Dict[str, Any]) -> None:
         """

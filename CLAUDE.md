@@ -102,8 +102,9 @@ MCP Server.indigoPlugin/
 ### Search System (mcp_server/tools/)
 - **search_entities/**: Natural language search tool library
   - **SearchEntitiesHandler**: Natural language search coordination (main.py)
-  - **QueryParser**: Parses user queries for entity types and parameters
-  - **ResultFormatter**: Formats search results with relevance scoring
+  - **QueryParser**: Parses user queries for entity types and parameters (default similarity threshold: 0.15)
+  - **ResultFormatter**: Formats search results with full device properties and relevance scoring
+  - **Enhanced Search**: Returns all results above similarity threshold (no artificial limits)
 
 ## Development Commands
 
@@ -188,14 +189,49 @@ This plugin uses FastMCP with Streamable HTTP transport for improved performance
 4. **FastMCP Transport**: Uses HTTP transport for improved performance and reliability
 5. **Vector Store**: Located at `{Indigo}/Preferences/Plugins/com.vtmikel.mcp_server/vector_db`
 
+## MCP Tools and Resources
+
+### Available Tools
+1. **search_entities**: Natural language search across all Indigo entities
+   - Returns all results above 0.15 similarity threshold (no k-limit)
+   - Includes complete device properties (not filtered)
+   - Supports device type filtering (dimmer, relay, sensor, etc.)
+   - Enhanced with semantic keywords for better search accuracy
+
+### Available Resources
+1. **Device Resources** (`/devices`):
+   - `GET /devices` - List all devices with minimal properties
+   - `GET /devices/{id}` - Get specific device with full properties
+   - `GET /devices/by-type/{type}` - Get devices filtered by logical type (new)
+
+2. **Variable Resources** (`/variables`):
+   - `GET /variables` - List all variables
+   - `GET /variables/{id}` - Get specific variable
+
+3. **Action Resources** (`/actions`):
+   - `GET /actions` - List all action groups
+   - `GET /actions/{id}` - Get specific action group
+
+### New Device Type Filtering
+The `get_devices_by_type` endpoint supports logical device types:
+- `dimmer` - Dimmable lights and controls
+- `relay` - On/off switches and relays
+- `sensor` - Temperature, motion, contact sensors
+- `thermostat` - HVAC controls
+- `sprinkler` - Irrigation controls
+- `io` - Input/output devices
+- `other` - Miscellaneous devices
+
 ## Testing MCP Tools
 
 Example queries for testing:
-- "Find all light switches"
-- "Show me temperature sensors"
-- "List all scenes"
-- "Find devices in the bedroom"
-- "Show all variables with value true"
+- "Find all light switches" - Returns all lighting devices above 0.15 similarity
+- "Show me temperature sensors" - Finds temperature and environmental sensors
+- "List all scenes" - Searches action groups for scene-like entities
+- "Find devices in the bedroom" - Location-based device search
+- "Show all variables with value true" - Variable searches with value filtering
+- "Get all dimmers" - Device type filtering for dimmable devices
+- "Find motion sensors" - Sensor-specific searches
 
 ## Development Environment
 

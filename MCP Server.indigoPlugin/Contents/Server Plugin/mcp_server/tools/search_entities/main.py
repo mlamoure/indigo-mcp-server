@@ -7,6 +7,7 @@ from typing import Dict, List, Any, Optional, Set
 
 from ...adapters.data_provider import DataProvider
 from ...adapters.vector_store_interface import VectorStoreInterface
+from ...common.indigo_device_types import DeviceClassifier
 from ..base_handler import BaseToolHandler
 from .query_parser import QueryParser
 from .result_formatter import ResultFormatter
@@ -141,8 +142,9 @@ class SearchEntitiesHandler(BaseToolHandler):
         for result in raw_results:
             # Only filter device entities
             if result.get("_entity_type") == "device":
-                device_type_id = result.get("deviceTypeId", "")
-                if device_type_id in device_type_set:
+                # Use the classifier to determine the logical device type
+                classified_type = DeviceClassifier.classify_device(result)
+                if classified_type in device_type_set:
                     filtered_results.append(result)
             else:
                 # Keep non-device entities unchanged

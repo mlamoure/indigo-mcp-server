@@ -80,13 +80,9 @@ class ResultFormatter:
         return formatted_entities
     
     def _format_device_fields(self, device: Dict[str, Any]) -> Dict[str, Any]:
-        """Format device-specific fields."""
-        return {
-            "type": device.get("type", ""),
-            "model": device.get("model", ""),
-            "address": device.get("address", ""),
-            "enabled": device.get("enabled", True)
-        }
+        """Format device-specific fields - return all properties except internal ones."""
+        # Return all device properties except internal ones (starting with _)
+        return {k: v for k, v in device.items() if not k.startswith('_')}
     
     def _format_variable_fields(self, variable: Dict[str, Any]) -> Dict[str, Any]:
         """Format variable-specific fields."""

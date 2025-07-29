@@ -3,7 +3,7 @@ Tests for Indigo device type enums.
 """
 
 import pytest
-from mcp_server.common.indigo_device_types import IndigoDeviceType, IndigoEntityType
+from mcp_server.common.indigo_device_types import IndigoDeviceType, IndigoEntityType, DeviceClassifier
 
 
 class TestIndigoDeviceType:
@@ -187,3 +187,223 @@ class TestEnumUsagePatterns:
         assert "relay" in supported_types  
         assert "sensor" in supported_types
         assert "thermostat" not in supported_types
+
+
+class TestDeviceClassifier:
+    """Test cases for the DeviceClassifier class."""
+    
+    def test_classify_device_by_class(self):
+        """Test device classification based on device class."""
+        test_cases = [
+            {"class": "indigo.DimmerDevice", "expected": "dimmer"},
+            {"class": "indigo.RelayDevice", "expected": "relay"},
+            {"class": "indigo.SensorDevice", "expected": "sensor"},
+            {"class": "indigo.MultiIODevice", "expected": "multiio"},
+            {"class": "indigo.SpeedControlDevice", "expected": "speedcontrol"},
+            {"class": "indigo.SprinklerDevice", "expected": "sprinkler"},
+            {"class": "indigo.ThermostatDevice", "expected": "thermostat"},
+            {"class": "indigo.Device", "expected": "device"},
+        ]
+        
+        for test_case in test_cases:
+            device = {"class": test_case["class"], "deviceTypeId": "generic"}
+            result = DeviceClassifier.classify_device(device)
+            assert result == test_case["expected"], f"Failed for {test_case['class']}"
+    
+    def test_classify_device_by_devicetype_id_patterns(self):
+        """Test device classification based on deviceTypeId patterns."""
+        test_cases = [
+            # Dimmer patterns
+            {"deviceTypeId": "ra2Dimmer", "expected": "dimmer"},
+            {"deviceTypeId": "zwColorDimmerType", "expected": "dimmer"},
+            {"deviceTypeId": "HAdimmerType", "expected": "dimmer"},
+            {"deviceTypeId": "hueBulb", "expected": "dimmer"},
+            {"deviceTypeId": "lightStrips", "expected": "dimmer"},
+            
+            # Relay patterns
+            {"deviceTypeId": "zwRelayType", "expected": "relay"},
+            {"deviceTypeId": "ra2Switch", "expected": "relay"},
+            {"deviceTypeId": "smartPlug", "expected": "relay"},
+            {"deviceTypeId": "outletDevice", "expected": "relay"},
+            
+            # Sensor patterns
+            {"deviceTypeId": "motionSensor", "expected": "sensor"},
+            {"deviceTypeId": "temperatureDetector", "expected": "sensor"},
+            {"deviceTypeId": "humiditySensor", "expected": "sensor"},
+            
+            # Thermostat patterns
+            {"deviceTypeId": "nestThermostat", "expected": "thermostat"},
+            {"deviceTypeId": "hvacSystem", "expected": "thermostat"},
+            {"deviceTypeId": "climateControl", "expected": "thermostat"},
+            
+            # Fan patterns
+            {"deviceTypeId": "ha_fan", "expected": "speedcontrol"},
+            {"deviceTypeId": "speedController", "expected": "speedcontrol"},
+            
+            # Sprinkler patterns
+            {"deviceTypeId": "sprinklerZone", "expected": "sprinkler"},
+            {"deviceTypeId": "irrigationSystem", "expected": "sprinkler"},
+            {"deviceTypeId": "waterController", "expected": "sprinkler"},
+        ]
+        
+        for test_case in test_cases:
+            device = {"class": "unknownClass", "deviceTypeId": test_case["deviceTypeId"]}
+            result = DeviceClassifier.classify_device(device)
+            assert result == test_case["expected"], f"Failed for {test_case['deviceTypeId']}"
+    
+    def test_classify_device_real_examples(self):
+        """Test classification with real device examples from your system."""
+        test_devices = [
+            # Real devices from your device list
+            {
+                "name": "Kitchen Ceiling Lights",
+                "class": "indigo.DimmerDevice",
+                "deviceTypeId": "ra2Dimmer",
+                "expected": "dimmer"
+            },
+            {
+                "name": "Outdoor Bollard - Left Side 1",
+                "class": "indigo.DimmerDevice",
+                "deviceTypeId": "hueBulb",
+                "expected": "dimmer"
+            },
+            {
+                "name": "Garage Lights",
+                "class": "indigo.RelayDevice",
+                "deviceTypeId": "ra2Switch",
+                "expected": "relay"
+            },
+            {
+                "name": "Living Room Lamp",
+                "class": "indigo.RelayDevice",
+                "deviceTypeId": "zwRelayType",
+                "expected": "relay"
+            },
+            {
+                "name": "Kitchen Motion Sensor",
+                "class": "indigo.SensorDevice",
+                "deviceTypeId": "zwOnOffSensorType",
+                "expected": "sensor"
+            },
+            {
+                "name": "Upstairs Nest Thermostat",
+                "class": "indigo.ThermostatDevice",
+                "deviceTypeId": "nestThermostat",
+                "expected": "thermostat"
+            },
+            {
+                "name": "Master Bedroom Fan",
+                "class": "indigo.SpeedControlDevice",
+                "deviceTypeId": "ha_fan",
+                "expected": "speedcontrol"
+            },
+        ]
+        
+        for device in test_devices:
+            result = DeviceClassifier.classify_device(device)
+            assert result == device["expected"], f"Failed for {device['name']}"
+    
+    def test_classify_device_class_priority(self):
+        """Test that device class takes priority over deviceTypeId patterns."""
+        # Device class should override deviceTypeId patterns
+        device = {
+            "class": "indigo.DimmerDevice",
+            "deviceTypeId": "sensorType"  # This would normally classify as sensor
+        }
+        result = DeviceClassifier.classify_device(device)
+        assert result == "dimmer"
+    
+    def test_classify_device_fallback(self):
+        """Test fallback to base device type for unknown devices."""
+        test_devices = [
+            {"class": "unknown.Device", "deviceTypeId": "unknownType"},
+            {"class": "", "deviceTypeId": ""},
+            {},  # Empty device
+            {"deviceTypeId": "randomStuff"},
+        ]
+        
+        for device in test_devices:
+            result = DeviceClassifier.classify_device(device)
+            assert result == "device"
+    
+    def test_filter_devices_by_type(self):
+        """Test filtering devices by type."""
+        test_devices = [
+            {"name": "Dimmer 1", "class": "indigo.DimmerDevice", "deviceTypeId": "ra2Dimmer"},
+            {"name": "Dimmer 2", "class": "indigo.DimmerDevice", "deviceTypeId": "hueBulb"},
+            {"name": "Relay 1", "class": "indigo.RelayDevice", "deviceTypeId": "zwRelayType"},
+            {"name": "Sensor 1", "class": "indigo.SensorDevice", "deviceTypeId": "motionSensor"},
+            {"name": "Unknown", "class": "unknownClass", "deviceTypeId": "unknownType"},
+        ]
+        
+        # Test filtering dimmers
+        dimmers = DeviceClassifier.filter_devices_by_type(test_devices, "dimmer")
+        assert len(dimmers) == 2
+        assert all(d["name"].startswith("Dimmer") for d in dimmers)
+        
+        # Test filtering relays
+        relays = DeviceClassifier.filter_devices_by_type(test_devices, "relay")
+        assert len(relays) == 1
+        assert relays[0]["name"] == "Relay 1"
+        
+        # Test filtering sensors
+        sensors = DeviceClassifier.filter_devices_by_type(test_devices, "sensor")
+        assert len(sensors) == 1
+        assert sensors[0]["name"] == "Sensor 1"
+        
+        # Test filtering devices (fallback type)
+        devices = DeviceClassifier.filter_devices_by_type(test_devices, "device")
+        assert len(devices) == 1
+        assert devices[0]["name"] == "Unknown"
+        
+        # Test invalid device type
+        invalid = DeviceClassifier.filter_devices_by_type(test_devices, "invalid")
+        assert len(invalid) == 0
+    
+    def test_get_device_type_distribution(self):
+        """Test getting device type distribution."""
+        test_devices = [
+            {"class": "indigo.DimmerDevice", "deviceTypeId": "ra2Dimmer"},
+            {"class": "indigo.DimmerDevice", "deviceTypeId": "hueBulb"},
+            {"class": "indigo.DimmerDevice", "deviceTypeId": "zwColorDimmerType"},
+            {"class": "indigo.RelayDevice", "deviceTypeId": "zwRelayType"},
+            {"class": "indigo.RelayDevice", "deviceTypeId": "ra2Switch"},
+            {"class": "indigo.SensorDevice", "deviceTypeId": "motionSensor"},
+            {"class": "unknownClass", "deviceTypeId": "unknownType"},
+        ]
+        
+        distribution = DeviceClassifier.get_device_type_distribution(test_devices)
+        
+        assert distribution["dimmer"] == 3
+        assert distribution["relay"] == 2
+        assert distribution["sensor"] == 1
+        assert distribution["device"] == 1
+        assert len(distribution) == 4
+    
+    def test_case_insensitive_patterns(self):
+        """Test that deviceTypeId pattern matching is case insensitive."""
+        test_cases = [
+            {"deviceTypeId": "RA2DIMMER", "expected": "dimmer"},
+            {"deviceTypeId": "ZwRelayType", "expected": "relay"},
+            {"deviceTypeId": "MOTIONSENSOR", "expected": "sensor"},
+            {"deviceTypeId": "HueBulb", "expected": "dimmer"},
+        ]
+        
+        for test_case in test_cases:
+            device = {"class": "unknownClass", "deviceTypeId": test_case["deviceTypeId"]}
+            result = DeviceClassifier.classify_device(device)
+            assert result == test_case["expected"], f"Failed for {test_case['deviceTypeId']}"
+    
+    def test_complex_devicetype_patterns(self):
+        """Test complex deviceTypeId patterns with multiple words."""
+        test_cases = [
+            {"deviceTypeId": "smartLightDimmerController", "expected": "dimmer"},
+            {"deviceTypeId": "outdoorMotionDetectorSensor", "expected": "sensor"},
+            {"deviceTypeId": "wallSwitchRelayDevice", "expected": "relay"},
+            {"deviceTypeId": "ceilingFanSpeedControl", "expected": "speedcontrol"},
+        ]
+        
+        for test_case in test_cases:
+            device = {"class": "unknownClass", "deviceTypeId": test_case["deviceTypeId"]}
+            result = DeviceClassifier.classify_device(device)
+            assert result == test_case["expected"], f"Failed for {test_case['deviceTypeId']}"

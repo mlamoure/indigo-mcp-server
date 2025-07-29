@@ -16,6 +16,7 @@ from .adapters.data_provider import DataProvider
 from .adapters.vector_store_interface import VectorStoreInterface
 from .common.vector_store.vector_store_manager import VectorStoreManager
 from .tools.search_entities import SearchEntitiesHandler
+from .tools.get_devices_by_type import GetDevicesByTypeHandler
 from .tools.device_control import DeviceControlHandler
 from .tools.variable_control import VariableControlHandler
 from .tools.action_control import ActionControlHandler
@@ -101,6 +102,12 @@ class MCPServerCore:
             self.search_handler = SearchEntitiesHandler(
                 data_provider=self.data_provider,
                 vector_store=self.vector_store_manager.get_vector_store(),
+                logger=self.logger
+            )
+            
+            # Initialize get devices by type handler
+            self.get_devices_by_type_handler = GetDevicesByTypeHandler(
+                data_provider=self.data_provider,
                 logger=self.logger
             )
             
@@ -217,15 +224,28 @@ class MCPServerCore:
             entity_types: list[str] = None
         ) -> str:
             """
-            Search for Indigo devices, variables, and actions using natural language.
+            Search for Indigo entities using natural language with semantic matching.
+            
+            This tool performs semantic search across your Indigo system to find devices, 
+            variables, and actions that match your query. It uses AI embeddings to understand
+            the meaning and context of your search.
             
             Args:
-                query: Natural language search query
-                device_types: Optional list of device types to filter by (dimmer, relay, sensor, etc.)
-                entity_types: Optional list of entity types to search (device, variable, action)
+                query: Natural language search query (e.g., "temperature sensors", "lights in bedroom")
+                device_types: Optional list of device types to filter by. When provided, only 
+                             devices will be returned. Valid types: dimmer, relay, sensor, multiio,
+                             speedcontrol, sprinkler, thermostat, device
+                entity_types: Optional list of entity types to search. Valid types: device, variable, action
+                             Note: device_types and entity_types are mutually exclusive - if device_types
+                             is provided, entity_types is ignored and only devices are searched.
                 
             Returns:
-                JSON string with search results
+                JSON with search results grouped by entity type, including relevance scores
+                
+            Examples:
+                - search_entities("temperature sensors") - Find all temperature-related sensors
+                - search_entities("lights", device_types=["dimmer"]) - Find only dimmer devices with "lights" in context
+                - search_entities("morning", entity_types=["action"]) - Find only actions related to "morning"
             """
             try:
                 # Validate device types
@@ -252,6 +272,39 @@ class MCPServerCore:
             except Exception as e:
                 self.logger.error(f"Search error: {e}")
                 return safe_json_dumps({"error": str(e), "query": query})
+        
+        @self.mcp_server.tool()
+        def get_devices_by_type(device_type: str) -> str:
+            """
+            Get all devices of a specific type with complete properties.
+            
+            This tool retrieves all devices that match a specific device type. Unlike search_entities,
+            this returns ALL devices of the type without semantic filtering, making it ideal for
+            getting complete device lists or when you know exactly what type you need.
+            
+            Args:
+                device_type: The device type to retrieve. Valid types: dimmer, relay, sensor, 
+                           multiio, speedcontrol, sprinkler, thermostat, device
+                
+            Returns:
+                JSON with all devices of the specified type, including all properties
+                
+            Examples:
+                - get_devices_by_type("dimmer") - Get all dimmer devices
+                - get_devices_by_type("sensor") - Get all sensor devices
+                - get_devices_by_type("thermostat") - Get all thermostat devices
+                
+            When to use this vs search_entities:
+                - Use this when you need ALL devices of a specific type
+                - Use this when you don't need semantic/natural language matching
+                - Use search_entities when you need to find devices by context or description
+            """
+            try:
+                result = self.get_devices_by_type_handler.get_devices(device_type)
+                return safe_json_dumps(result)
+            except Exception as e:
+                self.logger.error(f"Get devices by type error: {e}")
+                return safe_json_dumps({"error": str(e), "device_type": device_type})
         
         @self.mcp_server.tool()
         def device_turn_on(device_id: int) -> str:

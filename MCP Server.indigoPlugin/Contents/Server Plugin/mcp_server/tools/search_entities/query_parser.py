@@ -33,15 +33,19 @@ class QueryParser:
         params = {
             "entity_types": ["devices", "variables", "actions"],
             "device_types": device_types or [],
-            "top_k": 10,
-            "threshold": 0.3
+            "top_k": 1000,  # Large number since we filter by similarity threshold
+            "threshold": 0.15  # Lower threshold to capture more relevant results
         }
         
         # Convert to lowercase for analysis
         query_lower = query.lower()
         
-        # Determine entity types to search - use explicit parameter if provided, otherwise parse from query
-        if entity_types is not None:
+        # Determine entity types to search
+        # If device_types is provided, we only search devices
+        if device_types is not None and len(device_types) > 0:
+            params["entity_types"] = ["devices"]
+        # Otherwise use explicit entity_types parameter if provided
+        elif entity_types is not None:
             # Convert singular entity types to plural for vector store compatibility
             plural_mapping = {
                 "device": "devices",
@@ -49,6 +53,7 @@ class QueryParser:
                 "action": "actions"
             }
             params["entity_types"] = [plural_mapping.get(et, et) for et in entity_types]
+        # Finally, parse from query if no explicit parameters
         else:
             params["entity_types"] = self._extract_entity_types(query_lower)
         
@@ -104,4 +109,4 @@ class QueryParser:
             return 0.4
         
         # Default threshold
-        return 0.3
+        return 0.15

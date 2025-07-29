@@ -8,17 +8,22 @@ your home automation system through natural language queries.
 The Indigo MCP Server Plugin bridges the gap between AI assistants and your Indigo home automation system by providing:
 
 - **Natural Language Search**: Query your devices, variables, and action groups using conversational language
-- **Semantic Understanding**: Advanced vector-based search that understands context and relationships
+- **Semantic Understanding**: Advanced vector-based search that understands context and relationships (0.15 similarity threshold)
+- **Comprehensive Results**: Returns all matching devices above similarity threshold (no artificial limits)
+- **Complete Device Properties**: Full device data including states, settings, and metadata
+- **Device Type Filtering**: Logical device type categorization (dimmer, relay, sensor, thermostat, etc.)
 - **Read-Only Access**: Safe, non-destructive access to your home automation data
 - **Real-Time Data**: Access current device states, variable values, and system information
 - **FastMCP HTTP Transport**: High-performance HTTP-based MCP server for reliable communication
 
 Example queries you can use:
 
-- "Find all light switches in the bedroom"
-- "Show me temperature sensors that are currently above 70 degrees"
-- "List all scenes related to evening lighting"
-- "What security devices are currently active?"
+- "Find all light switches in the bedroom" - Returns comprehensive lighting device data
+- "Show me temperature sensors" - Finds all temperature and environmental sensors with full properties
+- "List all scenes related to evening lighting" - Searches action groups for scene-like entities
+- "Get all dimmers" - Device type filtering for dimmable devices
+- "Find motion sensors" - Sensor-specific searches with complete device information
+- "Show devices in the basement" - Location-based searches with full device metadata
 
 ## Requirements
 
@@ -80,6 +85,49 @@ understands the meaning and context of your queries, making searches more intuit
 
 **⏱️ Patience Required**: The initial setup creates a comprehensive search index of your entire Indigo system. Larger
 systems with hundreds of devices may take longer to process initially.
+
+## API Features
+
+### Enhanced Search Capabilities (v2025.0.1+)
+
+#### Unlimited Results
+- **No K-Limit**: Returns all devices above 0.15 similarity threshold (previously limited to 10 results)
+- **Comprehensive Coverage**: Searches entire device database, not just top matches
+- **Similarity-Based**: Quality filtering based on semantic relevance, not arbitrary limits
+
+#### Complete Device Properties
+- **Full Data**: Returns all device properties including states, settings, and metadata
+- **No Filtering**: Previous versions returned only 4 properties (type, model, address, enabled)
+- **Rich Information**: Access to battery levels, temperatures, brightness, protocol details, and more
+
+#### Device Type Classification
+- **Logical Types**: Devices categorized by function (dimmer, relay, sensor, thermostat, sprinkler, io, other)
+- **Smart Filtering**: Filter search results by device type for targeted queries
+- **Resource Endpoint**: New `/devices/by-type/{type}` endpoint for direct type-based access
+
+### Available MCP Resources
+
+#### Device Resources
+- `GET /devices` - List all devices with minimal properties (for overview)
+- `GET /devices/{id}` - Get specific device with complete properties
+- `GET /devices/by-type/{type}` - Get devices filtered by logical type (new in v2025.0.1)
+
+#### Variable Resources  
+- `GET /variables` - List all variables
+- `GET /variables/{id}` - Get specific variable
+
+#### Action Resources
+- `GET /actions` - List all action groups  
+- `GET /actions/{id}` - Get specific action group
+
+### Supported Device Types
+- **dimmer** - Dimmable lights and controls
+- **relay** - On/off switches and relays  
+- **sensor** - Temperature, motion, contact, and environmental sensors
+- **thermostat** - HVAC controls and thermostats
+- **sprinkler** - Irrigation and watering controls
+- **io** - Input/output and interface devices
+- **other** - Miscellaneous or unclassified devices
 
 ## MCP Client Setup
 
