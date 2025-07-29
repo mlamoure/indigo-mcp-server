@@ -3,6 +3,12 @@
 A Model Context Protocol (MCP) server plugin for Indigo Domotics that enables AI assistants like Claude to interact with
 your home automation system through natural language queries.
 
+## Demo Video
+
+![Indigo MCP Demo](static/Indigo%20MCP.mov)
+
+*Watch the Indigo MCP Server in action with Claude Desktop*
+
 ## What It Does
 
 The Indigo MCP Server Plugin bridges the gap between AI assistants and your Indigo home automation system by providing
