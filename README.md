@@ -74,6 +74,66 @@ understands the meaning and context of your queries, making searches more intuit
 - `GET /actions` - List all action groups
 - `GET /actions/{id}` - Get specific action group
 
+### Available MCP Tools
+
+#### 1. search_entities
+Natural language search across all Indigo entities:
+- **Purpose**: Semantic search across devices, variables, and action groups
+- **Input**: Natural language query (e.g., "bedroom lights", "temperature sensors")
+- **Search Features**:
+  - Similarity threshold: 0.15 (returns all relevant results above this threshold)
+  - No artificial result limits - returns all matching entities
+  - Complete device properties included (not filtered)
+  - Semantic keyword enhancement for improved search accuracy
+  - Device type filtering support (dimmer, relay, sensor, thermostat, sprinkler, io, other)
+- **Output**: Formatted results with full entity properties and relevance scoring
+
+#### 2. get_devices_by_type
+Get all devices of a specific type without semantic filtering:
+- **Purpose**: Retrieve ALL devices that match a specific device type
+- **Input**: Device type (dimmer, relay, sensor, multiio, speedcontrol, sprinkler, thermostat, device)
+- **Output**: All devices of the specified type with complete properties
+- **Use Case**: When you need every device of a type, not contextual search results
+
+#### 3. Device Control Tools
+Direct device control capabilities:
+- **device_turn_on**: Turn on a device by device_id
+- **device_turn_off**: Turn off a device by device_id
+- **device_set_brightness**: Set brightness level (0-1 or 0-100) for dimmable devices
+
+#### 4. variable_update
+Update Indigo variable values:
+- **Purpose**: Modify variable values in your Indigo system
+- **Input**: Variable ID and new value (as string)
+- **Output**: Operation status and updated variable information
+
+#### 5. action_execute_group
+Execute Indigo action groups (scenes):
+- **Purpose**: Trigger action groups/scenes in your Indigo system
+- **Input**: Action group ID and optional delay in seconds
+- **Output**: Execution status and confirmation
+
+#### 6. analyze_historical_data
+AI-powered historical data analysis using LangGraph workflow:
+- **Purpose**: Analyze device behavior patterns and trends over time
+- **Input**: Natural language query, device names list, time range (1-365 days, default: 30)
+- **Features**: 
+  - Uses advanced AI workflow for data analysis
+  - Provides insights and trend identification
+  - Supports complex pattern recognition queries
+- **Output**: Detailed analysis results with insights and visualizations
+
+#### Supported Device Types
+- `dimmer` - Dimmable lights and controls
+- `relay` - On/off switches and relays
+- `sensor` - Temperature, motion, contact sensors
+- `thermostat` - HVAC controls
+- `sprinkler` - Irrigation controls
+- `multiio` - Multi-input/output devices
+- `speedcontrol` - Variable speed controls
+- `io` - Input/output devices
+- `device` - All device types
+
 ## MCP Client Setup
 
 ### Claude Desktop Configuration

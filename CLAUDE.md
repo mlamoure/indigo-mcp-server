@@ -70,7 +70,7 @@ MCP Server.indigoPlugin/
 - Core MCP server implementation using FastMCP with HTTP transport
 - Manages vector store lifecycle through VectorStoreManager
 - Initializes and coordinates resource handlers
-- Provides one tool: `search_entities` for natural language search
+- Provides multiple tools for search, control, and analysis
 
 ### Data Access Layer (mcp_server/adapters/)
 - **IndigoDataProvider**: Accesses Indigo entities using `dict(indigo_entity)` for direct object serialization
@@ -192,11 +192,34 @@ This plugin uses FastMCP with Streamable HTTP transport for improved performance
 ## MCP Tools and Resources
 
 ### Available Tools
+
 1. **search_entities**: Natural language search across all Indigo entities
    - Returns all results above 0.15 similarity threshold (no k-limit)
    - Includes complete device properties (not filtered)
    - Supports device type filtering (dimmer, relay, sensor, etc.)
    - Enhanced with semantic keywords for better search accuracy
+
+2. **get_devices_by_type**: Get all devices of a specific type
+   - Returns ALL devices of specified type without semantic filtering
+   - Supports all device types: dimmer, relay, sensor, multiio, speedcontrol, sprinkler, thermostat, device
+   - Includes complete device properties
+
+3. **Device Control Tools**:
+   - **device_turn_on**: Turn on a device by device_id
+   - **device_turn_off**: Turn off a device by device_id  
+   - **device_set_brightness**: Set brightness level (0-1 or 0-100) for dimmable devices
+
+4. **variable_update**: Update a variable's value
+   - Updates variable by variable_id with new string value
+
+5. **action_execute_group**: Execute an action group
+   - Executes action group by action_group_id
+   - Optional delay parameter in seconds
+
+6. **analyze_historical_data**: Analyze historical device data using LangGraph workflow
+   - Natural language queries about device behavior and patterns
+   - Analyzes specified device names over configurable time range (1-365 days, default: 30)
+   - Uses AI-powered analysis workflow for insights and trends
 
 ### Available Resources
 1. **Device Resources** (`/devices`):
@@ -224,7 +247,7 @@ The `get_devices_by_type` endpoint supports logical device types:
 
 ## Testing MCP Tools
 
-Example queries for testing:
+### Search Tool Examples:
 - "Find all light switches" - Returns all lighting devices above 0.15 similarity
 - "Show me temperature sensors" - Finds temperature and environmental sensors
 - "List all scenes" - Searches action groups for scene-like entities
@@ -232,6 +255,19 @@ Example queries for testing:
 - "Show all variables with value true" - Variable searches with value filtering
 - "Get all dimmers" - Device type filtering for dimmable devices
 - "Find motion sensors" - Sensor-specific searches
+
+### Control Tool Examples:
+- Turn on device ID 123: `device_turn_on(123)`
+- Turn off all bedroom lights: First search, then use `device_turn_off(device_id)` for each
+- Set dimmer to 50%: `device_set_brightness(device_id, 50)` or `device_set_brightness(device_id, 0.5)`
+- Update variable: `variable_update(variable_id, "new_value")`
+- Execute scene: `action_execute_group(action_group_id)`
+- Execute scene with delay: `action_execute_group(action_group_id, 30)` (30 second delay)
+
+### Historical Analysis Examples:
+- "How often did the front door sensor trigger last week?" with device_names=["Front Door Sensor"], time_range_days=7
+- "What was the temperature pattern in the living room last month?" with device_names=["Living Room Thermostat"], time_range_days=30
+- "When were the garage lights most active?" with device_names=["Garage Light Switch"], time_range_days=14
 
 ## Development Environment
 
