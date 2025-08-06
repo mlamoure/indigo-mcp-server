@@ -139,4 +139,17 @@
         <Title>Generate New Token</Title>
         <CallbackMethod>regenerate_bearer_token_button</CallbackMethod>
     </Field>
+
+    <Field id="separator7" type="separator"/>
+
+    <!-- Connection Testing -->
+    <Field id="test_connections_button" type="button">
+        <Label>Test Connections</Label>
+        <Title>Test All Connections</Title>
+        <CallbackMethod>test_connections_button</CallbackMethod>
+    </Field>
+
+    <Field id="connection_status_help" type="label" fontSize="small" alignWithControl="false" alignText="left">
+        <Label>Click to test OpenAI, InfluxDB, and other service connections with current configuration</Label>
+    </Field>
 </PluginConfig>

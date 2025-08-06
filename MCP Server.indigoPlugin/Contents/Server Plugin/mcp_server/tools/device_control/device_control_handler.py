@@ -41,18 +41,24 @@ class DeviceControlHandler:
             if not isinstance(device_id, int):
                 return {"error": "device_id must be an integer"}
             
-            self.logger.info(f"Turning on device {device_id}")
+            # Get device name for logging
+            device = self.data_provider.get_device(device_id)
+            device_name = device.get('name', f'ID {device_id}') if device else f'ID {device_id}'
+            
+            self.logger.info(f"Turning on device {device_name}")
             result = self.data_provider.turn_on_device(device_id)
             
             if "error" in result:
-                self.logger.error(f"Failed to turn on device {device_id}: {result['error']}")
+                self.logger.error(f"Failed to turn on device {device_name}: {result['error']}")
             else:
-                self.logger.info(f"Device {device_id} turned on successfully. Changed: {result.get('changed', False)}")
+                device_name = result.get('device_name', f'ID {device_id}')
+                self.logger.info(f"Device {device_name} turned on successfully. Changed: {result.get('changed', False)}")
             
             return result
             
         except Exception as e:
-            self.logger.error(f"Unexpected error turning on device {device_id}: {e}")
+            device_name = f'ID {device_id}'  # Fallback for exception case
+            self.logger.error(f"Unexpected error turning on device {device_name}: {e}")
             return {"error": str(e)}
     
     def turn_off(self, device_id: int) -> Dict[str, Any]:
@@ -70,18 +76,24 @@ class DeviceControlHandler:
             if not isinstance(device_id, int):
                 return {"error": "device_id must be an integer"}
             
-            self.logger.info(f"Turning off device {device_id}")
+            # Get device name for logging
+            device = self.data_provider.get_device(device_id)
+            device_name = device.get('name', f'ID {device_id}') if device else f'ID {device_id}'
+            
+            self.logger.info(f"Turning off device {device_name}")
             result = self.data_provider.turn_off_device(device_id)
             
             if "error" in result:
-                self.logger.error(f"Failed to turn off device {device_id}: {result['error']}")
+                self.logger.error(f"Failed to turn off device {device_name}: {result['error']}")
             else:
-                self.logger.info(f"Device {device_id} turned off successfully. Changed: {result.get('changed', False)}")
+                device_name = result.get('device_name', f'ID {device_id}')
+                self.logger.info(f"Device {device_name} turned off successfully. Changed: {result.get('changed', False)}")
             
             return result
             
         except Exception as e:
-            self.logger.error(f"Unexpected error turning off device {device_id}: {e}")
+            device_name = f'ID {device_id}'  # Fallback for exception case
+            self.logger.error(f"Unexpected error turning off device {device_name}: {e}")
             return {"error": str(e)}
     
     def set_brightness(self, device_id: int, brightness: float) -> Dict[str, Any]:
@@ -104,16 +116,22 @@ class DeviceControlHandler:
             if not isinstance(brightness, (int, float)):
                 return {"error": "brightness must be a number"}
             
-            self.logger.info(f"Setting brightness for device {device_id} to {brightness}")
+            # Get device name for logging
+            device = self.data_provider.get_device(device_id)
+            device_name = device.get('name', f'ID {device_id}') if device else f'ID {device_id}'
+            
+            self.logger.info(f"Setting brightness for device {device_name} to {brightness}")
             result = self.data_provider.set_device_brightness(device_id, brightness)
             
             if "error" in result:
-                self.logger.error(f"Failed to set brightness for device {device_id}: {result['error']}")
+                self.logger.error(f"Failed to set brightness for device {device_name}: {result['error']}")
             else:
-                self.logger.info(f"Device {device_id} brightness set successfully. Changed: {result.get('changed', False)}")
+                device_name = result.get('device_name', f'ID {device_id}')
+                self.logger.info(f"Device {device_name} brightness set successfully. Changed: {result.get('changed', False)}")
             
             return result
             
         except Exception as e:
-            self.logger.error(f"Unexpected error setting brightness for device {device_id}: {e}")
+            device_name = f'ID {device_id}'  # Fallback for exception case
+            self.logger.error(f"Unexpected error setting brightness for device {device_name}: {e}")
             return {"error": str(e)}

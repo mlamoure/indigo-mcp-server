@@ -66,7 +66,7 @@ class SearchEntitiesHandler(BaseToolHandler):
             self.debug_log(f"Search parameters: {search_params}")
             
             # Perform vector search
-            raw_results = self.vector_store.search(
+            raw_results, search_metadata = self.vector_store.search(
                 query=query,
                 entity_types=search_params["entity_types"],
                 top_k=search_params["top_k"],
@@ -84,7 +84,12 @@ class SearchEntitiesHandler(BaseToolHandler):
             self._log_search_results(grouped_results)
             
             # Format results
-            formatted_results = self.result_formatter.format_search_results(grouped_results, query)
+            formatted_results = self.result_formatter.format_search_results(
+                grouped_results, 
+                query, 
+                minimal_fields=search_params["minimal_fields"],
+                search_metadata=search_metadata
+            )
             
             self.info_log(f"Total results returned: {formatted_results['total_count']}")
             return formatted_results

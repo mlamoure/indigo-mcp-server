@@ -224,14 +224,29 @@ class MCPServerCore:
             entity_types: list[str] = None
         ) -> str:
             """
-            Search for Indigo entities using natural language with semantic matching.
+            Search for Indigo entities using natural language with intelligent result limiting.
             
             This tool performs semantic search across your Indigo system to find devices, 
             variables, and actions that match your query. It uses AI embeddings to understand
-            the meaning and context of your search.
+            the meaning and context of your search, with smart result limits and field optimization.
+            
+            RESULT LIMITING:
+            The search automatically adjusts result count and detail level based on your query:
+            - Default queries: 10 results with full entity details
+            - "few"/"some" queries: 5 results with full details  
+            - "many"/"list" queries: 20 results with minimal fields for performance
+            - "all" queries: 50 results with minimal fields for performance
+            - "one"/"single" queries: 1 result with full details
+            
+            When results are truncated, you'll receive a clear message like:
+            "Found 855 entities (showing top 10 - use more specific query for additional results)"
+            
+            FIELD OPTIMIZATION:
+            Large result sets (20+ results) automatically use minimal fields including:
+            name, class, id, deviceTypeId, description, model, onOffState, states
             
             Args:
-                query: Natural language search query (e.g., "temperature sensors", "lights in bedroom")
+                query: Natural language search query (e.g., "temperature sensors", "few lights in bedroom")
                 device_types: Optional list of device types to filter by. When provided, only 
                              devices will be returned. Valid types: dimmer, relay, sensor, multiio,
                              speedcontrol, sprinkler, thermostat, device
@@ -240,12 +255,16 @@ class MCPServerCore:
                              is provided, entity_types is ignored and only devices are searched.
                 
             Returns:
-                JSON with search results grouped by entity type, including relevance scores
+                JSON with search results grouped by entity type, including relevance scores and
+                metadata about truncation/field reduction when applicable
                 
             Examples:
-                - search_entities("temperature sensors") - Find all temperature-related sensors
-                - search_entities("lights", device_types=["dimmer"]) - Find only dimmer devices with "lights" in context
-                - search_entities("morning", entity_types=["action"]) - Find only actions related to "morning"
+                - search_entities("temperature sensors") - Returns 10 sensors with full details
+                - search_entities("show me all lights") - Returns 50 lights with minimal fields
+                - search_entities("few dimmer switches") - Returns 5 dimmers with full details
+                - search_entities("many motion sensors") - Returns 20 sensors with minimal fields
+                - search_entities("lights", device_types=["dimmer"]) - Find only dimmer devices
+                - search_entities("morning", entity_types=["action"]) - Find only actions
             """
             try:
                 # Validate device types

@@ -192,7 +192,8 @@ class IndigoDataProvider(DataProvider):
             return {
                 "changed": previous_state != current_state,
                 "previous": previous_state,
-                "current": current_state
+                "current": current_state,
+                "device_name": device.name
             }
             
         except Exception as e:
@@ -226,7 +227,8 @@ class IndigoDataProvider(DataProvider):
             return {
                 "changed": previous_state != current_state,
                 "previous": previous_state,
-                "current": current_state
+                "current": current_state,
+                "device_name": device.name
             }
             
         except Exception as e:
@@ -275,7 +277,8 @@ class IndigoDataProvider(DataProvider):
             return {
                 "changed": previous_brightness != current_brightness,
                 "previous": previous_brightness,
-                "current": current_brightness
+                "current": current_brightness,
+                "device_name": device.name
             }
             
         except Exception as e:

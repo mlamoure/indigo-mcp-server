@@ -77,17 +77,22 @@ understands the meaning and context of your queries, making searches more intuit
 
 #### 1. search_entities
 
-Natural language search across all Indigo entities:
+Natural language search across all Indigo entities with intelligent result limiting:
 
 - **Purpose**: Semantic search across devices, variables, and action groups
-- **Input**: Natural language query (e.g., "bedroom lights", "temperature sensors")
+- **Input**: Natural language query with smart modifiers (e.g., "bedroom lights", "all temperature sensors", "few dimmers")
 - **Search Features**:
-    - Similarity threshold: 0.15 (returns all relevant results above this threshold)
-    - No artificial result limits - returns all matching entities
-    - Complete device properties included (not filtered)
-    - Semantic keyword enhancement for improved search accuracy
-    - Device type filtering support (dimmer, relay, sensor, thermostat, sprinkler, io, other)
-- **Output**: Formatted results with full entity properties and relevance scoring
+    - **Intelligent Result Limits**: Automatically adjusts based on query terms
+        - Default: 10 results with full details
+        - "few"/"some": 5 results with full details
+        - "many"/"list": 20 results with minimal fields
+        - "all": 50 results with minimal fields  
+        - "one"/"single": 1 result with full details
+    - **Performance Optimization**: Large result sets (20+) use minimal fields for faster responses
+    - **Truncation Feedback**: Clear messages when results are limited (e.g., "Found 855 entities, showing top 10")
+    - **Semantic Enhancement**: AI embeddings with keyword expansion for improved matching
+    - **Device Type Filtering**: Support for dimmer, relay, sensor, thermostat, sprinkler, io, other
+- **Output**: Formatted results with relevance scoring, truncation indicators, and field optimization notices
 
 #### 2. get_devices_by_type
 
@@ -133,6 +138,91 @@ AI-powered historical data analysis using LangGraph workflow:
     - Provides insights and trend identification
     - Supports complex pattern recognition queries
 - **Output**: Detailed analysis results with insights and visualizations
+
+## Usage Guidelines
+
+### Query Optimization for search_entities
+
+The `search_entities` tool is designed to provide intelligent result limiting based on your query terms. Understanding these patterns will help you get the most relevant results efficiently:
+
+#### Query Modifiers and Expected Results
+
+| Query Pattern | Result Count | Field Detail | Example |
+|---------------|--------------|--------------|---------|
+| Default queries | 10 | Full fields | `"bedroom lights"` |
+| "few" or "some" | 5 | Full fields | `"few motion sensors"` |
+| "many" or "list" | 20 | Minimal fields | `"many dimmers"` |
+| "all" | 50 | Minimal fields | `"all temperature sensors"` |
+| "one" or "single" | 1 | Full fields | `"one thermostat"` |
+
+#### Best Practices
+
+**For Specific Searches:**
+- Use specific terms: `"front door sensor"` instead of `"sensors"`  
+- Include location: `"bedroom lights"` instead of `"lights"`
+- Be descriptive: `"motion sensor in garage"` vs `"motion"`
+
+**For Browsing Large Collections:**
+- Use "all" for overview: `"all lights"` (returns 50 with minimal fields)
+- Use "many" for moderate browsing: `"many switches"` (returns 20 with minimal fields)
+
+**For Detailed Information:**
+- Use "few" for detailed view: `"few thermostats"` (returns 5 with full details)
+- Use specific names when known: `"living room thermostat"`
+
+#### When Results Are Truncated
+
+When you see messages like `"Found 855 entities (showing top 10 - use more specific query for additional results)"`:
+
+1. **Make your query more specific**: Add location, device type, or function
+2. **Use filtering**: Add `device_types=["dimmer"]` parameter for device-specific searches
+3. **Use get_devices_by_type**: For complete device type listings without semantic filtering
+
+#### Choosing Between Tools
+
+- **Use search_entities when:** You want semantic/contextual matching, location-based searches, or natural language queries
+- **Use get_devices_by_type when:** You need ALL devices of a specific type, no contextual filtering needed
+
+### Example Scenarios
+
+#### Scenario 1: Specific Search (Full Details)
+```
+Query: "front door sensor"
+Result: "Found 2 entities (2 devices)"
+Fields: Full device properties including all states, settings, and metadata
+Best for: Getting complete information about specific devices
+```
+
+#### Scenario 2: Browse All Devices (Minimal Fields)
+```
+Query: "show me all lights"  
+Result: "Found 127 entities (showing 50 with minimal fields - use more specific query for additional results)"
+Fields: name, class, id, deviceTypeId, description, model, onOffState, states
+Best for: Getting an overview of many devices quickly
+```
+
+#### Scenario 3: Truncated Results (Need Refinement)
+```
+Query: "sensors"
+Result: "Found 455 entities (showing top 10 - use more specific query for additional results)"
+Recommendation: Try "motion sensors", "temperature sensors", or "few sensors in bedroom"
+```
+
+#### Scenario 4: Moderate Browsing (Minimal Fields)
+```
+Query: "list many motion sensors"
+Result: "Found 23 entities (20 devices with minimal fields)"
+Fields: Minimal set for performance
+Best for: Browsing moderate-sized collections efficiently
+```
+
+#### Scenario 5: Single Item Lookup (Full Details)
+```
+Query: "one living room thermostat"
+Result: "Found 1 entities (1 device)"
+Fields: Complete device information with all properties
+Best for: Detailed inspection of a specific device
+```
 
 ## MCP Client Setup
 

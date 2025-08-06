@@ -28,13 +28,15 @@ class QueryParser:
             - device_types: List of device types to filter by
             - top_k: Maximum number of results
             - threshold: Similarity threshold
+            - minimal_fields: Whether to use minimal fields for large result sets
         """
         # Default parameters
         params = {
             "entity_types": ["devices", "variables", "actions"],
             "device_types": device_types or [],
-            "top_k": 1000,  # Large number since we filter by similarity threshold
-            "threshold": 0.15  # Lower threshold to capture more relevant results
+            "top_k": 10,  # Reasonable default for most searches
+            "threshold": 0.15,  # Lower threshold to capture more relevant results
+            "minimal_fields": False  # Full fields by default
         }
         
         # Convert to lowercase for analysis
@@ -57,8 +59,8 @@ class QueryParser:
         else:
             params["entity_types"] = self._extract_entity_types(query_lower)
         
-        # Adjust result count based on query
-        params["top_k"] = self._extract_result_count(query_lower)
+        # Adjust result count and field detail based on query
+        params["top_k"], params["minimal_fields"] = self._extract_result_count_and_fields(query_lower)
         
         # Adjust threshold for specific queries
         params["threshold"] = self._extract_similarity_threshold(query_lower)
@@ -85,19 +87,19 @@ class QueryParser:
         # Default to all entity types
         return ["devices", "variables", "actions"]
     
-    def _extract_result_count(self, query_lower: str) -> int:
-        """Extract desired result count from query."""
+    def _extract_result_count_and_fields(self, query_lower: str) -> tuple[int, bool]:
+        """Extract desired result count and whether to use minimal fields from query."""
         if "all" in query_lower:
-            return 50
+            return 50, True  # Many results with minimal fields
         elif "many" in query_lower or "list" in query_lower:
-            return 20
+            return 20, True  # Moderate results with minimal fields
         elif "few" in query_lower or "some" in query_lower:
-            return 5
+            return 5, False  # Few results with full fields
         elif "one" in query_lower or "single" in query_lower:
-            return 1
+            return 1, False  # Single result with full fields
         
-        # Default result count
-        return 10
+        # Default result count with full fields
+        return 10, False
     
     def _extract_similarity_threshold(self, query_lower: str) -> float:
         """Extract similarity threshold from query."""

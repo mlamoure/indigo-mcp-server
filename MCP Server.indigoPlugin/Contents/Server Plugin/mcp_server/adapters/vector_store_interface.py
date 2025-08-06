@@ -16,7 +16,7 @@ class VectorStoreInterface(ABC):
         entity_types: Optional[List[str]] = None,
         top_k: int = 10,
         similarity_threshold: float = 0.7
-    ) -> List[Dict[str, Any]]:
+    ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Search for entities using semantic similarity.
         
@@ -27,7 +27,8 @@ class VectorStoreInterface(ABC):
             similarity_threshold: Minimum similarity score threshold
             
         Returns:
-            List of search results with similarity scores
+            Tuple of (search results with similarity scores, metadata dict)
+            Metadata includes: total_found, total_returned, truncated
         """
         pass
     

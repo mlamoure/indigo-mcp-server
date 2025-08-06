@@ -413,7 +413,7 @@ class VectorStore(VectorStoreInterface):
         entity_types: Optional[List[str]] = None,
         top_k: int = 10,
         similarity_threshold: float = 0.7
-    ) -> List[Dict[str, Any]]:
+    ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Search for entities using semantic similarity.
         
@@ -424,7 +424,8 @@ class VectorStore(VectorStoreInterface):
             similarity_threshold: Minimum similarity score threshold
             
         Returns:
-            List of search results with similarity scores
+            Tuple of (search results with similarity scores, metadata dict)
+            Metadata includes: total_found, total_returned, truncated
         """
         if entity_types is None:
             entity_types = ["devices", "variables", "actions"]
@@ -434,7 +435,7 @@ class VectorStore(VectorStoreInterface):
             query_embedding = self._generate_embedding(query)
         except Exception as e:
             self.logger.error(f"Failed to generate query embedding: {e}")
-            return []
+            return [], {"total_found": 0, "total_returned": 0, "truncated": False}
         
         all_results = []
         
@@ -473,8 +474,20 @@ class VectorStore(VectorStoreInterface):
         # Sort by similarity score (highest first)
         all_results.sort(key=lambda x: x.get("_similarity_score", 0), reverse=True)
         
-        # Return all results above similarity threshold (no top_k limit)
-        return all_results
+        # Calculate metadata
+        total_found = len(all_results)
+        limited_results = all_results[:top_k]
+        total_returned = len(limited_results)
+        truncated = total_found > top_k
+        
+        metadata = {
+            "total_found": total_found,
+            "total_returned": total_returned,
+            "truncated": truncated
+        }
+        
+        # Return limited results with metadata
+        return limited_results, metadata
     
     def add_entity(self, entity_type: str, entity_data: Dict[str, Any]) -> None:
         """

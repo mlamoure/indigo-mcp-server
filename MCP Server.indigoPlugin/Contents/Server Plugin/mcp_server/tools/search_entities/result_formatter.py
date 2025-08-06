@@ -2,19 +2,28 @@
 Result formatter for search results.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+from ...common.json_encoder import filter_json, KEYS_TO_KEEP_MINIMAL_DEVICES
 
 
 class ResultFormatter:
     """Formats search results for different output requirements."""
     
-    def format_search_results(self, results: Dict[str, List[Dict]], query: str) -> Dict[str, Any]:
+    def format_search_results(
+        self, 
+        results: Dict[str, List[Dict]], 
+        query: str,
+        minimal_fields: bool = False,
+        search_metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Format search results for output.
         
         Args:
             results: Raw search results from vector store
             query: Original search query
+            minimal_fields: Whether to use minimal fields for devices
+            search_metadata: Metadata from vector store search
             
         Returns:
             Formatted results dictionary
@@ -22,8 +31,8 @@ class ResultFormatter:
         # Count total results
         total_count = sum(len(entities) for entities in results.values())
         
-        # Create summary
-        summary = self._create_summary(results, total_count)
+        # Create summary with metadata information
+        summary = self._create_summary(results, total_count, minimal_fields, search_metadata)
         
         # Format individual results
         formatted = {
@@ -35,24 +44,43 @@ class ResultFormatter:
         
         # Add results for each entity type
         for entity_type, entities in results.items():
-            formatted["results"][entity_type] = self._format_entity_list(entity_type, entities)
+            formatted["results"][entity_type] = self._format_entity_list(entity_type, entities, minimal_fields)
         
         return formatted
     
-    def _create_summary(self, results: Dict[str, List[Dict]], total_count: int) -> str:
+    def _create_summary(
+        self, 
+        results: Dict[str, List[Dict]], 
+        total_count: int, 
+        minimal_fields: bool = False,
+        search_metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
         """Create a summary text for the search results."""
         summary = []
         for entity_type, entities in results.items():
             if entities:
                 summary.append(f"{len(entities)} {entity_type}")
-        
-        summary_text = f"Found {total_count} entities"
+
+        # Base summary
+        if search_metadata and search_metadata.get("truncated", False):
+            # Results were truncated by top_k
+            total_found = search_metadata.get("total_found", total_count)
+            summary_text = f"Found {total_found} entities (showing top {total_count}"
+            if minimal_fields:
+                summary_text += " with minimal fields"
+            summary_text += " - use more specific query for additional results)"
+        else:
+            # All results shown
+            summary_text = f"Found {total_count} entities"
+            if minimal_fields:
+                summary_text += " (minimal fields)"
+
         if summary:
             summary_text += f" ({', '.join(summary)})"
-        
+
         return summary_text
     
-    def _format_entity_list(self, entity_type: str, entities: List[Dict]) -> List[Dict[str, Any]]:
+    def _format_entity_list(self, entity_type: str, entities: List[Dict], minimal_fields: bool = False) -> List[Dict[str, Any]]:
         """Format a list of entities for a specific type."""
         formatted_entities = []
         
@@ -69,7 +97,7 @@ class ResultFormatter:
             
             # Add type-specific fields
             if entity_type == "devices":
-                formatted_entry.update(self._format_device_fields(entity))
+                formatted_entry.update(self._format_device_fields(entity, minimal_fields))
             elif entity_type == "variables":
                 formatted_entry.update(self._format_variable_fields(entity))
             elif entity_type == "actions":
@@ -79,10 +107,17 @@ class ResultFormatter:
         
         return formatted_entities
     
-    def _format_device_fields(self, device: Dict[str, Any]) -> Dict[str, Any]:
-        """Format device-specific fields - return all properties except internal ones."""
-        # Return all device properties except internal ones (starting with _)
-        return {k: v for k, v in device.items() if not k.startswith('_')}
+    def _format_device_fields(self, device: Dict[str, Any], minimal_fields: bool = False) -> Dict[str, Any]:
+        """Format device-specific fields - return all or minimal properties except internal ones."""
+        if minimal_fields:
+            # Use minimal fields + states for large result sets
+            minimal_keys = KEYS_TO_KEEP_MINIMAL_DEVICES + ["states"]
+            filtered_device = filter_json(device, minimal_keys)
+            # Remove internal fields
+            return {k: v for k, v in filtered_device.items() if not k.startswith('_')}
+        else:
+            # Return all device properties except internal ones (starting with _)
+            return {k: v for k, v in device.items() if not k.startswith('_')}
     
     def _format_variable_fields(self, variable: Dict[str, Any]) -> Dict[str, Any]:
         """Format variable-specific fields."""
