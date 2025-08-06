@@ -177,11 +177,50 @@ Dependencies:
 
 ## Plugin Configuration
 
-The plugin requires:
+### Plugin-Level Configuration
+
+The plugin requires these settings at the plugin level:
 
 - **OpenAI API Key**: For generating embeddings for semantic search
-- **Server Port**: HTTP port for FastMCP server (default: 8080, range: 1024-65535)
+- **Server Port**: HTTP port for FastMCP server (default: 8080, range: 1024-65535) 
 - **Debug Mode**: Optional debug logging
+- **LangSmith Integration**: Optional AI tracing and debugging
+- **InfluxDB Integration**: Optional historical data analysis
+
+### Device-Level Configuration ⭐ NEW
+
+**Important Architectural Change**: The plugin now uses a custom **MCP Server device** for server access configuration instead of plugin preferences.
+
+#### MCP Server Device
+
+The plugin creates/manages a single MCP Server device with the following:
+
+**Device Configuration**:
+- **Server Name**: Display name for the MCP Server instance
+- **Server Access**: Control how the server accepts connections
+  - Local Only (127.0.0.1): Recommended for security
+  - Remote Access (HTTP only): For network access
+
+**Device States** (Real-time monitoring):
+- `serverStatus`: Running, Stopped, Starting, Error
+- `serverPort`: Current HTTP port number
+- `accessMode`: Local Only or Remote Access  
+- `clientCount`: Number of connected clients
+- `lastActivity`: Timestamp of last server activity
+
+#### Benefits of Device-Based Configuration
+
+1. **Real-time Monitoring**: Server status visible in Indigo interface
+2. **Device-Level Control**: Start/stop server via Indigo device management
+3. **Single Server Enforcement**: Plugin ensures only one MCP Server device exists
+4. **Better Integration**: Native Indigo device lifecycle management
+5. **Future Extensibility**: Foundation for advanced server features
+
+#### Migration and Compatibility
+
+- **Automatic Migration**: Plugin detects legacy plugin configuration and creates device automatically
+- **Backwards Compatibility**: Continues working with existing setups during transition
+- **Single Device Validation**: Prevents creation of multiple MCP Server devices
 
 ## Environment Variables
 
@@ -208,7 +247,11 @@ To use with Claude Desktop, add to `claude_desktop_config.json`:
 }
 ```
 
-**Note**: Update the port number (8080) to match your configured server port.
+**Configuration Notes**:
+- Update the port number (8080) to match your configured server port
+- Use `localhost` for Local Only access mode (recommended)
+- Use your server's IP address for Remote Access mode (configure firewall accordingly)
+- Server access mode is controlled by the MCP Server device configuration
 
 ## FastMCP Design Architecture
 

@@ -24,7 +24,7 @@ class MockVectorStore(VectorStoreInterface):
         entity_types: Optional[List[str]] = None,
         top_k: int = 10,
         similarity_threshold: float = 0.7
-    ) -> List[Dict[str, Any]]:
+    ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Mock search using simple text matching.
         
@@ -35,7 +35,7 @@ class MockVectorStore(VectorStoreInterface):
             similarity_threshold: Minimum similarity score
             
         Returns:
-            List of matching entities with mock similarity scores
+            Tuple of (List of matching entities with mock similarity scores, metadata dict)
         """
         if entity_types is None:
             entity_types = ["devices", "variables", "actions"]
@@ -62,7 +62,22 @@ class MockVectorStore(VectorStoreInterface):
             # Limit results
             results[entity_type] = results[entity_type][:top_k]
         
-        return results
+        # Convert to flat list for return
+        flat_results = []
+        for entity_type, entities in results.items():
+            for entity in entities:
+                flat_results.append(entity)
+        
+        # Create metadata
+        total_found = len(flat_results)
+        metadata = {
+            "total_found": total_found,
+            "total_returned": min(total_found, top_k),
+            "truncated": total_found > top_k,
+            "similarity_threshold": similarity_threshold
+        }
+        
+        return flat_results, metadata
     
     def _calculate_mock_similarity(self, query: str, entity: Dict[str, Any]) -> float:
         """Calculate mock similarity score based on text matching."""

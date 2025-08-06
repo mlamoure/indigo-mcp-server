@@ -46,7 +46,69 @@ Example queries you can use:
 - **Setup**: Requires running InfluxDB instance with Indigo historical data
 - **Use Case**: Useful for users with existing InfluxDB logging setup
 
-## Initial Setup
+## Installation and Setup
+
+### Plugin Installation
+
+1. **Install Plugin**: Download and install the MCP Server plugin in Indigo Domotics
+2. **Plugin Configuration**: Configure the plugin with your OpenAI API key and other settings
+3. **Create MCP Server Device**: Create an MCP Server device to configure server access mode
+4. **Client Configuration**: Set up your MCP client (Claude Desktop) to connect to the server
+
+### Plugin Configuration
+
+#### Required Settings (Plugin Level)
+
+- **OpenAI API Key**: Essential for semantic search capabilities
+  - Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys)
+  - Configure in plugin preferences
+  - Used for generating embeddings for vector search
+- **Server Port**: HTTP port for the FastMCP server (default: 8080, range: 1024-65535)
+
+#### Optional Settings (Plugin Level)
+
+- **Debug Mode**: Enable detailed logging for troubleshooting
+- **LangSmith Integration**: Advanced tracing for AI interactions (optional)
+- **InfluxDB Integration**: Historical data analysis (optional)
+- **Model Configuration**: Choose OpenAI models for different tasks
+
+### MCP Server Device Configuration ⭐ NEW
+
+**Important**: The plugin now uses an **MCP Server device** for server access configuration instead of plugin preferences. This provides better integration with Indigo and real-time status monitoring.
+
+#### Creating the MCP Server Device
+
+1. **Create Device**: In Indigo, create a new device
+2. **Select Type**: Choose "MCP Server" from the device types
+3. **Configure Access**: Set the Server Access mode:
+   - **Local Only (127.0.0.1)**: Server accepts connections only from localhost (recommended)
+   - **Remote Access (HTTP only)**: Server accepts connections from any IP (configure firewall accordingly)
+
+#### Device States and Monitoring
+
+The MCP Server device provides real-time status information:
+
+- **Server Status**: Running, Stopped, Starting, Error
+- **Server Port**: Current HTTP port number  
+- **Access Mode**: Local Only or Remote Access
+- **Connected Clients**: Number of active client connections
+- **Last Activity**: Timestamp of last server activity
+
+#### Device Benefits
+
+- **Real-time Monitoring**: See server status in Indigo interface
+- **Single Device Enforcement**: Only one MCP Server per plugin instance
+- **Device-level Control**: Start/stop server via device communication
+- **Better Integration**: Native Indigo device management
+
+### Migration from Plugin Configuration
+
+**Automatic Migration**: If you're upgrading from an older version, the plugin will automatically:
+
+1. **Detect Legacy Configuration**: Check for existing plugin-level server access settings
+2. **Create Device**: Automatically create an MCP Server device with your current settings
+3. **Migrate Settings**: Transfer Server Access Mode from plugin to device configuration
+4. **Maintain Compatibility**: Continue working with existing setups
 
 ### Why Vector Store?
 
@@ -356,8 +418,10 @@ http://[your server]:[YOUR_PORT]/mcp
 
 ### HTTP Server Security
 
-- **Local Only**: Server binds to 127.0.0.1 (localhost) by default for security
-- If you decide to enable Remote acces, **No Internet Exposure**: **NEVER** expose this HTTP server to the internet
+- **Local Only**: Server binds to 127.0.0.1 (localhost) by default for security (configured via MCP Server device)
+- **Remote Access**: Can be enabled via MCP Server device for network access
+- **No Internet Exposure**: **NEVER** expose this HTTP server to the internet
+- **Device-Level Control**: Server access mode is now controlled through the MCP Server device configuration
 
 ## Improving AI Results
 
