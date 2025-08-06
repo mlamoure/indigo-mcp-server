@@ -117,17 +117,6 @@
 
     <Field id="separator5" type="separator"/>
 
-    <!-- Server Access Configuration -->
-    <Field id="access_mode" type="menu" defaultValue="local_only">
-        <Label>Server Access Mode:</Label>
-        <List>
-            <Option value="local_only">Local Only (127.0.0.1)</Option>
-            <Option value="remote_access">Remote Access (HTTP only)</Option>
-        </List>
-    </Field>
-
-    <Field id="separator6" type="separator"/>
-
     <!-- Security Configuration -->
     <Field id="bearer_token" type="textfield" defaultValue="" readonly="true">
         <Label>Bearer Token (Auto-generated):</Label>

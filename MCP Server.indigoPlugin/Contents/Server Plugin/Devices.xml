@@ -1,0 +1,61 @@
+<?xml version="1.0"?>
+<Devices>
+    <Device type="custom" id="mcpServer">
+        <Name>MCP Server</Name>
+        <ConfigUI>
+            <Field id="serverName" type="textfield" defaultValue="MCP Server Instance">
+                <Label>Server Name:</Label>
+                <Description>Display name for this MCP Server instance</Description>
+            </Field>
+            
+            <Field id="separator1" type="separator"/>
+            
+            <Field id="server_access_mode" type="menu" defaultValue="local_only">
+                <Label>Server Access:</Label>
+                <Description>Control how the MCP server accepts connections</Description>
+                <List>
+                    <Option value="local_only">Local Only (127.0.0.1)</Option>
+                    <Option value="remote_access">Remote Access (HTTP only)</Option>
+                </List>
+            </Field>
+            
+            <Field id="access_help" type="label" fontSize="small" alignWithControl="false" alignText="left">
+                <Label>Local Only: Server accepts connections only from localhost (recommended)
+Remote Access: Server accepts connections from any IP (configure firewall accordingly)
+                </Label>
+            </Field>
+        </ConfigUI>
+        
+        <States>
+            <State id="serverStatus">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Server Status</TriggerLabel>
+                <ControlPageLabel>Status</ControlPageLabel>
+            </State>
+            
+            <State id="serverPort">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Server Port</TriggerLabel>
+                <ControlPageLabel>Port</ControlPageLabel>
+            </State>
+            
+            <State id="accessMode">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Access Mode</TriggerLabel>
+                <ControlPageLabel>Access Mode</ControlPageLabel>
+            </State>
+            
+            <State id="clientCount">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Connected Clients</TriggerLabel>
+                <ControlPageLabel>Clients</ControlPageLabel>
+            </State>
+            
+            <State id="lastActivity">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last Activity</TriggerLabel>
+                <ControlPageLabel>Last Activity</ControlPageLabel>
+            </State>
+        </States>
+    </Device>
+</Devices>
