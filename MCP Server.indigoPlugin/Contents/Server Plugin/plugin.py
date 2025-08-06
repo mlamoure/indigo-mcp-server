@@ -10,6 +10,7 @@ except ImportError:
 
 import logging
 import os
+
 import openai
 
 # Import our modules
@@ -74,7 +75,7 @@ class Plugin(indigo.PluginBase):
         self.mcp_server_core = None
         self.auth_manager = AuthManager(logger=self.logger)
         self.server_port = plugin_prefs.get("server_port", 8080)
-        
+
         # Device management
         self.mcp_server_device = None
 
@@ -278,9 +279,6 @@ class Plugin(indigo.PluginBase):
             self.logger.error(f"Failed to initialize data provider: {e}")
             return
 
-        # Check for MCP Server device, migrate from plugin config if needed
-        self._migrate_and_start_mcp_server()
-
     def shutdown(self) -> None:
         """
         Called when the plugin is being shut down.
@@ -356,7 +354,7 @@ class Plugin(indigo.PluginBase):
     def test_connections_button(self, values_dict: indigo.Dict) -> indigo.Dict:
         """Button action to test connections with current configuration values."""
         self.logger.info("Testing connections with current configuration...")
-        
+
         # Temporarily update instance variables with dialog values for testing
         old_api_key = self.openai_api_key
         old_enable_influxdb = self.enable_influxdb
@@ -365,7 +363,7 @@ class Plugin(indigo.PluginBase):
         old_influx_login = self.influx_login
         old_influx_password = self.influx_password
         old_influx_database = self.influx_database
-        
+
         try:
             # Apply values from dialog temporarily
             self.openai_api_key = values_dict.get("openai_api_key", "")
@@ -375,15 +373,17 @@ class Plugin(indigo.PluginBase):
             self.influx_login = values_dict.get("influx_login", "")
             self.influx_password = values_dict.get("influx_password", "")
             self.influx_database = values_dict.get("influx_database", "indigo")
-            
+
             # Test connections
             connections_ok = self.test_connections()
-            
+
             if connections_ok:
                 self.logger.info("✅ All required connections tested successfully!")
             else:
-                self.logger.error("❌ Some required connections failed. Please check the logs above.")
-            
+                self.logger.error(
+                    "❌ Some required connections failed. Please check the logs above."
+                )
+
         finally:
             # Restore original values
             self.openai_api_key = old_api_key
@@ -393,7 +393,7 @@ class Plugin(indigo.PluginBase):
             self.influx_login = old_influx_login
             self.influx_password = old_influx_password
             self.influx_database = old_influx_database
-        
+
         return values_dict
 
     ########################################
@@ -477,7 +477,9 @@ class Plugin(indigo.PluginBase):
         Called when a device should start communication.
         """
         if device.deviceTypeId == "mcpServer":
-            self.logger.info(f"Starting communication for MCP Server device: {device.name}")
+            self.logger.info(
+                f"Starting communication for MCP Server device: {device.name}"
+            )
             self._start_mcp_server_from_device(device)
 
     def deviceStopComm(self, device: indigo.Device) -> None:
@@ -485,7 +487,9 @@ class Plugin(indigo.PluginBase):
         Called when a device should stop communication.
         """
         if device.deviceTypeId == "mcpServer":
-            self.logger.info(f"Stopping communication for MCP Server device: {device.name}")
+            self.logger.info(
+                f"Stopping communication for MCP Server device: {device.name}"
+            )
             self._stop_mcp_server_from_device(device)
 
     def deviceUpdated(self, origDev: indigo.Device, newDev: indigo.Device) -> None:
@@ -493,36 +497,67 @@ class Plugin(indigo.PluginBase):
         Called when a device configuration is updated.
         """
         if newDev.deviceTypeId == "mcpServer":
-            self.logger.info(f"Configuration updated for MCP Server device: {newDev.name}")
+            changes = []
             
-            # Check if access mode changed
-            old_access_mode = origDev.pluginProps.get("server_access_mode", "local_only")
+            # Check property changes (actual configuration)
+            for key in newDev.pluginProps:
+                old_val = origDev.pluginProps.get(key)
+                new_val = newDev.pluginProps.get(key)
+                if old_val != new_val:
+                    changes.append(f"property '{key}': '{old_val}' → '{new_val}'")
+            
+            # Check state changes (runtime status)
+            for key in newDev.states:
+                if key in origDev.states:
+                    old_val = origDev.states[key]
+                    new_val = newDev.states[key]
+                    if old_val != new_val:
+                        changes.append(f"state '{key}': '{old_val}' → '{new_val}'")
+            
+            # Check device name change
+            if origDev.name != newDev.name:
+                changes.append(f"device name: '{origDev.name}' → '{newDev.name}'")
+            
+            # Log specific changes at debug level
+            if changes:
+                self.logger.debug(f"MCP Server device '{newDev.name}' updated: {', '.join(changes)}")
+
+            # Check if access mode changed (keep at INFO level - important configuration change)
+            old_access_mode = origDev.pluginProps.get(
+                "server_access_mode", "local_only"
+            )
             new_access_mode = newDev.pluginProps.get("server_access_mode", "local_only")
-            
+
             if old_access_mode != new_access_mode:
-                self.logger.info(f"Access mode changed from {old_access_mode} to {new_access_mode}, restarting server")
+                self.logger.info(
+                    f"Access mode changed from {old_access_mode} to {new_access_mode}, restarting server"
+                )
                 self._restart_mcp_server_from_device(newDev)
-            
+
             # Update device name if it changed
             if origDev.name != newDev.name:
                 newDev.updateStateOnServer(key="serverName", value=newDev.name)
 
-    def validateDeviceConfigUi(self, valuesDict: indigo.Dict, typeId: str, devId: int) -> tuple:
+    def validateDeviceConfigUi(
+        self, valuesDict: indigo.Dict, typeId: str, devId: int
+    ) -> tuple:
         """
         Validate device configuration.
         """
         errors_dict = indigo.Dict()
-        
+
         if typeId == "mcpServer":
             # Enforce single MCP Server device
             if self._count_mcp_server_devices(exclude_id=devId) > 0:
-                errors_dict["serverName"] = "Only one MCP Server device is allowed per plugin"
-            
+                errors_dict["serverName"] = (
+                    "Only one MCP Server device is allowed per plugin"
+                )
+
             # Validate server name
             server_name = valuesDict.get("serverName", "").strip()
             if not server_name:
                 errors_dict["serverName"] = "Server name is required"
-            
+
         return (len(errors_dict) == 0, valuesDict, errors_dict)
 
     def _count_mcp_server_devices(self, exclude_id: int = None) -> int:
@@ -551,32 +586,36 @@ class Plugin(indigo.PluginBase):
         try:
             # Store reference to device
             self.mcp_server_device = device
-            
+
             # Get access mode from device properties
-            device_access_mode = device.pluginProps.get("server_access_mode", "local_only")
-            
+            device_access_mode = device.pluginProps.get(
+                "server_access_mode", "local_only"
+            )
+
             # Convert access mode string to enum
             access_mode = (
                 AccessMode.REMOTE_ACCESS
                 if device_access_mode == "remote_access"
                 else AccessMode.LOCAL_ONLY
             )
-            
+
             # Update device states
             device.updateStateOnServer(key="serverStatus", value="Starting")
             device.updateStateOnServer(key="serverPort", value=self.server_port)
-            device.updateStateOnServer(key="accessMode", value=device_access_mode.replace("_", " ").title())
+            device.updateStateOnServer(
+                key="accessMode", value=device_access_mode.replace("_", " ").title()
+            )
             device.updateStateOnServer(key="clientCount", value=0)
-            
+
             # Initialize data provider if needed
             if not self.data_provider:
                 self.data_provider = IndigoDataProvider(logger=self.logger)
                 self.logger.info("Data provider initialized for device")
-            
+
             # Initialize and start MCP server
             if self.mcp_server_core:
                 self.mcp_server_core.stop()
-            
+
             self.mcp_server_core = MCPServerCore(
                 data_provider=self.data_provider,
                 server_name="indigo-mcp-server",
@@ -585,15 +624,15 @@ class Plugin(indigo.PluginBase):
                 bearer_token=self.bearer_token,
                 logger=self.logger,
             )
-            
+
             self.mcp_server_core.start()
-            
+
             # Update device states
             device.updateStateOnServer(key="serverStatus", value="Running")
             device.updateStateOnServer(key="lastActivity", value="Server started")
-            
-            self.logger.info(f"MCP server started from device {device.name}")
-            
+
+            self.logger.info(f"{device.name} started.")
+
         except Exception as e:
             device.updateStateOnServer(key="serverStatus", value="Error")
             self.logger.error(f"Failed to start MCP server from device: {e}")
@@ -604,17 +643,17 @@ class Plugin(indigo.PluginBase):
         """
         try:
             device.updateStateOnServer(key="serverStatus", value="Stopping")
-            
+
             if self.mcp_server_core:
                 self.mcp_server_core.stop()
                 self.mcp_server_core = None
-            
+
             device.updateStateOnServer(key="serverStatus", value="Stopped")
             device.updateStateOnServer(key="clientCount", value=0)
             device.updateStateOnServer(key="lastActivity", value="Server stopped")
-            
+
             self.logger.info(f"MCP server stopped for device {device.name}")
-            
+
         except Exception as e:
             device.updateStateOnServer(key="serverStatus", value="Error")
             self.logger.error(f"Failed to stop MCP server for device: {e}")
@@ -637,25 +676,25 @@ class Plugin(indigo.PluginBase):
         """
         if not user_cancelled:
             self.logger.info("Applying configuration changes...")
-            
+
             # Update ALL configuration values from the dialog
             self.debug = values_dict.get("showDebugInfo", False)
             self.log_level = int(values_dict.get("log_level", 20))
             self.indigo_log_handler.setLevel(self.log_level)
             self.plugin_file_handler.setLevel(self.log_level)
             logging.getLogger("Plugin").setLevel(self.log_level)
-            
+
             # Core configuration
             self.openai_api_key = values_dict.get("openai_api_key", "")
             self.large_model = values_dict.get("large_model", "gpt-4o")
             self.small_model = values_dict.get("small_model", "gpt-4o-mini")
             self.server_port = int(values_dict.get("server_port", 8080))
-            
+
             # Security configuration (legacy, now handled by device)
             # Keep for backwards compatibility during migration
             self.access_mode = values_dict.get("access_mode", "local_only")
             self.bearer_token = values_dict.get("bearer_token", "")
-            
+
             # LangSmith configuration
             self.enable_langsmith = values_dict.get("enable_langsmith", False)
             self.langsmith_endpoint = values_dict.get(
@@ -663,7 +702,7 @@ class Plugin(indigo.PluginBase):
             )
             self.langsmith_api_key = values_dict.get("langsmith_api_key", "")
             self.langsmith_project = values_dict.get("langsmith_project", "")
-            
+
             # InfluxDB configuration
             self.enable_influxdb = values_dict.get("enable_influxdb", False)
             self.influx_url = values_dict.get("influx_url", "http://localhost")
@@ -671,21 +710,23 @@ class Plugin(indigo.PluginBase):
             self.influx_login = values_dict.get("influx_login", "")
             self.influx_password = values_dict.get("influx_password", "")
             self.influx_database = values_dict.get("influx_database", "indigo")
-            
+
             # Generate bearer token if not set (same as startup)
             if not self.bearer_token:
                 self.bearer_token = self.auth_manager.generate_bearer_token()
                 # Save to plugin preferences
                 plugin_prefs = self.pluginPrefs
                 plugin_prefs["bearer_token"] = self.bearer_token
-                self.logger.info("Generated new bearer token for MCP server authentication")
-            
+                self.logger.info(
+                    "Generated new bearer token for MCP server authentication"
+                )
+
             # Set ALL environment variables (same as startup)
             os.environ["OPENAI_API_KEY"] = self.openai_api_key
             os.environ["LARGE_MODEL"] = self.large_model
             os.environ["SMALL_MODEL"] = self.small_model
             os.environ["OPENAI_EMBEDDING_MODEL"] = "text-embedding-3-small"
-            
+
             # Set LangSmith environment variables
             if self.enable_langsmith:
                 os.environ["LANGSMITH_TRACING"] = "true"
@@ -694,7 +735,7 @@ class Plugin(indigo.PluginBase):
                 os.environ["LANGSMITH_PROJECT"] = self.langsmith_project
             else:
                 os.environ["LANGSMITH_TRACING"] = "false"
-            
+
             # Set InfluxDB environment variables
             if self.enable_influxdb:
                 os.environ["INFLUXDB_HOST"] = self.influx_url.replace(
@@ -708,137 +749,30 @@ class Plugin(indigo.PluginBase):
                 self.logger.info("InfluxDB environment variables configured")
             else:
                 os.environ["INFLUXDB_ENABLED"] = "false"
-            
+
             # Set DB_FILE environment variable for vector store (same as startup)
             db_path = os.path.join(
                 indigo.server.getInstallFolderPath(),
                 "Preferences/Plugins/com.vtmikel.mcp_server/vector_db",
             )
             os.environ["DB_FILE"] = db_path
-            
+
             # Reinitialize LangSmith configuration
             self.langsmith_config = get_langsmith_config()
-            
+
             # Test connections with new configuration
             self.logger.info("Testing connections with new configuration...")
             connections_ok = self.test_connections()
-            
+
             if not connections_ok:
                 self.logger.error(
-                    "⚠️ Some required connections failed. Configuration saved but MCP server not restarted."
+                    "⚠️ Some required connections failed. Configuration saved."
                 )
                 self.logger.error(
                     "Please check your configuration and restart the plugin manually."
                 )
                 return
-            
-            # Restart MCP server with new configuration
-            self.logger.info("Configuration validated, restarting MCP server...")
-            if self.mcp_server_core:
-                self.mcp_server_core.stop()
-            
-            # Initialize data provider if not already initialized
-            if not self.data_provider:
-                try:
-                    self.data_provider = IndigoDataProvider(logger=self.logger)
-                    self.logger.info("Data provider initialized")
-                except Exception as e:
-                    self.logger.error(f"Failed to initialize data provider: {e}")
-                    return
-            
-            # Reinitialize MCP server with new configuration
-            try:
-                access_mode = (
-                    AccessMode.REMOTE_ACCESS
-                    if self.access_mode == "remote_access"
-                    else AccessMode.LOCAL_ONLY
-                )
-                self.mcp_server_core = MCPServerCore(
-                    data_provider=self.data_provider,
-                    server_name="indigo-mcp-server",
-                    port=self.server_port,
-                    access_mode=access_mode,
-                    bearer_token=self.bearer_token,
-                    logger=self.logger,
-                )
-                self.mcp_server_core.start()
-                self.logger.info("✅ MCP server restarted successfully with new configuration")
-            except Exception as e:
-                self.logger.error(f"Failed to restart MCP server: {e}")
-                
-    def _migrate_and_start_mcp_server(self) -> None:
-        """
-        Migrate from plugin configuration to device configuration and start MCP server.
-        """
-        # Check if we have any MCP Server devices
-        mcp_device = self._get_mcp_server_device()
-        
-        if mcp_device:
-            # We have a device, use it
-            self.logger.info(f"Found MCP Server device: {mcp_device.name}")
-            self._start_mcp_server_from_device(mcp_device)
-        else:
-            # No device exists, check if we should migrate from plugin config
-            if hasattr(self, 'access_mode') and self.access_mode:
-                # Migration scenario - create device with current plugin settings
-                self.logger.info("Migrating from plugin configuration to device configuration")
-                self._create_migration_device()
-            else:
-                # Start with legacy plugin configuration (fallback)
-                self.logger.info("Starting MCP server with plugin configuration (legacy mode)")
-                self._start_mcp_server_legacy()
-                
-    def _create_migration_device(self) -> None:
-        """
-        Create a device to migrate from plugin configuration.
-        """
-        try:
-            # Create the device programmatically
-            props = {
-                "serverName": "MCP Server Instance",
-                "server_access_mode": self.access_mode,
-            }
-            
-            new_device = indigo.device.create(
-                protocol=indigo.kProtocol.Plugin,
-                address="mcp_server_migrated",
-                name="MCP Server",
-                pluginId="com.vtmikel.mcp_server",
-                deviceTypeId="mcpServer",
-                props=props,
-                folder=0
-            )
-            
-            self.logger.info(f"Created MCP Server device during migration: {new_device.name}")
-            # Device will be started via deviceStartComm callback
-            
-        except Exception as e:
-            self.logger.error(f"Failed to create migration device: {e}")
-            # Fall back to legacy mode
-            self._start_mcp_server_legacy()
-            
-    def _start_mcp_server_legacy(self) -> None:
-        """
-        Start MCP server using legacy plugin configuration (fallback).
-        """
-        try:
-            # Convert access mode string to enum
-            access_mode = (
-                AccessMode.REMOTE_ACCESS
-                if self.access_mode == "remote_access"
-                else AccessMode.LOCAL_ONLY
-            )
 
-            self.mcp_server_core = MCPServerCore(
-                data_provider=self.data_provider,
-                server_name="indigo-mcp-server",
-                port=self.server_port,
-                access_mode=access_mode,
-                bearer_token=self.bearer_token,
-                logger=self.logger,
+            self.logger.info(
+                "✅ Configuration updated successfully. MCP server will use new settings on next device restart."
             )
-            self.mcp_server_core.start()
-            self.logger.info("MCP server core started (legacy mode)")
-        except Exception as e:
-            self.logger.error(f"Failed to start MCP server core: {e}")
-            return
