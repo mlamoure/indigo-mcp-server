@@ -75,26 +75,76 @@ understands the meaning and context of your queries, making searches more intuit
 
 ### Available MCP Tools
 
-#### 1. search_entities
+#### 1. search_entities ⭐ ENHANCED
 
-Natural language search across all Indigo entities with intelligent result limiting:
+Natural language search across all Indigo entities with intelligent result limiting and state filtering:
 
-- **Purpose**: Semantic search across devices, variables, and action groups
-- **Input**: Natural language query with smart modifiers (e.g., "bedroom lights", "all temperature sensors", "few dimmers")
+- **Purpose**: Semantic search across devices, variables, and action groups with optional state-based filtering
+- **Input**: Natural language query with smart modifiers and optional state conditions
+- **NEW State Features**:
+    - **State Filter Parameter**: Optional state conditions like `{"onState": true}` or `{"brightnessLevel": {"gt": 50}}`
+    - **Automatic State Detection**: Recognizes state keywords ("on", "off", "bright", "dim") and adjusts search behavior
+    - **Smart Suggestions**: When state queries are detected with limited results, suggests using dedicated state tools
+    - **Increased Limits**: Automatically increases result limits for state-based queries to find more matches
 - **Search Features**:
     - **Intelligent Result Limits**: Automatically adjusts based on query terms
         - Default: 10 results with full details
+        - State queries: 50+ results to find matches after filtering
         - "few"/"some": 5 results with full details
         - "many"/"list": 20 results with minimal fields
         - "all": 50 results with minimal fields  
         - "one"/"single": 1 result with full details
     - **Performance Optimization**: Large result sets (20+) use minimal fields for faster responses
-    - **Truncation Feedback**: Clear messages when results are limited (e.g., "Found 855 entities, showing top 10")
+    - **Truncation Feedback**: Clear messages when results are limited with suggestions for better tools
     - **Semantic Enhancement**: AI embeddings with keyword expansion for improved matching
     - **Device Type Filtering**: Support for dimmer, relay, sensor, thermostat, sprinkler, io, other
-- **Output**: Formatted results with relevance scoring, truncation indicators, and field optimization notices
+- **Output**: Formatted results with relevance scoring, state filtering indicators, and tool suggestions
 
-#### 2. get_devices_by_type
+#### 2. list_devices ⭐ NEW
+
+List all devices with optional state filtering - no limits, no semantic search:
+
+- **Purpose**: Get ALL devices with complete information, optionally filtered by state
+- **Input**: Optional `state_filter` parameter using Indigo state names
+- **State Filtering Examples**:
+    - `{"onState": true}` - All devices that are on
+    - `{"brightnessLevel": {"gt": 50}}` - Devices with brightness > 50%
+    - `{"onState": false, "errorState": ""}` - Off devices with no errors
+    - `{"enabled": true}` - All enabled devices
+- **Operators**: `gt`, `gte`, `lt`, `lte`, `eq`, `ne`, `contains`, `regex`
+- **Output**: All matching devices with complete properties - **no artificial limits**
+
+#### 3. list_variables ⭐ NEW
+
+List all variables with current values:
+
+- **Purpose**: Get ALL variables in the system
+- **Input**: None (returns everything)
+- **Output**: Complete variable list with IDs, names, values, and properties
+
+#### 4. list_action_groups ⭐ NEW
+
+List all action groups:
+
+- **Purpose**: Get ALL action groups/scenes in the system
+- **Input**: None (returns everything)  
+- **Output**: Complete action group list with IDs, names, and descriptions
+
+#### 5. get_devices_by_state ⭐ NEW
+
+Purpose-built tool for state-based device queries:
+
+- **Purpose**: Find devices matching specific state conditions without semantic search
+- **Input**: 
+    - `state_conditions`: Required state requirements using Indigo state names
+    - `device_types`: Optional device type filtering (dimmer, relay, sensor, etc.)
+- **Examples**:
+    - `get_devices_by_state({"onState": true})` - All devices that are on
+    - `get_devices_by_state({"onState": true}, ["dimmer"])` - All dimmers that are on
+    - `get_devices_by_state({"brightnessLevel": {"lte": 50}})` - Devices dimmed to 50% or less
+- **Output**: All matching devices with complete properties and summary statistics
+
+#### 6. get_devices_by_type
 
 Get all devices of a specific type without semantic filtering:
 
@@ -103,7 +153,7 @@ Get all devices of a specific type without semantic filtering:
 - **Output**: All devices of the specified type with complete properties
 - **Use Case**: When you need every device of a type, not contextual search results
 
-#### 3. Device Control Tools
+#### 7. Device Control Tools
 
 Direct device control capabilities:
 
@@ -111,7 +161,7 @@ Direct device control capabilities:
 - **device_turn_off**: Turn off a device by device_id
 - **device_set_brightness**: Set brightness level (0-1 or 0-100) for dimmable devices
 
-#### 4. variable_update
+#### 8. variable_update
 
 Update Indigo variable values:
 
@@ -119,7 +169,7 @@ Update Indigo variable values:
 - **Input**: Variable ID and new value (as string)
 - **Output**: Operation status and updated variable information
 
-#### 5. action_execute_group
+#### 9. action_execute_group
 
 Execute Indigo action groups (scenes):
 
@@ -127,7 +177,7 @@ Execute Indigo action groups (scenes):
 - **Input**: Action group ID and optional delay in seconds
 - **Output**: Execution status and confirmation
 
-#### 6. analyze_historical_data
+#### 10. analyze_historical_data
 
 AI-powered historical data analysis using LangGraph workflow:
 
@@ -185,7 +235,42 @@ When you see messages like `"Found 855 entities (showing top 10 - use more speci
 
 ### Example Scenarios
 
-#### Scenario 1: Specific Search (Full Details)
+#### Scenario 1: State-Based Queries ⭐ NEW
+```
+Query: "summarize the lights that are on"
+BEFORE: search_entities("lights on") → Returns only 10 lights, incomplete results
+AFTER: list_devices({"onState": true}) → Returns ALL devices that are on (no limits)
+
+Alternative approaches:
+- get_devices_by_state({"onState": true}, ["dimmer", "relay"]) → All lights that are on
+- search_entities("lights on") → Now detects state query and suggests better tools
+```
+
+#### Scenario 2: Complex State Filtering ⭐ NEW
+```
+Query: "Find all dimmers with brightness between 25% and 75%"
+Solution: get_devices_by_state({
+    "brightnessLevel": {"gte": 25, "lte": 75},
+    "onState": true
+}, ["dimmer"])
+
+Result: All dimmer devices that are on with brightness 25-75%
+Fields: Complete device properties with current states
+Best for: Precise state-based device control
+```
+
+#### Scenario 3: Complete System Overview ⭐ NEW
+```
+Query: "Show me everything"
+Solutions:
+- list_devices() → ALL devices (no limits)
+- list_variables() → ALL variables
+- list_action_groups() → ALL action groups
+
+Best for: System-wide status checks and comprehensive dashboards
+```
+
+#### Scenario 4: Specific Search (Full Details)
 ```
 Query: "front door sensor"
 Result: "Found 2 entities (2 devices)"
@@ -193,35 +278,29 @@ Fields: Full device properties including all states, settings, and metadata
 Best for: Getting complete information about specific devices
 ```
 
-#### Scenario 2: Browse All Devices (Minimal Fields)
+#### Scenario 5: Browse All Devices (Minimal Fields)
 ```
 Query: "show me all lights"  
 Result: "Found 127 entities (showing 50 with minimal fields - use more specific query for additional results)"
-Fields: name, class, id, deviceTypeId, description, model, onOffState, states
+Fields: name, class, id, deviceTypeId, description, model, onState, states
 Best for: Getting an overview of many devices quickly
 ```
 
-#### Scenario 3: Truncated Results (Need Refinement)
+#### Scenario 6: Truncated Results with State Detection ⭐ ENHANCED
 ```
-Query: "sensors"
-Result: "Found 455 entities (showing top 10 - use more specific query for additional results)"
-Recommendation: Try "motion sensors", "temperature sensors", or "few sensors in bedroom"
-```
-
-#### Scenario 4: Moderate Browsing (Minimal Fields)
-```
-Query: "list many motion sensors"
-Result: "Found 23 entities (20 devices with minimal fields)"
-Fields: Minimal set for performance
-Best for: Browsing moderate-sized collections efficiently
+Query: "lights that are on"
+Result: "State-based query detected with truncated results. 
+         Consider using list_devices(state_filter={'onState': true}) for complete results."
+Recommendation: Use dedicated state tools for complete information
 ```
 
-#### Scenario 5: Single Item Lookup (Full Details)
+#### Scenario 7: Error State Monitoring ⭐ NEW
 ```
-Query: "one living room thermostat"
-Result: "Found 1 entities (1 device)"
-Fields: Complete device information with all properties
-Best for: Detailed inspection of a specific device
+Query: "Find all devices with communication errors"
+Solution: get_devices_by_state({"errorState": {"ne": ""}})
+
+Result: All devices with non-empty error states
+Best for: System health monitoring and troubleshooting
 ```
 
 ## MCP Client Setup

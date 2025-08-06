@@ -4,6 +4,7 @@ Result formatter for search results.
 
 from typing import Dict, Any, List, Optional
 from ...common.json_encoder import filter_json, KEYS_TO_KEEP_MINIMAL_DEVICES
+from ...common.state_filter import StateFilter
 
 
 class ResultFormatter:
@@ -14,7 +15,8 @@ class ResultFormatter:
         results: Dict[str, List[Dict]], 
         query: str,
         minimal_fields: bool = False,
-        search_metadata: Optional[Dict[str, Any]] = None
+        search_metadata: Optional[Dict[str, Any]] = None,
+        state_detected: bool = False
     ) -> Dict[str, Any]:
         """
         Format search results for output.
@@ -32,7 +34,7 @@ class ResultFormatter:
         total_count = sum(len(entities) for entities in results.values())
         
         # Create summary with metadata information
-        summary = self._create_summary(results, total_count, minimal_fields, search_metadata)
+        summary = self._create_summary(results, total_count, minimal_fields, search_metadata, state_detected)
         
         # Format individual results
         formatted = {
@@ -41,6 +43,10 @@ class ResultFormatter:
             "total_count": total_count,
             "results": {}
         }
+        
+        # Add state query suggestion if appropriate
+        if state_detected and search_metadata and search_metadata.get("truncated", False):
+            formatted["suggestion"] = "State-based query detected with truncated results. Consider using list_devices(state_filter={...}) or get_devices_by_state() for complete state information."
         
         # Add results for each entity type
         for entity_type, entities in results.items():
@@ -53,7 +59,8 @@ class ResultFormatter:
         results: Dict[str, List[Dict]], 
         total_count: int, 
         minimal_fields: bool = False,
-        search_metadata: Optional[Dict[str, Any]] = None
+        search_metadata: Optional[Dict[str, Any]] = None,
+        state_detected: bool = False
     ) -> str:
         """Create a summary text for the search results."""
         summary = []

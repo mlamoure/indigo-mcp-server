@@ -15,6 +15,8 @@ from fastmcp.server.auth import BearerAuthProvider
 from .adapters.data_provider import DataProvider
 from .adapters.vector_store_interface import VectorStoreInterface
 from .common.vector_store.vector_store_manager import VectorStoreManager
+from .common.state_filter import StateFilter
+from .handlers import ListHandlers
 from .tools.search_entities import SearchEntitiesHandler
 from .tools.get_devices_by_type import GetDevicesByTypeHandler
 from .tools.device_control import DeviceControlHandler
@@ -107,6 +109,12 @@ class MCPServerCore:
             
             # Initialize get devices by type handler
             self.get_devices_by_type_handler = GetDevicesByTypeHandler(
+                data_provider=self.data_provider,
+                logger=self.logger
+            )
+            
+            # Initialize list handlers for shared logic
+            self.list_handlers = ListHandlers(
                 data_provider=self.data_provider,
                 logger=self.logger
             )
@@ -221,7 +229,8 @@ class MCPServerCore:
         def search_entities(
             query: str,
             device_types: list[str] = None,
-            entity_types: list[str] = None
+            entity_types: list[str] = None,
+            state_filter: dict = None
         ) -> str:
             """
             Search for Indigo entities using natural language with intelligent result limiting.
@@ -253,6 +262,10 @@ class MCPServerCore:
                 entity_types: Optional list of entity types to search. Valid types: device, variable, action
                              Note: device_types and entity_types are mutually exclusive - if device_types
                              is provided, entity_types is ignored and only devices are searched.
+                state_filter: Optional state conditions to filter results AFTER semantic search.
+                             Examples: {"onState": true}, {"brightnessLevel": {"gt": 50}}
+                             Note: When state filtering is detected in query, consider using
+                             list_devices or get_devices_by_state for complete results.
                 
             Returns:
                 JSON with search results grouped by entity type, including relevance scores and
@@ -265,6 +278,12 @@ class MCPServerCore:
                 - search_entities("many motion sensors") - Returns 20 sensors with minimal fields
                 - search_entities("lights", device_types=["dimmer"]) - Find only dimmer devices
                 - search_entities("morning", entity_types=["action"]) - Find only actions
+                - search_entities("lights", state_filter={"onState": true}) - Lights that are on
+                
+            State Filtering Note:
+                When searching for devices by state (e.g., "lights that are on"), this tool will
+                apply semantic search first, then filter by state. For complete state-based queries,
+                consider using list_devices(state_filter={...}) or get_devices_by_state() instead.
             """
             try:
                 # Validate device types
@@ -285,7 +304,7 @@ class MCPServerCore:
                             "query": query
                         })
                 
-                results = self.search_handler.search(query, device_types, entity_types)
+                results = self.search_handler.search(query, device_types, entity_types, state_filter)
                 return safe_json_dumps(results)
                 
             except Exception as e:
@@ -444,6 +463,121 @@ class MCPServerCore:
                 return safe_json_dumps(result)
             except Exception as e:
                 self.logger.error(f"Historical analysis error: {e}")
+                return safe_json_dumps({"error": str(e), "success": False})
+        
+        @self.mcp_server.tool()
+        def list_devices(state_filter: dict = None) -> str:
+            """
+            List all devices, optionally filtered by state conditions.
+            
+            This tool returns ALL devices without semantic filtering, making it ideal for
+            getting complete device lists or checking states across all devices.
+            
+            Args:
+                state_filter: Optional dictionary of state conditions using Indigo state names.
+                            Examples:
+                            - {"onState": true} - devices that are on
+                            - {"brightnessLevel": {"gt": 50}} - brightness greater than 50
+                            - {"onState": false, "errorState": ""} - off devices with no errors
+            
+            Returns:
+                JSON with all devices (no limits) including full properties and states
+                
+            Examples:
+                - list_devices() - Get all devices
+                - list_devices({"onState": true}) - Get all devices that are on
+                - list_devices({"brightnessLevel": {"gt": 0}}) - Get all devices with brightness > 0
+            """
+            try:
+                devices = self.list_handlers.list_all_devices(state_filter=state_filter)
+                return safe_json_dumps({
+                    "devices": devices,
+                    "count": len(devices),
+                    "state_filter": state_filter
+                })
+            except Exception as e:
+                self.logger.error(f"List devices error: {e}")
+                return safe_json_dumps({"error": str(e), "success": False})
+        
+        @self.mcp_server.tool()
+        def list_variables() -> str:
+            """
+            List all variables with current values.
+            
+            This tool returns ALL variables without filtering, providing complete
+            variable information for the Indigo system.
+            
+            Returns:
+                JSON with all variables including names, IDs, and current values
+            """
+            try:
+                variables = self.list_handlers.list_all_variables()
+                return safe_json_dumps({
+                    "variables": variables,
+                    "count": len(variables)
+                })
+            except Exception as e:
+                self.logger.error(f"List variables error: {e}")
+                return safe_json_dumps({"error": str(e), "success": False})
+        
+        @self.mcp_server.tool()
+        def list_action_groups() -> str:
+            """
+            List all action groups.
+            
+            This tool returns ALL action groups without filtering, providing complete
+            action group information for the Indigo system.
+            
+            Returns:
+                JSON with all action groups including names, IDs, and descriptions
+            """
+            try:
+                actions = self.list_handlers.list_all_action_groups()
+                return safe_json_dumps({
+                    "action_groups": actions,
+                    "count": len(actions)
+                })
+            except Exception as e:
+                self.logger.error(f"List action groups error: {e}")
+                return safe_json_dumps({"error": str(e), "success": False})
+        
+        @self.mcp_server.tool()
+        def get_devices_by_state(
+            state_conditions: dict,
+            device_types: list[str] = None
+        ) -> str:
+            """
+            Get devices matching specific state conditions.
+            
+            This tool is purpose-built for state-based queries, returning all devices
+            that match the specified state conditions without limits.
+            
+            Args:
+                state_conditions: State requirements using Indigo state names.
+                                Examples:
+                                - {"onState": true} - devices that are on
+                                - {"brightnessLevel": {"gt": 50}} - brightness > 50
+                                - {"errorState": {"ne": ""}} - devices with errors
+                                Operators: gt, gte, lt, lte, eq, ne, contains, regex
+                device_types: Optional list of device types to filter
+                            (dimmer, relay, sensor, thermostat, etc.)
+            
+            Returns:
+                JSON with matching devices, count, and applied filters
+                
+            Examples:
+                - get_devices_by_state({"onState": true}) - All devices that are on
+                - get_devices_by_state({"onState": true}, ["dimmer"]) - All dimmers that are on
+                - get_devices_by_state({"brightnessLevel": {"lte": 50}}) - Devices dimmed to 50% or less
+            """
+            try:
+                result = self.list_handlers.get_devices_by_state(
+                    state_conditions=state_conditions,
+                    device_types=device_types
+                )
+                return safe_json_dumps(result)
+            except Exception as e:
+                self.logger.error(f"Get devices by state error: {e}")
                 return safe_json_dumps({"error": str(e), "success": False})
     
     def _create_static_token_auth(self):

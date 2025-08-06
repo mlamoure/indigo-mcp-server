@@ -2,7 +2,9 @@
 Query parser for natural language search queries.
 """
 
+import re
 from typing import Dict, Any, List, Optional
+from ...common.state_filter import StateFilter
 
 
 class QueryParser:
@@ -62,6 +64,14 @@ class QueryParser:
         # Adjust result count and field detail based on query
         params["top_k"], params["minimal_fields"] = self._extract_result_count_and_fields(query_lower)
         
+        # Check for state requirements and adjust parameters accordingly
+        if StateFilter.has_state_keywords(query):
+            # State queries need more results to find matches after filtering
+            params["top_k"] = max(params["top_k"], 50)
+            params["state_detected"] = True
+        else:
+            params["state_detected"] = False
+        
         # Adjust threshold for specific queries
         params["threshold"] = self._extract_similarity_threshold(query_lower)
         
@@ -89,13 +99,13 @@ class QueryParser:
     
     def _extract_result_count_and_fields(self, query_lower: str) -> tuple[int, bool]:
         """Extract desired result count and whether to use minimal fields from query."""
-        if "all" in query_lower:
+        if re.search(r'\ball\b', query_lower):
             return 50, True  # Many results with minimal fields
-        elif "many" in query_lower or "list" in query_lower:
+        elif re.search(r'\bmany\b', query_lower) or re.search(r'\blist\b', query_lower):
             return 20, True  # Moderate results with minimal fields
-        elif "few" in query_lower or "some" in query_lower:
+        elif re.search(r'\bfew\b', query_lower) or re.search(r'\bsome\b', query_lower):
             return 5, False  # Few results with full fields
-        elif "one" in query_lower or "single" in query_lower:
+        elif re.search(r'\bone\b', query_lower) or re.search(r'\bsingle\b', query_lower):
             return 1, False  # Single result with full fields
         
         # Default result count with full fields
@@ -103,11 +113,11 @@ class QueryParser:
     
     def _extract_similarity_threshold(self, query_lower: str) -> float:
         """Extract similarity threshold from query."""
-        if "exact" in query_lower or "specific" in query_lower:
+        if re.search(r'\bexact\b', query_lower) or re.search(r'\bspecific\b', query_lower):
             return 0.7
-        elif "similar" in query_lower or "like" in query_lower:
+        elif re.search(r'\bsimilar\b', query_lower) or re.search(r'\blike\b', query_lower):
             return 0.2
-        elif "related" in query_lower or "close" in query_lower:
+        elif re.search(r'\brelated\b', query_lower) or re.search(r'\bclose\b', query_lower):
             return 0.4
         
         # Default threshold

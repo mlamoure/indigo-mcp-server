@@ -8,6 +8,7 @@ from typing import Dict, List, Any, Optional, Set
 from ...adapters.data_provider import DataProvider
 from ...adapters.vector_store_interface import VectorStoreInterface
 from ...common.indigo_device_types import DeviceClassifier
+from ...common.state_filter import StateFilter
 from ..base_handler import BaseToolHandler
 from .query_parser import QueryParser
 from .result_formatter import ResultFormatter
@@ -40,7 +41,8 @@ class SearchEntitiesHandler(BaseToolHandler):
         self, 
         query: str,
         device_types: Optional[List[str]] = None,
-        entity_types: Optional[List[str]] = None
+        entity_types: Optional[List[str]] = None,
+        state_filter: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Search for Indigo entities using natural language with optional filtering.
@@ -49,6 +51,7 @@ class SearchEntitiesHandler(BaseToolHandler):
             query: Natural language search query
             device_types: Optional list of device types to filter by
             entity_types: Optional list of entity types to search
+            state_filter: Optional state conditions to apply after semantic search
             
         Returns:
             Dictionary with formatted search results
@@ -80,6 +83,13 @@ class SearchEntitiesHandler(BaseToolHandler):
             # Group results by entity type
             grouped_results = self._group_results_by_type(raw_results)
             
+            # Apply state filtering if specified
+            if state_filter is not None and grouped_results.get("devices"):
+                self.info_log(f"Applying state filter: {state_filter}")
+                filtered_devices = StateFilter.filter_by_state(grouped_results["devices"], state_filter)
+                grouped_results["devices"] = filtered_devices
+                self.info_log(f"Filtered to {len(filtered_devices)} devices by state conditions")
+            
             # Log result counts
             self._log_search_results(grouped_results)
             
@@ -88,7 +98,8 @@ class SearchEntitiesHandler(BaseToolHandler):
                 grouped_results, 
                 query, 
                 minimal_fields=search_params["minimal_fields"],
-                search_metadata=search_metadata
+                search_metadata=search_metadata,
+                state_detected=search_params.get("state_detected", False)
             )
             
             self.info_log(f"Total results returned: {formatted_results['total_count']}")

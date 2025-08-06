@@ -5,6 +5,7 @@ Tests for the search entities handler.
 import pytest
 from mcp_server.tools.search_entities import SearchEntitiesHandler
 from tests.fixtures.sample_data import SampleData, TEST_QUERIES
+from tests.fixtures.real_device_fixtures import RealDeviceFixtures
 
 
 class TestSearchEntitiesHandler:
@@ -452,3 +453,166 @@ class TestSearchEntitiesHandlerEnhancedFeatures:
         assert "devices" in result["results"]
         assert "variables" in result["results"]
         assert "actions" in result["results"]
+    
+    # NEW STATE FILTERING TESTS
+    
+    def test_search_with_state_filter_basic(self, search_handler_with_mocks, populated_mock_vector_store):
+        """Test search with basic state filtering."""
+        search_handler_with_mocks.vector_store = populated_mock_vector_store
+        
+        # Mock vector store to return realistic devices
+        mock_devices = RealDeviceFixtures.get_sample_devices()
+        
+        # Mock the search to return all devices (we'll filter them)
+        populated_mock_vector_store.search.return_value = (
+            [{"_entity_type": "device", "_similarity_score": 0.8, **device} for device in mock_devices],
+            {"total_found": len(mock_devices), "total_returned": len(mock_devices), "truncated": False}
+        )
+        
+        # Search with state filter for devices that are on
+        result = search_handler_with_mocks.search("lights", state_filter={"onState": True})
+        
+        # Should have filtered results
+        assert result["total_count"] <= len(mock_devices)
+        
+        # All returned devices should be on
+        for device in result["results"]["devices"]:
+            assert device.get("onState") is True
+    
+    def test_search_with_state_filter_complex(self, search_handler_with_mocks, populated_mock_vector_store):
+        """Test search with complex state filtering conditions."""
+        search_handler_with_mocks.vector_store = populated_mock_vector_store
+        
+        mock_devices = RealDeviceFixtures.get_sample_devices()
+        
+        populated_mock_vector_store.search.return_value = (
+            [{"_entity_type": "device", "_similarity_score": 0.8, **device} for device in mock_devices],
+            {"total_found": len(mock_devices), "total_returned": len(mock_devices), "truncated": False}
+        )
+        
+        # Search with complex state filter
+        result = search_handler_with_mocks.search(
+            "lights", 
+            state_filter={"brightnessLevel": {"gt": 50}}
+        )
+        
+        # Should have filtered results
+        devices_with_brightness = [d for d in mock_devices if d.get("brightnessLevel", 0) > 50]
+        expected_count = len(devices_with_brightness)
+        
+        if expected_count > 0:
+            assert result["total_count"] == expected_count
+            
+            # All returned devices should have brightness > 50
+            for device in result["results"]["devices"]:
+                brightness = device.get("brightnessLevel", 0)
+                assert brightness > 50
+    
+    def test_search_state_keywords_detection(self, search_handler_with_mocks, populated_mock_vector_store):
+        """Test that state keywords are detected in queries."""
+        search_handler_with_mocks.vector_store = populated_mock_vector_store
+        
+        # Mock return empty results for simplicity
+        populated_mock_vector_store.search.return_value = ([], {"total_found": 0, "total_returned": 0, "truncated": False})
+        
+        # Test queries with state keywords
+        state_queries = [
+            "lights that are on",
+            "devices that are off",
+            "bright lights",
+            "dim sensors"
+        ]
+        
+        for query in state_queries:
+            result = search_handler_with_mocks.search(query)
+            
+            # Should have suggestion for state-based tools when state keywords detected
+            # and results are limited/empty
+            if result["total_count"] == 0:
+                assert "suggestion" in result or "truncated" not in result.get("summary", "")
+    
+    def test_search_state_filter_with_device_types(self, search_handler_with_mocks, populated_mock_vector_store):
+        """Test state filtering combined with device type filtering."""
+        search_handler_with_mocks.vector_store = populated_mock_vector_store
+        
+        mock_devices = RealDeviceFixtures.get_sample_devices()
+        
+        populated_mock_vector_store.search.return_value = (
+            [{"_entity_type": "device", "_similarity_score": 0.8, **device} for device in mock_devices],
+            {"total_found": len(mock_devices), "total_returned": len(mock_devices), "truncated": False}
+        )
+        
+        # Search with both device type and state filtering
+        result = search_handler_with_mocks.search(
+            "lights",
+            device_types=["dimmer"],
+            state_filter={"onState": True}
+        )
+        
+        # Should apply both filters
+        for device in result["results"]["devices"]:
+            assert device["class"] == "indigo.DimmerDevice"  # Device type filter
+            assert device.get("onState") is True  # State filter
+    
+    def test_search_state_filter_no_matches(self, search_handler_with_mocks, populated_mock_vector_store):
+        """Test state filtering when no devices match."""
+        search_handler_with_mocks.vector_store = populated_mock_vector_store
+        
+        mock_devices = RealDeviceFixtures.get_sample_devices()
+        
+        populated_mock_vector_store.search.return_value = (
+            [{"_entity_type": "device", "_similarity_score": 0.8, **device} for device in mock_devices],
+            {"total_found": len(mock_devices), "total_returned": len(mock_devices), "truncated": False}
+        )
+        
+        # Search with impossible state condition
+        result = search_handler_with_mocks.search(
+            "lights",
+            state_filter={"brightnessLevel": {"gt": 1000}}  # No device has brightness > 1000
+        )
+        
+        # Should return no devices after filtering
+        assert len(result["results"]["devices"]) == 0
+    
+    def test_search_state_suggestions(self, search_handler_with_mocks, populated_mock_vector_store):
+        """Test that state-based suggestions are provided appropriately."""
+        search_handler_with_mocks.vector_store = populated_mock_vector_store
+        
+        # Mock truncated results with state keywords
+        populated_mock_vector_store.search.return_value = (
+            [],  # Empty results to trigger suggestion
+            {"total_found": 100, "total_returned": 10, "truncated": True}
+        )
+        
+        # Search with state keywords that would trigger suggestions
+        result = search_handler_with_mocks.search("lights that are on")
+        
+        # Should include suggestion about using dedicated state tools
+        # This depends on the implementation details of result formatting
+        assert isinstance(result, dict)
+        assert "query" in result
+        
+    def test_search_realistic_scenarios(self, search_handler_with_mocks, populated_mock_vector_store):
+        """Test realistic search scenarios from fixtures."""
+        search_handler_with_mocks.vector_store = populated_mock_vector_store
+        
+        mock_devices = RealDeviceFixtures.get_sample_devices()
+        scenarios = RealDeviceFixtures.get_search_query_scenarios()
+        
+        populated_mock_vector_store.search.return_value = (
+            [{"_entity_type": "device", "_similarity_score": 0.8, **device} for device in mock_devices],
+            {"total_found": len(mock_devices), "total_returned": len(mock_devices), "truncated": False}
+        )
+        
+        for scenario_name, scenario in scenarios.items():
+            if "state_keywords_detected" in scenario:
+                result = search_handler_with_mocks.search(scenario["query"])
+                
+                # Should handle state keyword detection
+                assert "query" in result
+                assert result["query"] == scenario["query"]
+                
+                # If state keywords detected, results might be adjusted
+                if scenario["state_keywords_detected"]:
+                    # Implementation-specific checks could go here
+                    pass

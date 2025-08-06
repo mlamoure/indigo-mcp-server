@@ -3,7 +3,7 @@ Tests for the query parser.
 """
 
 import pytest
-from mcp_server.tools.query_parser import QueryParser
+from mcp_server.tools.search_entities.query_parser import QueryParser
 
 
 class TestQueryParser:
@@ -93,7 +93,7 @@ class TestQueryParser:
         
         # Test default
         result = query_parser.parse("bedroom light")
-        assert result["threshold"] == 0.3
+        assert result["threshold"] == 0.15
     
     def test_combined_keywords(self, query_parser):
         """Test queries with multiple keywords."""
@@ -122,7 +122,7 @@ class TestQueryParserEnhancedFeatures:
         assert result["device_types"] == ["dimmer", "relay"]
         assert result["entity_types"] == ["devices"]  # Should detect devices from query
         assert result["top_k"] == 10  # Default
-        assert result["threshold"] == 0.3  # Default
+        assert result["threshold"] == 0.15  # Default
     
     def test_parse_with_entity_types_parameter(self, query_parser):
         """Test parsing with explicit entity_types parameter."""
@@ -131,7 +131,7 @@ class TestQueryParserEnhancedFeatures:
         assert result["entity_types"] == ["devices", "variables"]  # Should convert to plural
         assert result["device_types"] == []  # Default empty
         assert result["top_k"] == 10  # Default
-        assert result["threshold"] == 0.3  # Default
+        assert result["threshold"] == 0.15  # Default
     
     def test_parse_with_both_parameters(self, query_parser):
         """Test parsing with both device_types and entity_types parameters."""
@@ -144,7 +144,7 @@ class TestQueryParserEnhancedFeatures:
         assert result["device_types"] == ["sensor", "thermostat"]
         assert result["entity_types"] == ["devices"]  # Singular to plural conversion
         assert result["top_k"] == 10  # Default
-        assert result["threshold"] == 0.3  # Default
+        assert result["threshold"] == 0.15  # Default
     
     def test_entity_type_singular_to_plural_conversion(self, query_parser):
         """Test conversion of singular entity types to plural."""

@@ -9,6 +9,7 @@ from typing import Optional
 from fastmcp import FastMCP
 from ..adapters.data_provider import DataProvider
 from ..common.json_encoder import safe_json_dumps
+from ..handlers import ListHandlers
 
 
 class DeviceResource:
@@ -26,6 +27,7 @@ class DeviceResource:
         self.mcp_server = mcp_server
         self.data_provider = data_provider
         self.logger = logger or logging.getLogger("Plugin")
+        self.list_handlers = ListHandlers(data_provider, logger)
         
         # Register resources
         self._register_resources()
@@ -37,7 +39,7 @@ class DeviceResource:
         def list_devices() -> str:
             """List all Indigo devices."""
             try:
-                devices = self.data_provider.get_all_devices()
+                devices = self.list_handlers.list_all_devices()
                 return safe_json_dumps(devices)
                 
             except Exception as e:

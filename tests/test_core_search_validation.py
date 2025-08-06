@@ -3,11 +3,21 @@ Tests for core.py search_entities tool validation.
 """
 
 import json
+import socket
 import pytest
 from unittest.mock import Mock, MagicMock
 from mcp_server.core import MCPServerCore
 from mcp_server.adapters.data_provider import DataProvider
 from mcp_server.common.indigo_device_types import IndigoDeviceType, IndigoEntityType
+
+
+def get_free_port():
+    """Get a free port for testing."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('', 0))
+        s.listen(1)
+        port = s.getsockname()[1]
+    return port
 
 
 class MockDataProvider(DataProvider):
@@ -55,7 +65,7 @@ class TestSearchEntitiesToolValidation:
         mock_data_provider = MockDataProvider()
         core = MCPServerCore(
             data_provider=mock_data_provider,
-            port=8080
+            port=get_free_port()
         )
         
         # Replace search handler with mock
@@ -274,7 +284,7 @@ class TestCoreSearchIntegration:
         monkeypatch.setenv("DB_FILE", temp_db_path)
         
         mock_data_provider = MockDataProvider()
-        core = MCPServerCore(data_provider=mock_data_provider, port=8080)
+        core = MCPServerCore(data_provider=mock_data_provider, port=get_free_port())
         core.search_handler = MockSearchHandler()
         
         return core

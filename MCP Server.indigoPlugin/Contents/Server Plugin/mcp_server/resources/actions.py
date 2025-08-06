@@ -9,6 +9,7 @@ from typing import Optional
 from fastmcp import FastMCP
 from ..adapters.data_provider import DataProvider
 from ..common.json_encoder import safe_json_dumps
+from ..handlers import ListHandlers
 
 
 class ActionResource:
@@ -26,6 +27,7 @@ class ActionResource:
         self.mcp_server = mcp_server
         self.data_provider = data_provider
         self.logger = logger or logging.getLogger("Plugin")
+        self.list_handlers = ListHandlers(data_provider, logger)
         
         # Register resources
         self._register_resources()
@@ -37,7 +39,7 @@ class ActionResource:
         def list_actions() -> str:
             """List all Indigo action groups."""
             try:
-                actions = self.data_provider.get_all_actions()
+                actions = self.list_handlers.list_all_action_groups()
                 return safe_json_dumps(actions)
                 
             except Exception as e:

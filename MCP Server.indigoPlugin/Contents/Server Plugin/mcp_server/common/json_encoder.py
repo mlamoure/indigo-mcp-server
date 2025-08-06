@@ -14,7 +14,11 @@ KEYS_TO_KEEP_MINIMAL_DEVICES = [
     "deviceTypeId",
     "description",
     "model",
+    "onState",
     "onOffState",
+    "brightness",
+    "brightnessLevel",
+    "states"
 ]
 
 
