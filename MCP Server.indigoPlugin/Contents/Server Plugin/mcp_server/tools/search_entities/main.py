@@ -102,7 +102,7 @@ class SearchEntitiesHandler(BaseToolHandler):
                 state_detected=search_params.get("state_detected", False)
             )
             
-            self.info_log(f"Total results returned: {formatted_results['total_count']}")
+            self.log_tool_outcome("search", True, count=formatted_results['total_count'])
             return formatted_results
             
         except Exception as e:
@@ -178,9 +178,10 @@ class SearchEntitiesHandler(BaseToolHandler):
         for entity_type, entities in grouped_results.items():
             count = len(entities)
             if count > 0:
-                # Get entity names for logging (up to 10)
+                # Get entity names for logging (up to 3 for brevity)
                 names = [entity.get("name", entity.get("id", "unknown")) for entity in entities]
-                names_for_log = names[:10]
-                more_text = f" (and {count - 10} more)" if count > 10 else ""
+                names_for_log = names[:3]
+                more_text = f" (and {count - 3} more)" if count > 3 else ""
+                details = f"{', '.join(names_for_log)}{more_text}"
                 
-                self.info_log(f"Found {count} {entity_type}: {', '.join(names_for_log)}{more_text}")
+                self.log_tool_outcome(f"search_{entity_type}", True, details, count)

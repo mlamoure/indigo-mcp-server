@@ -9,9 +9,10 @@ from typing import Dict, List, Any, Optional
 from ..adapters.data_provider import DataProvider
 from ..common.state_filter import StateFilter
 from ..common.indigo_device_types import DeviceClassifier
+from ..tools.base_handler import BaseToolHandler
 
 
-class ListHandlers:
+class ListHandlers(BaseToolHandler):
     """Shared handlers for listing entities."""
     
     def __init__(
@@ -26,8 +27,8 @@ class ListHandlers:
             data_provider: Data provider for accessing entity data
             logger: Optional logger instance
         """
+        super().__init__(tool_name="list_handlers", logger=logger)
         self.data_provider = data_provider
-        self.logger = logger or logging.getLogger("Plugin")
     
     def list_all_devices(
         self, 
@@ -63,13 +64,13 @@ class ListHandlers:
             # Apply state filtering if specified
             if state_filter:
                 devices = StateFilter.filter_by_state(devices, state_filter)
-                self.logger.debug(f"Filtered to {len(devices)} devices by state conditions: {state_filter}")
+                self.debug_log(f"Filtered to {len(devices)} devices by state conditions: {state_filter}")
             
-            self.logger.info(f"Returning {len(devices)} devices")
+            self.log_tool_outcome("list_devices", True, count=len(devices))
             return devices
             
         except Exception as e:
-            self.logger.error(f"Error listing devices: {e}")
+            self.error_log(f"Error listing devices: {e}")
             raise
     
     def list_all_variables(self) -> List[Dict[str, Any]]:
@@ -81,11 +82,11 @@ class ListHandlers:
         """
         try:
             variables = self.data_provider.get_all_variables()
-            self.logger.info(f"Returning {len(variables)} variables")
+            self.log_tool_outcome("list_variables", True, count=len(variables))
             return variables
             
         except Exception as e:
-            self.logger.error(f"Error listing variables: {e}")
+            self.error_log(f"Error listing variables: {e}")
             raise
     
     def list_all_action_groups(self) -> List[Dict[str, Any]]:
@@ -97,11 +98,11 @@ class ListHandlers:
         """
         try:
             actions = self.data_provider.get_all_actions()
-            self.logger.info(f"Returning {len(actions)} action groups")
+            self.log_tool_outcome("list_action_groups", True, count=len(actions))
             return actions
             
         except Exception as e:
-            self.logger.error(f"Error listing action groups: {e}")
+            self.error_log(f"Error listing action groups: {e}")
             raise
     
     def get_devices_by_state(

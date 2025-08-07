@@ -151,3 +151,73 @@ class BaseToolHandler:
             }
         
         return None
+    
+    def log_incoming_request(self, operation: str, params: dict = None) -> None:
+        """
+        Log an incoming tool request with parameters.
+        
+        Args:
+            operation: The operation being performed
+            params: Optional parameters for the request
+        """
+        if params:
+            # Format params for logging, handling different types
+            formatted_params = self._format_params_for_logging(params)
+            self.info_log(f"Received {operation} request with params: {formatted_params}")
+        else:
+            self.info_log(f"Received {operation} request")
+    
+    def log_tool_outcome(self, operation: str, success: bool, details: str = "", count: int = None) -> None:
+        """
+        Log the outcome of a tool operation.
+        
+        Args:
+            operation: The operation that was performed
+            success: Whether the operation succeeded
+            details: Optional additional details about the outcome
+            count: Optional count of items returned/affected
+        """
+        status = "completed successfully" if success else "failed"
+        message = f"{operation} {status}"
+        
+        if count is not None:
+            message += f" - {count} item{'s' if count != 1 else ''}"
+        
+        if details:
+            message += f" - {details}"
+        
+        if success:
+            self.info_log(message)
+        else:
+            self.error_log(message)
+    
+    def _format_params_for_logging(self, params: dict) -> str:
+        """
+        Format parameters for concise logging.
+        
+        Args:
+            params: Parameters to format
+            
+        Returns:
+            Formatted string representation
+        """
+        if not params:
+            return "{}"
+        
+        # Handle common parameter patterns
+        formatted_items = []
+        for key, value in params.items():
+            if isinstance(value, dict):
+                # For complex dicts, show just the keys
+                formatted_items.append(f"{key}={{...}}")
+            elif isinstance(value, list):
+                # For lists, show count
+                formatted_items.append(f"{key}=[{len(value)} items]")
+            elif isinstance(value, str) and len(value) > 50:
+                # Truncate long strings
+                formatted_items.append(f"{key}='{value[:47]}...'")
+            else:
+                # Show full value for simple types
+                formatted_items.append(f"{key}={repr(value)}")
+        
+        return "{" + ", ".join(formatted_items) + "}"

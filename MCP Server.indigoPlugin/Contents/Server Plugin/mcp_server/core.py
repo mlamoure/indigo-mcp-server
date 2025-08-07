@@ -165,6 +165,9 @@ class MCPServerCore:
             self.mcp_thread.start()
             self._running = True
             
+            # Log published components dynamically (delayed to allow server startup)
+            self._schedule_component_logging()
+            
             # Log comprehensive configuration
             self._log_server_configuration()
             
@@ -304,11 +307,12 @@ class MCPServerCore:
                             "query": query
                         })
                 
+                self.logger.info(f"[search_entities]: Received request - query: '{query}', device_types: {device_types}, entity_types: {entity_types}, state_filter: {state_filter}")
                 results = self.search_handler.search(query, device_types, entity_types, state_filter)
                 return safe_json_dumps(results)
                 
             except Exception as e:
-                self.logger.error(f"Search error: {e}")
+                self.logger.error(f"[search_entities]: Error - {e}")
                 return safe_json_dumps({"error": str(e), "query": query})
         
         @self.mcp_server.tool()
@@ -489,6 +493,7 @@ class MCPServerCore:
                 - list_devices({"brightnessLevel": {"gt": 0}}) - Get all devices with brightness > 0
             """
             try:
+                self.logger.info(f"[list_devices]: Received request with state_filter: {state_filter}")
                 devices = self.list_handlers.list_all_devices(state_filter=state_filter)
                 return safe_json_dumps({
                     "devices": devices,
@@ -496,7 +501,7 @@ class MCPServerCore:
                     "state_filter": state_filter
                 })
             except Exception as e:
-                self.logger.error(f"List devices error: {e}")
+                self.logger.error(f"[list_devices]: Error - {e}")
                 return safe_json_dumps({"error": str(e), "success": False})
         
         @self.mcp_server.tool()
@@ -511,13 +516,14 @@ class MCPServerCore:
                 JSON with all variables including names, IDs, and current values
             """
             try:
+                self.logger.info(f"[list_variables]: Received request")
                 variables = self.list_handlers.list_all_variables()
                 return safe_json_dumps({
                     "variables": variables,
                     "count": len(variables)
                 })
             except Exception as e:
-                self.logger.error(f"List variables error: {e}")
+                self.logger.error(f"[list_variables]: Error - {e}")
                 return safe_json_dumps({"error": str(e), "success": False})
         
         @self.mcp_server.tool()
@@ -595,6 +601,210 @@ class MCPServerCore:
                 return auth_header == expected
         
         return StaticTokenAuth(self.security_config.bearer_token)
+    
+    def _schedule_component_logging(self) -> None:
+        """Schedule component logging to run after server startup."""
+        def delayed_logging():
+            import time
+            import asyncio
+            
+            # Wait for server to be ready
+            time.sleep(1.0)
+            
+            # Try to log components
+            try:
+                # Create new event loop for this thread
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                # Try FastMCP internal API first
+                try:
+                    tools = loop.run_until_complete(self.mcp_server.get_tools())
+                    resources = loop.run_until_complete(self.mcp_server.get_resources()) 
+                    prompts = loop.run_until_complete(self.mcp_server.get_prompts())
+                    
+                    # Log components
+                    self._log_components_from_objects(tools, resources, prompts)
+                    
+                except Exception:
+                    # Fall back to HTTP method
+                    loop.run_until_complete(self._log_components_via_http())
+                    
+            except Exception as e:
+                self.logger.debug(f"Published MCP Components: Unable to query ({e})")
+            finally:
+                try:
+                    loop.close()
+                except:
+                    pass
+        
+        # Start logging in a separate thread
+        log_thread = threading.Thread(
+            target=delayed_logging,
+            daemon=True,
+            name="MCP-ComponentLog-Thread"
+        )
+        log_thread.start()
+    
+    def _log_components_from_objects(self, tools: dict, resources: dict, prompts: dict) -> None:
+        """Log component information from FastMCP objects."""
+        # Log tools
+        if tools:
+            tool_names = list(tools.keys())
+            self.logger.info(f"Published MCP Tools ({len(tool_names)}): {', '.join(tool_names)}")
+        else:
+            self.logger.info("Published MCP Tools (0): None")
+        
+        # Log resources
+        if resources:
+            resource_uris = []
+            for resource in resources.values():
+                # Extract URI from resource object
+                if hasattr(resource, 'uri'):
+                    resource_uris.append(resource.uri)
+                elif hasattr(resource, 'name'):
+                    resource_uris.append(resource.name)
+            
+            if resource_uris:
+                self.logger.info(f"Published MCP Resources ({len(resource_uris)}): {', '.join(resource_uris)}")
+            else:
+                self.logger.info(f"Published MCP Resources ({len(resources)}): {', '.join(resources.keys())}")
+        else:
+            self.logger.info("Published MCP Resources (0): None")
+        
+        # Log prompts
+        if prompts:
+            prompt_names = list(prompts.keys())
+            self.logger.info(f"Published MCP Prompts ({len(prompt_names)}): {', '.join(prompt_names)}")
+        else:
+            self.logger.info("Published MCP Prompts (0): None")
+    
+    async def _log_published_components(self) -> None:
+        """
+        Log dynamically discovered MCP components (tools, resources, prompts).
+        Uses FastMCP internal API with HTTP JSON-RPC fallback.
+        """
+        try:
+            # Method 1: Use FastMCP internal API (preferred)
+            try:
+                tools = await self.mcp_server.get_tools()
+                resources = await self.mcp_server.get_resources()
+                prompts = await self.mcp_server.get_prompts()
+                
+                # Log tools
+                if tools:
+                    tool_names = list(tools.keys())
+                    self.logger.info(f"Published MCP Tools ({len(tool_names)}): {', '.join(tool_names)}")
+                else:
+                    self.logger.info("Published MCP Tools (0): None")
+                
+                # Log resources
+                if resources:
+                    resource_uris = []
+                    for resource in resources.values():
+                        # Extract URI from resource object
+                        if hasattr(resource, 'uri'):
+                            resource_uris.append(resource.uri)
+                        elif hasattr(resource, 'name'):
+                            resource_uris.append(resource.name)
+                    
+                    if resource_uris:
+                        self.logger.info(f"Published MCP Resources ({len(resource_uris)}): {', '.join(resource_uris)}")
+                    else:
+                        self.logger.info(f"Published MCP Resources ({len(resources)}): {', '.join(resources.keys())}")
+                else:
+                    self.logger.info("Published MCP Resources (0): None")
+                
+                # Log prompts
+                if prompts:
+                    prompt_names = list(prompts.keys())
+                    self.logger.info(f"Published MCP Prompts ({len(prompt_names)}): {', '.join(prompt_names)}")
+                else:
+                    self.logger.info("Published MCP Prompts (0): None")
+                    
+            except Exception as internal_error:
+                # Method 2: HTTP JSON-RPC fallback
+                self.logger.debug(f"FastMCP internal API failed, trying HTTP fallback: {internal_error}")
+                await self._log_components_via_http()
+                
+        except Exception as e:
+            self.logger.warning(f"Failed to log published components: {e}")
+    
+    async def _log_components_via_http(self) -> None:
+        """Fallback method to discover components via HTTP JSON-RPC requests."""
+        import aiohttp
+        import asyncio
+        
+        try:
+            host = self.security_config.get_host_address()
+            url = f"http://{host}:{self.port}/mcp"
+            
+            # Wait a moment for server to be ready
+            await asyncio.sleep(0.5)
+            
+            async with aiohttp.ClientSession() as session:
+                # Request tools
+                tools_request = {
+                    "jsonrpc": "2.0", 
+                    "id": 1, 
+                    "method": "tools/list", 
+                    "params": {}
+                }
+                
+                resources_request = {
+                    "jsonrpc": "2.0", 
+                    "id": 2, 
+                    "method": "resources/list", 
+                    "params": {}
+                }
+                
+                prompts_request = {
+                    "jsonrpc": "2.0", 
+                    "id": 3, 
+                    "method": "prompts/list", 
+                    "params": {}
+                }
+                
+                # Make requests with timeout
+                timeout = aiohttp.ClientTimeout(total=5)
+                
+                try:
+                    async with session.post(url, json=tools_request, timeout=timeout) as response:
+                        tools_result = await response.json()
+                        if "result" in tools_result and "tools" in tools_result["result"]:
+                            tool_names = [tool["name"] for tool in tools_result["result"]["tools"]]
+                            self.logger.info(f"Published MCP Tools ({len(tool_names)}): {', '.join(tool_names)}")
+                        else:
+                            self.logger.info("Published MCP Tools (0): None")
+                except Exception:
+                    self.logger.info("Published MCP Tools (?): Unable to query")
+                
+                try:
+                    async with session.post(url, json=resources_request, timeout=timeout) as response:
+                        resources_result = await response.json()
+                        if "result" in resources_result and "resources" in resources_result["result"]:
+                            resource_uris = [res["uri"] for res in resources_result["result"]["resources"]]
+                            self.logger.info(f"Published MCP Resources ({len(resource_uris)}): {', '.join(resource_uris)}")
+                        else:
+                            self.logger.info("Published MCP Resources (0): None")
+                except Exception:
+                    self.logger.info("Published MCP Resources (?): Unable to query")
+                
+                try:
+                    async with session.post(url, json=prompts_request, timeout=timeout) as response:
+                        prompts_result = await response.json()
+                        if "result" in prompts_result and "prompts" in prompts_result["result"]:
+                            prompt_names = [prompt["name"] for prompt in prompts_result["result"]["prompts"]]
+                            self.logger.info(f"Published MCP Prompts ({len(prompt_names)}): {', '.join(prompt_names)}")
+                        else:
+                            self.logger.info("Published MCP Prompts (0): None")
+                except Exception:
+                    self.logger.info("Published MCP Prompts (?): Unable to query")
+                    
+        except ImportError:
+            self.logger.debug("Published MCP Components: Unable to query (aiohttp not available)")
+        except Exception as e:
+            self.logger.debug(f"Published MCP Components: Unable to query via HTTP ({e})")
     
     def _log_server_configuration(self) -> None:
         """Log comprehensive server configuration for easy copy/paste."""

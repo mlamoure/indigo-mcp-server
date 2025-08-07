@@ -2,8 +2,24 @@
 InfluxDB utility module for MCP server.
 """
 
-from .client import InfluxDBClient
-from .queries import InfluxDBQueryBuilder
-from .time_utils import TimeFormatter
+from .main import (
+    InfluxDBClient,
+    InfluxDBQueryBuilder, 
+    TimeFormatter,
+    create_influxdb_client,
+    is_influxdb_enabled,
+    get_query_builder,
+    get_time_formatter,
+    influxdb_connection
+)
 
-__all__ = ['InfluxDBClient', 'InfluxDBQueryBuilder', 'TimeFormatter']
+__all__ = [
+    'InfluxDBClient', 
+    'InfluxDBQueryBuilder', 
+    'TimeFormatter',
+    'create_influxdb_client',
+    'is_influxdb_enabled',
+    'get_query_builder',
+    'get_time_formatter',
+    'influxdb_connection'
+]

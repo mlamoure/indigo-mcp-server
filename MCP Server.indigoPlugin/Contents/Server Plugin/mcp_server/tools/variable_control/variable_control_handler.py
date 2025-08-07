@@ -6,9 +6,10 @@ import logging
 from typing import Dict, Any, Optional, Union
 
 from ...adapters.data_provider import DataProvider
+from ..base_handler import BaseToolHandler
 
 
-class VariableControlHandler:
+class VariableControlHandler(BaseToolHandler):
     """Handler for variable control operations."""
     
     def __init__(
@@ -23,8 +24,8 @@ class VariableControlHandler:
             data_provider: Data provider for variable operations
             logger: Optional logger instance
         """
+        super().__init__(tool_name="variable_control", logger=logger)
         self.data_provider = data_provider
-        self.logger = logger or logging.getLogger("Plugin")
     
     def update(self, variable_id: int, value: Union[str, int, float, bool]) -> Dict[str, Any]:
         """
@@ -37,24 +38,35 @@ class VariableControlHandler:
         Returns:
             Dictionary with operation results
         """
+        # Log incoming request
+        self.log_incoming_request("update", {"variable_id": variable_id, "value": value})
+        
         try:
             # Validate variable_id
             if not isinstance(variable_id, int):
-                return {"error": "variable_id must be an integer"}
+                error_result = {"error": "variable_id must be an integer", "success": False}
+                self.log_tool_outcome("update", False, "Invalid variable_id type")
+                return error_result
             
-            # Log the update attempt
-            self.logger.info(f"Updating variable {variable_id} to value: {value}")
+            # Get variable name for better logging
+            variable = self.data_provider.get_variable(variable_id)
+            variable_name = variable.get('name', f'ID {variable_id}') if variable else f'ID {variable_id}'
+            
+            self.debug_log(f"Attempting to update variable {variable_name} to value: {value}")
             
             # Perform the update
             result = self.data_provider.update_variable(variable_id, value)
             
             if "error" in result:
-                self.logger.error(f"Failed to update variable {variable_id}: {result['error']}")
+                self.log_tool_outcome("update", False, f"Variable {variable_name}: {result['error']}")
             else:
-                self.logger.info(f"Variable {variable_id} updated successfully. Previous: {result.get('previous')}, Current: {result.get('current')}")
+                variable_name = result.get('variable_name', variable_name)
+                previous = result.get('previous', 'unknown')
+                current = result.get('current', value)
+                details = f"Variable {variable_name}: {previous} -> {current}"
+                self.log_tool_outcome("update", True, details)
             
             return result
             
         except Exception as e:
-            self.logger.error(f"Unexpected error updating variable {variable_id}: {e}")
-            return {"error": str(e)}
+            return self.handle_exception(e, f"updating variable ID {variable_id}")
