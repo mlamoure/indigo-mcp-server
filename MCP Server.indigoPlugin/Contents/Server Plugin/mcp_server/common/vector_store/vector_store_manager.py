@@ -103,8 +103,6 @@ class VectorStoreManager:
             # Create vector store instance
             self.vector_store = VectorStore(self.db_path, logger=self.logger)
             
-            self.logger.info(f"Vector store initialized at: {self.db_path}")
-            
         except Exception as e:
             self.logger.error(f"Failed to initialize vector store: {e}")
             raise
@@ -162,7 +160,7 @@ class VectorStoreManager:
         )
         self._update_thread.start()
         
-        self.logger.info(f"Background updates started (interval: {self.update_interval}s)")
+        self.logger.info(f"Background vector store updates scheduled (interval: {self.update_interval}s)")
     
     def _stop_background_updates(self) -> None:
         """Stop background update thread."""

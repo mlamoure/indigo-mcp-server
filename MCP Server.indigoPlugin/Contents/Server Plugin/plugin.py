@@ -92,7 +92,6 @@ class Plugin(indigo.PluginBase):
         Returns:
             True if all required connections are successful, False otherwise
         """
-        self.logger.info("Testing service connections...")
         all_required_connections_ok = True
 
         # Test OpenAI API key (required)
@@ -257,7 +256,6 @@ class Plugin(indigo.PluginBase):
             os.environ["INFLUXDB_PASSWORD"] = self.influx_password
             os.environ["INFLUXDB_DATABASE"] = self.influx_database
             os.environ["INFLUXDB_ENABLED"] = "true"
-            self.logger.info("InfluxDB environment variables configured")
         else:
             os.environ["INFLUXDB_ENABLED"] = "false"
 
@@ -274,7 +272,6 @@ class Plugin(indigo.PluginBase):
         # Initialize data provider
         try:
             self.data_provider = IndigoDataProvider(logger=self.logger)
-            self.logger.info("Data provider initialized")
         except Exception as e:
             self.logger.error(f"Failed to initialize data provider: {e}")
             return
@@ -477,9 +474,6 @@ class Plugin(indigo.PluginBase):
         Called when a device should start communication.
         """
         if device.deviceTypeId == "mcpServer":
-            self.logger.info(
-                f"Starting communication for MCP Server device: {device.name}"
-            )
             self._start_mcp_server_from_device(device)
 
     def deviceStopComm(self, device: indigo.Device) -> None:
@@ -610,7 +604,6 @@ class Plugin(indigo.PluginBase):
             # Initialize data provider if needed
             if not self.data_provider:
                 self.data_provider = IndigoDataProvider(logger=self.logger)
-                self.logger.info("Data provider initialized for device")
 
             # Initialize and start MCP server
             if self.mcp_server_core:
@@ -746,7 +739,6 @@ class Plugin(indigo.PluginBase):
                 os.environ["INFLUXDB_PASSWORD"] = self.influx_password
                 os.environ["INFLUXDB_DATABASE"] = self.influx_database
                 os.environ["INFLUXDB_ENABLED"] = "true"
-                self.logger.info("InfluxDB environment variables configured")
             else:
                 os.environ["INFLUXDB_ENABLED"] = "false"
 
