@@ -1,19 +1,31 @@
 """
-Main handler for historical data analysis using LangGraph.
+Main handler for historical data analysis.
 """
 
 import logging
+import os
 import time
-from typing import Dict, Any, List, Optional
+from datetime import datetime, timedelta
+from typing import Dict, Any, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 from ...adapters.data_provider import DataProvider
 from ..base_handler import BaseToolHandler
-from .graph import HistoricalAnalysisGraph
-from .state import HistoricalAnalysisState
+from ...common.influxdb import InfluxDBClient, InfluxDBQueryBuilder
+
+
+# Alternative fields to try for device properties
+_ALTERNATIVE_FIELDS = [
+    "onState", "onOffState", "isPoweredOn",
+    "brightness", "brightnessLevel",
+    "temperature", "temperatureInput1", 
+    "humidity", "humidityInput1",
+    "sensorValue", "energyAccumTotal", "state"
+]
 
 
 class HistoricalAnalysisHandler(BaseToolHandler):
-    """Handler for historical data analysis with LangGraph workflow."""
+    """Handler for historical data analysis using direct InfluxDB queries."""
     
     def __init__(
         self,
@@ -29,7 +41,6 @@ class HistoricalAnalysisHandler(BaseToolHandler):
         """
         super().__init__(tool_name="historical_analysis", logger=logger)
         self.data_provider = data_provider
-        self.graph = HistoricalAnalysisGraph(self.logger)
     
     def analyze_historical_data(
         self,
@@ -76,7 +87,6 @@ class HistoricalAnalysisHandler(BaseToolHandler):
                 )
             
             # Check if InfluxDB is available
-            import os
             if os.environ.get("INFLUXDB_ENABLED", "false").lower() != "true":
                 self.warning_log("InfluxDB is not enabled - historical analysis not available")
                 return {
@@ -88,78 +98,70 @@ class HistoricalAnalysisHandler(BaseToolHandler):
                     "devices_analyzed": []
                 }
             
-            # Create initial state
-            initial_state: HistoricalAnalysisState = {
-                "query": query,
-                "device_names": device_names,
-                "time_range_days": time_range_days,
-                "raw_data": [],
-                "query_success": False,
-                "query_error": None,
-                "processed_data": [],
-                "transform_success": False,
-                "transform_error": None,
-                "analysis_results": {},
-                "analysis_success": False,
-                "analysis_error": None,
-                "formatted_report": "",
-                "summary_stats": {},
-                "total_data_points": 0,
-                "devices_analyzed": [],
-                "analysis_duration_seconds": 0.0
-            }
+            # Get historical data for all devices
+            all_results = []
+            devices_analyzed = []
             
-            # Execute the LangGraph workflow
-            self.info_log("Executing LangGraph workflow")
-            final_state = self.graph.execute(initial_state)
+            for device_name in device_names:
+                self.debug_log(f"Querying historical data for device: {device_name}")
+                
+                # Try different device properties to find data
+                device_results = []
+                for device_property in _ALTERNATIVE_FIELDS:
+                    try:
+                        property_results = self._get_historical_device_data(
+                            device_name, device_property, time_range_days
+                        )
+                        if property_results:
+                            device_results.extend(property_results)
+                            self.debug_log(f"Found {len(property_results)} records for {device_name}.{device_property}")
+                            break  # Found data, stop trying other properties
+                    except Exception as e:
+                        self.debug_log(f"No data for {device_name}.{device_property}: {e}")
+                        continue
+                
+                if device_results:
+                    all_results.extend(device_results)
+                    devices_analyzed.append(device_name)
             
             # Calculate analysis duration
             analysis_duration = time.time() - start_time
-            final_state["analysis_duration_seconds"] = analysis_duration
             
-            # Log results
-            self._log_analysis_results(final_state)
+            # Create summary statistics
+            summary_stats = {
+                "total_state_changes": len(all_results),
+                "devices_with_data": len(devices_analyzed),
+                "analysis_period_days": time_range_days,
+                "analysis_duration_seconds": analysis_duration
+            }
             
-            # Create response
-            if final_state["analysis_success"]:
+            # Format report
+            if all_results:
+                report_lines = [f"Historical analysis for {len(devices_analyzed)} devices over {time_range_days} days:"]
+                report_lines.extend(all_results)
+                report = "\n".join(report_lines)
+                
                 self.info_log(f"Analysis completed successfully in {analysis_duration:.2f}s")
-                
-                # Update summary stats with analysis period
-                summary_stats = final_state.get("summary_stats", {})
-                summary_stats["analysis_period_days"] = time_range_days
-                summary_stats["analysis_duration_seconds"] = analysis_duration
-                
                 return self.create_success_response(
                     data={
-                        "report": final_state["formatted_report"],
+                        "report": report,
                         "summary_stats": summary_stats,
-                        "analysis_results": final_state["analysis_results"],
-                        "devices_analyzed": final_state["devices_analyzed"],
-                        "total_data_points": final_state["total_data_points"],
+                        "devices_analyzed": devices_analyzed,
+                        "total_data_points": len(all_results),
                         "time_range_days": time_range_days,
                         "analysis_duration_seconds": analysis_duration
                     },
-                    message=f"Analyzed {final_state['total_data_points']} data points from {len(final_state['devices_analyzed'])} devices"
+                    message=f"Analyzed {len(all_results)} state changes from {len(devices_analyzed)} devices"
                 )
             else:
-                # Collect all errors
-                errors = []
-                if final_state.get("query_error"):
-                    errors.append(f"Query: {final_state['query_error']}")
-                if final_state.get("transform_error"):
-                    errors.append(f"Transform: {final_state['transform_error']}")
-                if final_state.get("analysis_error"):
-                    errors.append(f"Analysis: {final_state['analysis_error']}")
-                
-                error_message = "; ".join(errors) if errors else "Unknown analysis error"
-                
+                self.warning_log("No historical data found for any devices")
                 return {
                     "success": False,
-                    "error": error_message,
+                    "error": "No historical data found for the specified devices",
                     "tool": self.tool_name,
-                    "report": final_state.get("formatted_report", "Analysis failed"),
-                    "summary_stats": final_state.get("summary_stats", {}),
-                    "devices_analyzed": final_state.get("devices_analyzed", []),
+                    "report": "No historical data was found for any of the specified devices in the given time range.",
+                    "summary_stats": summary_stats,
+                    "devices_analyzed": [],
                     "analysis_duration_seconds": analysis_duration
                 }
             
@@ -167,40 +169,144 @@ class HistoricalAnalysisHandler(BaseToolHandler):
             analysis_duration = time.time() - start_time
             return self.handle_exception(e, f"analyzing historical data (duration: {analysis_duration:.2f}s)")
     
-    def _log_analysis_results(self, final_state: HistoricalAnalysisState) -> None:
+    def _get_historical_device_data(
+        self, device_name: str, device_property: str, time_range_days: int = 60
+    ) -> List[str]:
         """
-        Log the results of the analysis.
+        Query InfluxDB for historical device data and return formatted results.
         
         Args:
-            final_state: Final state from the workflow
+            device_name: The device name to query data for
+            device_property: The device property to query data for
+            time_range_days: Number of days to look back for historical data
+            
+        Returns:
+            List of formatted messages describing device state changes
         """
         try:
-            # Log workflow step results
-            if final_state.get("query_success"):
-                self.info_log(f"Data query: SUCCESS - {final_state['total_data_points']} data points")
-            else:
-                self.warning_log(f"Data query: FAILED - {final_state.get('query_error', 'Unknown error')}")
+            client = InfluxDBClient(logger=self.logger)
+            query_builder = InfluxDBQueryBuilder(logger=self.logger)
             
-            if final_state.get("transform_success"):
-                processed_count = len(final_state.get("processed_data", []))
-                self.info_log(f"Data transform: SUCCESS - {processed_count} processed records")
-            else:
-                self.warning_log(f"Data transform: FAILED - {final_state.get('transform_error', 'Unknown error')}")
+            if not client.is_enabled() or not client.test_connection():
+                return []
             
-            if final_state.get("analysis_success"):
-                devices_count = len(final_state.get("devices_analyzed", []))
-                self.info_log(f"Data analysis: SUCCESS - {devices_count} devices analyzed")
-            else:
-                self.warning_log(f"Data analysis: FAILED - {final_state.get('analysis_error', 'Unknown error')}")
+            # Build and execute query
+            query = query_builder.build_device_history_query(
+                device_name=device_name,
+                device_property=device_property,
+                time_range_days=time_range_days
+            )
             
-            # Log summary statistics
-            summary = final_state.get("summary_stats", {})
-            if summary:
-                self.info_log(f"Summary: {summary.get('total_state_changes', 0)} state changes, "
-                             f"{summary.get('total_on_time_hours', 0):.1f} hours active")
-        
+            results = client.execute_query(query)
+            if not results:
+                return []
+            
+            # Convert to formatted state change messages
+            formatted_results = []
+            saved_state = None
+            from_timestamp = None
+            
+            for data_record in results:
+                record_time_str = data_record.get("time")
+                if not record_time_str:
+                    continue
+                
+                timestamp_local = self._convert_to_local_timezone(record_time_str)
+                field_value = data_record.get(device_property)
+                
+                if saved_state is None:
+                    from_timestamp = timestamp_local
+                    saved_state = field_value
+                elif saved_state != field_value and from_timestamp is not None:
+                    delta_hours, delta_minutes, delta_seconds = self._get_delta_summary(
+                        from_timestamp, timestamp_local
+                    )
+                    message = (
+                        f"{device_name} was {self._format_state_value(saved_state)} for {delta_hours} hours, "
+                        f"{delta_minutes} minutes, and {delta_seconds} seconds, "
+                        f"from {from_timestamp} to {timestamp_local}"
+                    )
+                    formatted_results.append(message)
+                    self.debug_log(message)
+                    from_timestamp = timestamp_local
+                    saved_state = field_value
+            
+            # Handle final state (ongoing until now)
+            to_timestamp = datetime.now().astimezone()
+            if from_timestamp is not None:
+                delta_hours, delta_minutes, delta_seconds = self._get_delta_summary(
+                    from_timestamp, to_timestamp
+                )
+                final_state = self._format_state_value(saved_state)
+                message = (
+                    f"{device_name} was {final_state} for {delta_hours} hours, "
+                    f"{delta_minutes} minutes, and {delta_seconds} seconds, "
+                    f"from {from_timestamp} to {to_timestamp}"
+                )
+                formatted_results.append(message)
+            
+            return formatted_results
+            
         except Exception as e:
-            self.warning_log(f"Failed to log analysis results: {e}")
+            self.debug_log(f"Error querying {device_name}.{device_property}: {e}")
+            return []
+    
+    def _get_delta_summary(self, start_time: datetime, end_time: datetime) -> Tuple[int, int, int]:
+        """
+        Calculate the difference between two datetime objects.
+        
+        Args:
+            start_time: The start time
+            end_time: The end time
+            
+        Returns:
+            Tuple of hours, minutes, and seconds of the time difference
+        """
+        delta = end_time - start_time
+        hours = int(delta.total_seconds() // 3600)
+        minutes = int((delta.total_seconds() % 3600) // 60)
+        seconds = int(round(delta.total_seconds() % 60))
+        return hours, minutes, seconds
+    
+    def _convert_to_local_timezone(self, datetime_str: str) -> datetime:
+        """
+        Convert an ISO formatted UTC datetime string to a local timezone-aware datetime object.
+        
+        Args:
+            datetime_str: Datetime string in ISO format (ending with 'Z')
+            
+        Returns:
+            Local timezone-aware datetime object
+        """
+        utc_datetime = datetime.fromisoformat(datetime_str.rstrip("Z")).replace(
+            tzinfo=ZoneInfo("UTC")
+        )
+        local_datetime = utc_datetime.astimezone()
+        return local_datetime
+    
+    def _format_state_value(self, value) -> str:
+        """
+        Format state value for display.
+        
+        Args:
+            value: Raw state value
+            
+        Returns:
+            Formatted state string
+        """
+        if value is None:
+            return "unknown"
+        elif isinstance(value, bool):
+            return "on" if value else "off"
+        elif isinstance(value, (int, float)):
+            if value in [0, 0.0]:
+                return "off"
+            elif value in [1, 1.0]:
+                return "on"
+            else:
+                return str(value)
+        else:
+            return str(value)
     
     def get_available_devices(self) -> List[str]:
         """
@@ -229,9 +335,6 @@ class HistoricalAnalysisHandler(BaseToolHandler):
             True if InfluxDB is enabled and configured
         """
         try:
-            import os
-            from ...common.influxdb import InfluxDBClient
-            
             if os.environ.get("INFLUXDB_ENABLED", "false").lower() != "true":
                 return False
             
