@@ -68,9 +68,14 @@ class SearchEntitiesHandler(BaseToolHandler):
             search_params = self.query_parser.parse(query, device_types, entity_types)
             self.debug_log(f"Search parameters: {search_params}")
             
-            # Perform vector search
+            # Expand query with LLM for better semantic matching
+            expanded_query = self.query_parser.expand_query(query, enable_llm=True)
+            if expanded_query != query:
+                self.info_log(f"Query expanded: '{query}' -> '{expanded_query}'")
+            
+            # Perform vector search with expanded query
             raw_results, search_metadata = self.vector_store.search(
-                query=query,
+                query=expanded_query,
                 entity_types=search_params["entity_types"],
                 top_k=search_params["top_k"],
                 similarity_threshold=search_params["threshold"]

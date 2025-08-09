@@ -1,10 +1,18 @@
 """
 Query parser for natural language search queries.
+Enhanced with LLM-based query expansion for better semantic matching.
 """
 
+import hashlib
+import logging
 import re
 from typing import Dict, Any, List, Optional
 from ...common.state_filter import StateFilter
+
+logger = logging.getLogger("Plugin")
+
+# Global cache for query expansions
+_query_expansion_cache = {}
 
 
 class QueryParser:
@@ -122,3 +130,97 @@ class QueryParser:
         
         # Default threshold
         return 0.15
+    
+    def expand_query(self, query: str, enable_llm: bool = True) -> str:
+        """
+        Expand query with synonyms and related terms for better semantic matching.
+        
+        Args:
+            query: Original search query
+            enable_llm: Whether to use LLM for query expansion
+            
+        Returns:
+            Expanded query string with additional terms
+        """
+        try:
+            if not enable_llm or not query.strip():
+                return query
+            
+            # Check cache first
+            cache_key = hashlib.sha256(query.encode()).hexdigest()
+            if cache_key in _query_expansion_cache:
+                expanded = _query_expansion_cache[cache_key]
+                logger.debug(f"Using cached query expansion for: '{query}'")
+                return expanded
+            
+            # Generate expanded query with LLM
+            expanded = self._generate_llm_query_expansion(query)
+            if expanded and expanded != query:
+                _query_expansion_cache[cache_key] = expanded
+                logger.debug(f"Expanded query: '{query}' -> '{expanded}'")
+                return expanded
+            
+            return query
+            
+        except Exception as e:
+            logger.warning(f"Query expansion failed for '{query}': {e}")
+            return query
+    
+    def _generate_llm_query_expansion(self, query: str) -> str:
+        """
+        Use LLM to generate expanded query with synonyms and related terms.
+        
+        Args:
+            query: Original search query
+            
+        Returns:
+            Expanded query or original query if expansion fails
+        """
+        try:
+            # Import here to avoid circular imports
+            from ...common.openai_client.main import perform_completion, SMALL_MODEL
+            
+            # Create prompt for query expansion
+            prompt = f"""Expand this home automation search query with relevant synonyms and related terms:
+
+Original query: "{query}"
+
+Generate an expanded version that includes:
+- Synonyms for device types (light/lamp/illumination, switch/control, sensor/detector)
+- Related location terms (living room/lounge/family room)
+- Function synonyms (dimmer/brightness/lighting)
+
+Keep the expansion concise and focused. Return only the expanded query text, no explanations.
+Example: "living room light" -> "living room light lamp illumination lighting fixture"
+"""
+
+            # Call LLM with small model for efficiency
+            response = perform_completion(
+                messages=prompt,
+                model=SMALL_MODEL,
+                response_token_reserve=50
+            )
+            
+            if not response:
+                return query
+            
+            # Clean up the response
+            expanded = response.strip().strip('"').strip("'")
+            
+            # Validate the expansion isn't too long or malformed  
+            if len(expanded) > len(query) * 4 or '"' in expanded:
+                logger.debug(f"LLM expansion rejected as too long or malformed")
+                return query
+            
+            return expanded
+            
+        except Exception as e:
+            logger.warning(f"LLM query expansion failed: {e}")
+            return query
+
+
+def clear_query_expansion_cache():
+    """Clear the query expansion cache. Useful for testing."""
+    global _query_expansion_cache
+    _query_expansion_cache.clear()
+    logger.debug("Cleared query expansion cache")

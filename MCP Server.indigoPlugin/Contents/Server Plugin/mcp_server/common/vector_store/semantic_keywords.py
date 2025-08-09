@@ -1,12 +1,18 @@
 """
 Semantic keyword generation for Indigo entities to enhance vector search quality.
 Generates contextual keywords based on device types, capabilities, and relationships.
+Uses hybrid approach: rule-based keywords + LLM-generated contextual keywords.
 """
 
+import hashlib
+import json
 import logging
-from typing import List, Dict, Any, Set
+from typing import List, Dict, Any, Set, Optional
 
 logger = logging.getLogger("Plugin")
+
+# Global cache for LLM-generated keywords
+_llm_keyword_cache = {}
 
 
 def generate_batch_device_keywords(
@@ -44,7 +50,8 @@ def generate_batch_device_keywords(
 
 def generate_entity_keywords(entity: Dict[str, Any], entity_type: str) -> List[str]:
     """
-    Generate semantic keywords for a single entity.
+    Generate semantic keywords for a single entity using hybrid approach.
+    Combines rule-based keywords with LLM-generated contextual keywords.
     
     Args:
         entity: Entity dictionary
@@ -56,12 +63,19 @@ def generate_entity_keywords(entity: Dict[str, Any], entity_type: str) -> List[s
     keywords = set()
     
     try:
+        # Generate rule-based keywords (fast, reliable baseline)
         if entity_type == "devices":
             keywords.update(_generate_device_keywords(entity))
         elif entity_type == "variables":
             keywords.update(_generate_variable_keywords(entity))
         elif entity_type == "actions":
             keywords.update(_generate_action_keywords(entity))
+        
+        # Add LLM-generated contextual keywords (enhanced semantic understanding)
+        llm_keywords = _generate_llm_keywords(entity, entity_type)
+        if llm_keywords:
+            keywords.update(llm_keywords)
+            logger.debug(f"Added {len(llm_keywords)} LLM keywords for {entity_type} {entity.get('name', 'unknown')}")
             
     except Exception as e:
         logger.error(f"Error generating keywords for {entity_type} {entity.get('id', 'unknown')}: {e}")
@@ -307,6 +321,7 @@ def _extract_function_keywords(name: str) -> Set[str]:
     """Extract function-based keywords from entity name."""
     functions = {
         "light": ["lighting", "illumination", "lamp"],
+        "lamp": ["lighting", "illumination", "light"],  # Bidirectional mapping for lamp
         "switch": ["switching", "control"],
         "fan": ["cooling", "ventilation", "air"],
         "outlet": ["power", "plug"],
@@ -330,3 +345,111 @@ def _extract_function_keywords(name: str) -> Set[str]:
             keywords.update(function_keywords)
     
     return keywords
+
+
+def _generate_llm_keywords(entity: Dict[str, Any], entity_type: str) -> List[str]:
+    """
+    Generate contextual keywords using LLM for enhanced semantic understanding.
+    Uses caching to avoid redundant LLM calls for the same entity.
+    
+    Args:
+        entity: Entity dictionary
+        entity_type: Type of entity (devices, variables, actions)
+        
+    Returns:
+        List of LLM-generated keywords, empty list on error
+    """
+    try:
+        # Only generate LLM keywords for devices initially
+        if entity_type != "devices":
+            return []
+        
+        # Create cache key from entity static fields
+        cache_key = _create_entity_cache_key(entity)
+        if cache_key in _llm_keyword_cache:
+            logger.debug(f"Using cached LLM keywords for {entity.get('name', 'unknown')}")
+            return _llm_keyword_cache[cache_key]
+        
+        # Extract relevant info for LLM prompt
+        name = entity.get("name", "")
+        model = entity.get("model", "")
+        device_type = entity.get("deviceTypeId", "")
+        description = entity.get("description", "")
+        
+        if not name:  # Skip if no name
+            return []
+        
+        # Import here to avoid circular imports
+        from ..openai_client.main import perform_completion, SMALL_MODEL
+        
+        # Create prompt for LLM keyword generation
+        prompt = f"""Generate semantic search keywords for this home automation device:
+
+Name: {name}
+Model: {model}
+Type: {device_type}
+Description: {description}
+
+Generate 5-10 relevant keywords focusing on:
+- Synonyms for device name and function
+- Location-based terms
+- Device category and usage terms
+- Related automation concepts
+
+Return only the keywords as a comma-separated list, no explanations."""
+
+        # Call LLM with small model for efficiency
+        response = perform_completion(
+            messages=prompt,
+            model=SMALL_MODEL,
+            response_token_reserve=100
+        )
+        
+        if not response:
+            return []
+        
+        # Parse response into keywords list
+        keywords = []
+        for keyword in response.split(','):
+            cleaned = keyword.strip().lower()
+            if cleaned and len(cleaned) > 1:  # Filter very short keywords
+                keywords.append(cleaned)
+        
+        # Cache the results
+        _llm_keyword_cache[cache_key] = keywords
+        
+        logger.debug(f"Generated {len(keywords)} LLM keywords for {name}: {keywords}")
+        return keywords
+        
+    except Exception as e:
+        logger.warning(f"LLM keyword generation failed for {entity.get('name', 'unknown')}: {e}")
+        return []
+
+
+def _create_entity_cache_key(entity: Dict[str, Any]) -> str:
+    """
+    Create cache key for entity based on static fields that affect keyword generation.
+    
+    Args:
+        entity: Entity dictionary
+        
+    Returns:
+        SHA256 hash string for caching
+    """
+    # Use fields that affect keyword generation
+    key_fields = {
+        "name": entity.get("name", ""),
+        "model": entity.get("model", ""), 
+        "deviceTypeId": entity.get("deviceTypeId", ""),
+        "description": entity.get("description", "")
+    }
+    
+    key_str = json.dumps(key_fields, sort_keys=True)
+    return hashlib.sha256(key_str.encode()).hexdigest()
+
+
+def clear_llm_keyword_cache():
+    """Clear the LLM keyword cache. Useful for testing or memory management."""
+    global _llm_keyword_cache
+    _llm_keyword_cache.clear()
+    logger.debug("Cleared LLM keyword cache")
