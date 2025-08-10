@@ -17,7 +17,7 @@ Use source .venv/bin/activate to activate the virtual environment
 
 - **macOS**: 10.14 (Mojave) or later
 - **Python**: 3.9+ (as required by dependencies)
-- **PyArrow**: 14.0.0+ (LanceDB requirement, pre-built wheels available for macOS 10.14+)
+- **PyArrow**: 14.0.x (pinned for macOS 10.14+ compatibility with pre-built wheels)
 
 ## Plugin Structure
 

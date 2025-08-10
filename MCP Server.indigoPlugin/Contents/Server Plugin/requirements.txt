@@ -2,7 +2,7 @@
 fastmcp>=2.11.2
 mcp>=1.12.4
 lancedb>=0.24.2
-pyarrow>=14.0.0,<22.0.0
+pyarrow>=14.0.0,<15.0.0
 
 # OpenAI Integration
 openai>=1.99.6
