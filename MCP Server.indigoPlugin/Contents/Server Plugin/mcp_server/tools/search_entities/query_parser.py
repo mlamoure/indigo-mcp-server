@@ -207,10 +207,16 @@ Example: "living room light" -> "living room light lamp illumination lighting fi
             # Handle different response types from perform_completion
             if isinstance(response, list):
                 # Multi-stage RAG returns a list - take the first item
+                logger.debug(f"LLM returned list response with {len(response)} items for query: '{query}'")
                 expanded = response[0].strip().strip('"').strip("'") if response else query
-            else:
+            elif isinstance(response, str):
                 # Normal completion returns a string
+                logger.debug(f"LLM returned string response for query: '{query}'")
                 expanded = response.strip().strip('"').strip("'")
+            else:
+                # Handle other response types (like ResponseReasoningItem)
+                logger.debug(f"LLM returned {type(response).__name__} response for query: '{query}'")
+                expanded = str(response).strip().strip('"').strip("'")
             
             # Validate the expansion isn't too long or malformed  
             if len(expanded) > len(query) * 4 or '"' in expanded:

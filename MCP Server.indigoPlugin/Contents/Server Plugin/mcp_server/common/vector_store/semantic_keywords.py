@@ -408,9 +408,23 @@ Return only the keywords as a comma-separated list, no explanations."""
         if not response:
             return []
         
+        # Handle different response types from perform_completion
+        if isinstance(response, list):
+            # Multi-stage RAG returns a list - take the first item
+            logger.debug(f"LLM returned list response with {len(response)} items for entity: '{name}'")
+            response_text = response[0] if response else ""
+        elif isinstance(response, str):
+            # Normal completion returns a string
+            logger.debug(f"LLM returned string response for entity: '{name}'")
+            response_text = response
+        else:
+            # Handle other response types (like ResponseReasoningItem)
+            logger.debug(f"LLM returned {type(response).__name__} response for entity: '{name}'")
+            response_text = str(response)
+        
         # Parse response into keywords list
         keywords = []
-        for keyword in response.split(','):
+        for keyword in response_text.split(','):
             cleaned = keyword.strip().lower()
             if cleaned and len(cleaned) > 1:  # Filter very short keywords
                 keywords.append(cleaned)
