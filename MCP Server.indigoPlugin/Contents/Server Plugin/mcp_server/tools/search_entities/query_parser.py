@@ -204,8 +204,13 @@ Example: "living room light" -> "living room light lamp illumination lighting fi
             if not response:
                 return query
             
-            # Clean up the response
-            expanded = response.strip().strip('"').strip("'")
+            # Handle different response types from perform_completion
+            if isinstance(response, list):
+                # Multi-stage RAG returns a list - take the first item
+                expanded = response[0].strip().strip('"').strip("'") if response else query
+            else:
+                # Normal completion returns a string
+                expanded = response.strip().strip('"').strip("'")
             
             # Validate the expansion isn't too long or malformed  
             if len(expanded) > len(query) * 4 or '"' in expanded:
