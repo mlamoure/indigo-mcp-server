@@ -142,8 +142,11 @@ class QueryParser:
         Returns:
             Expanded query string with additional terms
         """
+        logger.debug(f"🏁 QUERY_PARSER: ENTERING expand_query with query: '{query}', enable_llm: {enable_llm}")
+        
         try:
             if not enable_llm or not query.strip():
+                logger.debug(f"🏁 QUERY_PARSER: EXITING expand_query early (no LLM or empty query)")
                 return query
             
             # Check cache first
@@ -157,13 +160,16 @@ class QueryParser:
             expanded = self._generate_llm_query_expansion(query)
             if expanded and expanded != query:
                 _query_expansion_cache[cache_key] = expanded
-                logger.debug(f"Expanded query: '{query}' -> '{expanded}'")
+                logger.debug(f"🎯 QUERY_PARSER: Expanded query: '{query}' -> '{expanded}'")
+                logger.debug(f"🏁 QUERY_PARSER: EXITING expand_query successfully with expansion")
                 return expanded
             
+            logger.debug(f"🏁 QUERY_PARSER: EXITING expand_query with original query (no expansion)")
             return query
             
         except Exception as e:
-            logger.warning(f"Query expansion failed for '{query}': {e}")
+            logger.error(f"💥 QUERY_PARSER: EXCEPTION in expand_query for '{query}': {e}")
+            logger.debug(f"🏁 QUERY_PARSER: EXITING expand_query with error")
             return query
     
     def _generate_llm_query_expansion(self, query: str) -> str:
@@ -194,6 +200,8 @@ Keep the expansion concise and focused. Return only the expanded query text, no 
 Example: "living room light" -> "living room light lamp illumination lighting fixture"
 """
 
+            logger.debug(f"🚀 QUERY_PARSER: About to call perform_completion for query: '{query}'")
+            
             # Call LLM with small model for efficiency
             response = perform_completion(
                 messages=prompt,
@@ -201,22 +209,49 @@ Example: "living room light" -> "living room light lamp illumination lighting fi
                 response_token_reserve=50
             )
             
+            logger.debug(f"📥 QUERY_PARSER: Received response - type: {type(response)}, repr: {repr(response)[:200]}")
+            
             if not response:
+                logger.debug(f"❌ QUERY_PARSER: Empty response, returning original query: '{query}'")
                 return query
             
-            # Handle different response types from perform_completion
-            if isinstance(response, list):
-                # Multi-stage RAG returns a list - take the first item
-                logger.debug(f"LLM returned list response with {len(response)} items for query: '{query}'")
-                expanded = response[0].strip().strip('"').strip("'") if response else query
-            elif isinstance(response, str):
-                # Normal completion returns a string
-                logger.debug(f"LLM returned string response for query: '{query}'")
-                expanded = response.strip().strip('"').strip("'")
-            else:
-                # Handle other response types (like ResponseReasoningItem)
-                logger.debug(f"LLM returned {type(response).__name__} response for query: '{query}'")
-                expanded = str(response).strip().strip('"').strip("'")
+            # Handle different response types from perform_completion with detailed logging and error handling
+            try:
+                if isinstance(response, list):
+                    # Multi-stage RAG returns a list - take the first item
+                    logger.debug(f"📋 QUERY_PARSER: Processing list response with {len(response)} items for query: '{query}'")
+                    if response:
+                        first_item = response[0]
+                        logger.debug(f"🔍 QUERY_PARSER: First list item - type: {type(first_item)}, repr: {repr(first_item)[:100]}")
+                        try:
+                            expanded = first_item.strip().strip('"').strip("'")
+                            logger.debug(f"✅ QUERY_PARSER: Successfully processed list item")
+                        except AttributeError as e:
+                            logger.error(f"❌ QUERY_PARSER: AttributeError on list item: {e}, item_type: {type(first_item)}")
+                            expanded = str(first_item).strip().strip('"').strip("'")
+                    else:
+                        expanded = query
+                elif isinstance(response, str):
+                    # Normal completion returns a string
+                    logger.debug(f"📄 QUERY_PARSER: Processing string response for query: '{query}'")
+                    try:
+                        expanded = response.strip().strip('"').strip("'")
+                        logger.debug(f"✅ QUERY_PARSER: Successfully processed string response")
+                    except AttributeError as e:
+                        logger.error(f"❌ QUERY_PARSER: AttributeError on string response: {e}")
+                        expanded = query
+                else:
+                    # Handle other response types (like ResponseReasoningItem)
+                    logger.debug(f"🔧 QUERY_PARSER: Processing {type(response).__name__} response for query: '{query}'")
+                    try:
+                        expanded = str(response).strip().strip('"').strip("'")
+                        logger.debug(f"✅ QUERY_PARSER: Successfully processed {type(response).__name__} response")
+                    except Exception as e:
+                        logger.error(f"❌ QUERY_PARSER: Error processing {type(response).__name__}: {e}")
+                        expanded = query
+            except Exception as e:
+                logger.error(f"💥 QUERY_PARSER: Unexpected error in response handling: {e}, response_type: {type(response)}, response_repr: {repr(response)[:200]}")
+                expanded = query
             
             # Validate the expansion isn't too long or malformed  
             if len(expanded) > len(query) * 4 or '"' in expanded:

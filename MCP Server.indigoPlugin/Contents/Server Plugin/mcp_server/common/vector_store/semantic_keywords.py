@@ -359,6 +359,9 @@ def _generate_llm_keywords(entity: Dict[str, Any], entity_type: str) -> List[str
     Returns:
         List of LLM-generated keywords, empty list on error
     """
+    entity_name = entity.get("name", "unknown")
+    logger.debug(f"🏁 SEMANTIC_KEYWORDS: ENTERING _generate_llm_keywords for {entity_type} '{entity_name}'")
+    
     try:
         # Only generate LLM keywords for devices initially
         if entity_type != "devices":
@@ -398,6 +401,8 @@ Generate 5-10 relevant keywords focusing on:
 
 Return only the keywords as a comma-separated list, no explanations."""
 
+        logger.debug(f"🚀 SEMANTIC_KEYWORDS: About to call perform_completion for entity: '{name}'")
+        
         # Call LLM with small model for efficiency
         response = perform_completion(
             messages=prompt,
@@ -405,38 +410,73 @@ Return only the keywords as a comma-separated list, no explanations."""
             response_token_reserve=100
         )
         
+        logger.debug(f"📥 SEMANTIC_KEYWORDS: Received response - type: {type(response)}, repr: {repr(response)[:200]}")
+        
         if not response:
+            logger.debug(f"❌ SEMANTIC_KEYWORDS: Empty response, returning empty list for entity: '{name}'")
             return []
         
-        # Handle different response types from perform_completion
-        if isinstance(response, list):
-            # Multi-stage RAG returns a list - take the first item
-            logger.debug(f"LLM returned list response with {len(response)} items for entity: '{name}'")
-            response_text = response[0] if response else ""
-        elif isinstance(response, str):
-            # Normal completion returns a string
-            logger.debug(f"LLM returned string response for entity: '{name}'")
-            response_text = response
-        else:
-            # Handle other response types (like ResponseReasoningItem)
-            logger.debug(f"LLM returned {type(response).__name__} response for entity: '{name}'")
-            response_text = str(response)
+        # Handle different response types from perform_completion with detailed logging and error handling
+        response_text = ""
+        try:
+            if isinstance(response, list):
+                # Multi-stage RAG returns a list - take the first item
+                logger.debug(f"📋 SEMANTIC_KEYWORDS: Processing list response with {len(response)} items for entity: '{name}'")
+                if response:
+                    first_item = response[0]
+                    logger.debug(f"🔍 SEMANTIC_KEYWORDS: First list item - type: {type(first_item)}, repr: {repr(first_item)[:100]}")
+                    try:
+                        response_text = str(first_item)
+                        logger.debug(f"✅ SEMANTIC_KEYWORDS: Successfully converted list item to string")
+                    except Exception as e:
+                        logger.error(f"❌ SEMANTIC_KEYWORDS: Error converting list item to string: {e}, item_type: {type(first_item)}")
+                        response_text = ""
+                else:
+                    response_text = ""
+            elif isinstance(response, str):
+                # Normal completion returns a string
+                logger.debug(f"📄 SEMANTIC_KEYWORDS: Processing string response for entity: '{name}'")
+                response_text = response
+                logger.debug(f"✅ SEMANTIC_KEYWORDS: Using string response directly")
+            else:
+                # Handle other response types (like ResponseReasoningItem)
+                logger.debug(f"🔧 SEMANTIC_KEYWORDS: Processing {type(response).__name__} response for entity: '{name}'")
+                try:
+                    response_text = str(response)
+                    logger.debug(f"✅ SEMANTIC_KEYWORDS: Successfully converted {type(response).__name__} to string")
+                except Exception as e:
+                    logger.error(f"❌ SEMANTIC_KEYWORDS: Error converting {type(response).__name__} to string: {e}")
+                    response_text = ""
+        except Exception as e:
+            logger.error(f"💥 SEMANTIC_KEYWORDS: Unexpected error in response handling: {e}, response_type: {type(response)}, response_repr: {repr(response)[:200]}")
+            response_text = ""
         
-        # Parse response into keywords list
+        # Parse response into keywords list with error handling
         keywords = []
-        for keyword in response_text.split(','):
-            cleaned = keyword.strip().lower()
-            if cleaned and len(cleaned) > 1:  # Filter very short keywords
-                keywords.append(cleaned)
+        try:
+            logger.debug(f"🔍 SEMANTIC_KEYWORDS: About to split response_text: '{response_text[:100]}...'")
+            for keyword in response_text.split(','):
+                try:
+                    cleaned = keyword.strip().lower()
+                    if cleaned and len(cleaned) > 1:  # Filter very short keywords
+                        keywords.append(cleaned)
+                except Exception as e:
+                    logger.warning(f"⚠️ SEMANTIC_KEYWORDS: Error processing keyword '{keyword}': {e}")
+            logger.debug(f"✅ SEMANTIC_KEYWORDS: Successfully parsed {len(keywords)} keywords")
+        except Exception as e:
+            logger.error(f"💥 SEMANTIC_KEYWORDS: Error parsing keywords: {e}, response_text_type: {type(response_text)}, response_text: '{response_text[:100]}...'")
+            keywords = []
         
         # Cache the results
         _llm_keyword_cache[cache_key] = keywords
         
-        logger.debug(f"Generated {len(keywords)} LLM keywords for {name}: {keywords}")
+        logger.debug(f"🎯 SEMANTIC_KEYWORDS: Generated {len(keywords)} LLM keywords for {name}: {keywords}")
+        logger.debug(f"🏁 SEMANTIC_KEYWORDS: EXITING _generate_llm_keywords successfully for '{entity_name}'")
         return keywords
         
     except Exception as e:
-        logger.warning(f"LLM keyword generation failed for {entity.get('name', 'unknown')}: {e}")
+        logger.error(f"💥 SEMANTIC_KEYWORDS: EXCEPTION in _generate_llm_keywords for '{entity_name}': {e}")
+        logger.debug(f"🏁 SEMANTIC_KEYWORDS: EXITING _generate_llm_keywords with error for '{entity_name}'")
         return []
 
 
