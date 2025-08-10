@@ -3,6 +3,7 @@ Tests for ListHandlers class functionality.
 """
 
 import pytest
+import logging
 from unittest.mock import Mock, MagicMock
 from mcp_server.handlers.list_handlers import ListHandlers
 from tests.fixtures.real_device_fixtures import RealDeviceFixtures
@@ -191,13 +192,18 @@ class TestListHandlers:
         assert "Action fetch failed" in str(exc_info.value)
     
     def test_logging_functionality(self, list_handlers, caplog):
-        """Test that appropriate logging occurs."""
+        """Test that appropriate logging occurs with enhanced format."""
+        # Set logging level to capture INFO messages
+        caplog.set_level(logging.INFO)
+        
         # Test device listing with state filter
         list_handlers.list_all_devices(state_filter={"onState": True})
         
-        # Should have info log about returning devices
-        assert "Returning" in caplog.text
-        assert "devices" in caplog.text
+        # Should have enhanced log with emoji and query details
+        assert "💡" in caplog.text  # Device emoji
+        assert "list_devices completed successfully" in caplog.text
+        assert "states:" in caplog.text  # Query info included
+        assert "🟢 onState=True" in caplog.text  # State filter with emoji
     
     def test_device_classification_integration(self, list_handlers):
         """Test that device classification works with real device types."""

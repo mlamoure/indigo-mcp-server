@@ -66,7 +66,14 @@ class ListHandlers(BaseToolHandler):
                 devices = StateFilter.filter_by_state(devices, state_filter)
                 self.debug_log(f"Filtered to {len(devices)} devices by state conditions: {state_filter}")
             
-            self.log_tool_outcome("list_devices", True, count=len(devices))
+            # Create query info for logging
+            query_info = {}
+            if state_filter:
+                query_info["state_filter"] = state_filter
+            if device_types:
+                query_info["device_types"] = device_types
+            
+            self.log_tool_outcome("list_devices", True, count=len(devices), query_info=query_info)
             return devices
             
         except Exception as e:
@@ -82,7 +89,7 @@ class ListHandlers(BaseToolHandler):
         """
         try:
             variables = self.data_provider.get_all_variables()
-            self.log_tool_outcome("list_variables", True, count=len(variables))
+            self.log_tool_outcome("list_variables", True, count=len(variables), query_info={})
             return variables
             
         except Exception as e:
@@ -98,7 +105,7 @@ class ListHandlers(BaseToolHandler):
         """
         try:
             actions = self.data_provider.get_all_actions()
-            self.log_tool_outcome("list_action_groups", True, count=len(actions))
+            self.log_tool_outcome("list_action_groups", True, count=len(actions), query_info={})
             return actions
             
         except Exception as e:
