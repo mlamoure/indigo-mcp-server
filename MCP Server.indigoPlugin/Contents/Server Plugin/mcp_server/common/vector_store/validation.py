@@ -359,25 +359,25 @@ def log_validation_summary(validation_result: ValidationResult, entity_type: str
     summary = validation_result.summary()
     
     if not validation_result.has_issues():
-        logger.info(f"✅ All {summary['total_checked']} {entity_type} entities are up to date")
+        logger.debug(f"✅ All {summary['total_checked']} {entity_type} entities are up to date")
         return
     
-    logger.info(f"📊 {entity_type.title()} validation results:")
-    logger.info(f"   Total checked: {summary['total_checked']}")
-    logger.info(f"   Valid: {summary['valid_count']}")
-    logger.info(f"   Issues found: {summary['total_issues']}")
+    logger.debug(f"📊 {entity_type.title()} validation results:")
+    logger.debug(f"   Total checked: {summary['total_checked']}")
+    logger.debug(f"   Valid: {summary['valid_count']}")
+    logger.debug(f"   Issues found: {summary['total_issues']}")
     
-    # Log issue breakdown
+    # Log issue breakdown at debug level
     for issue_type in ValidationIssueType:
         count = summary.get(issue_type.value, 0)
         if count > 0:
-            logger.info(f"     {issue_type.value}: {count}")
+            logger.debug(f"     {issue_type.value}: {count}")
     
-    # Log priority breakdown
+    # Log priority breakdown at debug level
     priorities = prioritize_updates(validation_result)
     for priority, ids in priorities.items():
         if ids:
-            logger.info(f"   {priority.title()} priority updates: {len(ids)} entities")
+            logger.debug(f"   {priority.title()} priority updates: {len(ids)} entities")
             if len(ids) <= 10:
                 logger.debug(f"     {priority.title()} IDs: {ids}")
             else:

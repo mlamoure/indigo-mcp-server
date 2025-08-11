@@ -334,13 +334,17 @@ class VectorStore(VectorStoreInterface):
                     # Filter entities to only those needing updates
                     entities_to_process = [e for e in valid_entities if e["id"] in entities_needing_update]
                     
-                    # Log priority breakdown for transparency
-                    if priority_updates.get("critical"):
-                        self.logger.info(f"🔴 Critical updates required: {len(priority_updates['critical'])} entities (missing records, invalid embeddings, corrupted data)")
-                    if priority_updates.get("high"):
-                        self.logger.info(f"🟡 High priority updates: {len(priority_updates['high'])} entities (metadata changes)")  
-                    if priority_updates.get("medium"):
-                        self.logger.info(f"🟢 Medium priority updates: {len(priority_updates['medium'])} entities (missing keywords)")
+                    # Log what's being refreshed
+                    total_to_refresh = len(entities_needing_update)
+                    if total_to_refresh < 20:
+                        # List specific entity names when small number
+                        entity_names = []
+                        for e in entities_to_process[:20]:
+                            entity_names.append(e.get("name", f"ID:{e.get('id')}"))
+                        self.logger.info(f"Refreshing embeddings for {total_to_refresh} {table_name}: {', '.join(entity_names)}")
+                    else:
+                        # Just show count for larger updates
+                        self.logger.info(f"Refreshing embeddings for {total_to_refresh} {table_name}")
             
             total_updates = len(entities_to_process)
             
@@ -348,14 +352,11 @@ class VectorStore(VectorStoreInterface):
                 self.logger.debug(f"All {table_name} embeddings are up to date")
                 return
             
-            # Show update summary
-            if total_updates > 10:
-                self.logger.info(f"📊 {table_name.title()} embedding updates required:")
-                if validation_data:
-                    self.logger.info(f"   Entities needing updates: {total_updates}")
-                else:
-                    self.logger.info(f"   New entities (first startup): {total_updates}")
-                self.logger.info(f"   Total to process: {total_updates}")
+            # Show update summary at debug level unless significant
+            if total_updates > 50:
+                self.logger.info(f"📊 Processing {total_updates} {table_name} entities")
+            else:
+                self.logger.debug(f"📊 Processing {total_updates} {table_name} entities")
             
             # Initialize progress tracking
             progress = create_progress_tracker(

@@ -627,6 +627,9 @@ class Plugin(indigo.PluginBase):
             device.updateStateOnServer(key="lastActivity", value="Server started")
 
             self.logger.info(f"{device.name} started.")
+            
+            # Log registered MCP components
+            self._log_mcp_components()
 
         except Exception as e:
             device.updateStateOnServer(key="serverStatus", value="Error")
@@ -652,6 +655,50 @@ class Plugin(indigo.PluginBase):
         except Exception as e:
             device.updateStateOnServer(key="serverStatus", value="Error")
             self.logger.error(f"Failed to stop MCP server for device: {e}")
+
+    def _log_mcp_components(self) -> None:
+        """
+        Log registered MCP components (tools, resources, prompts).
+        Simple, synchronous method that queries the FastMCP server directly.
+        """
+        if not self.mcp_server_core or not self.mcp_server_core.mcp_server:
+            return
+            
+        try:
+            # Get registered components from FastMCP
+            import asyncio
+            loop = asyncio.new_event_loop()
+            
+            try:
+                # Get tools
+                tools = loop.run_until_complete(self.mcp_server_core.mcp_server.get_tools())
+                if tools:
+                    tool_names = list(tools.keys())
+                    self.logger.info(f"Published MCP Tools ({len(tool_names)}): {', '.join(tool_names)}")
+                else:
+                    self.logger.info("Published MCP Tools (0): None")
+                    
+                # Get resources
+                resources = loop.run_until_complete(self.mcp_server_core.mcp_server.get_resources())
+                if resources:
+                    resource_names = list(resources.keys())
+                    self.logger.info(f"Published MCP Resources ({len(resource_names)}): {', '.join(resource_names)}")
+                else:
+                    self.logger.info("Published MCP Resources (0): None")
+                    
+                # Get prompts
+                prompts = loop.run_until_complete(self.mcp_server_core.mcp_server.get_prompts())
+                if prompts:
+                    prompt_names = list(prompts.keys())
+                    self.logger.info(f"Published MCP Prompts ({len(prompt_names)}): {', '.join(prompt_names)}")
+                else:
+                    self.logger.info("Published MCP Prompts (0): None")
+                    
+            finally:
+                loop.close()
+                
+        except Exception as e:
+            self.logger.debug(f"Could not log MCP components: {e}")
 
     def _restart_mcp_server_from_device(self, device: indigo.Device) -> None:
         """

@@ -122,7 +122,7 @@ class VectorStoreManager:
         
         try:
             update_start = time.time()
-            self.logger.info("🔄 Starting vector store synchronization...")
+            self.logger.debug("🔄 Starting vector store synchronization...")
             
             # Get all entity data
             entities = self.data_provider.get_all_entities_for_vector_store()
@@ -130,10 +130,10 @@ class VectorStoreManager:
             # Count total entities for progress estimation
             total_entities = sum(len(entity_list) for entity_list in entities.values())
             if total_entities > 0:
-                self.logger.info(f"📊 Processing {total_entities} total entities:")
-                self.logger.info(f"   Devices: {len(entities['devices'])}")
-                self.logger.info(f"   Variables: {len(entities['variables'])}")
-                self.logger.info(f"   Actions: {len(entities['actions'])}")
+                self.logger.debug(f"📊 Processing {total_entities} total entities:")
+                self.logger.debug(f"   Devices: {len(entities['devices'])}")
+                self.logger.debug(f"   Variables: {len(entities['variables'])}")
+                self.logger.debug(f"   Actions: {len(entities['actions'])}")
             
             # Update vector store with enhanced processing
             self.vector_store.update_embeddings(
@@ -145,10 +145,7 @@ class VectorStoreManager:
             self._last_update_time = time.time()
             elapsed = self._last_update_time - update_start
             
-            if total_entities > 10:
-                self.logger.info(f"✅ Vector store synchronization completed in {elapsed:.2f}s")
-            else:
-                self.logger.debug(f"Vector store update completed in {elapsed:.2f}s")
+            self.logger.debug(f"✅ Vector store synchronization completed in {elapsed:.2f}s")
             
         except Exception as e:
             self.logger.error(f"❌ Vector store update failed: {e}")
