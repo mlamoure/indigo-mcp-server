@@ -652,12 +652,13 @@ Return the results as a structured JSON response with device numbers (1-based) a
         return {}
 
 
-def _process_structured_response(response: BatchKeywordsResponse, entity_ids: List[str], cache_keys: List[str], entities: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+def _process_structured_response(response, entity_ids: List[str], cache_keys: List[str], entities: List[Dict[str, Any]]) -> Dict[str, List[str]]:
     """
     Process structured LLM response into device keywords mapping.
+    Handles both parsed BatchKeywordsResponse objects and raw JSON strings.
     
     Args:
-        response: Structured response from LLM with device keywords
+        response: Structured response from LLM (BatchKeywordsResponse or JSON string)
         entity_ids: List of entity IDs in order
         cache_keys: List of cache keys in order
         entities: List of entity dictionaries for name lookup
@@ -668,12 +669,37 @@ def _process_structured_response(response: BatchKeywordsResponse, entity_ids: Li
     keywords_map = {}
     
     try:
-        logger.debug(f"🔍 Processing structured response with {len(response.devices)} device entries")
+        # Handle different response types from OpenAI API
+        parsed_response = None
+        
+        if isinstance(response, str):
+            # OpenAI returned JSON string - parse it into BatchKeywordsResponse
+            logger.debug(f"🔍 Parsing JSON string response (length: {len(response)})")
+            try:
+                import json
+                json_data = json.loads(response)
+                parsed_response = BatchKeywordsResponse(**json_data)
+                logger.debug(f"✅ Successfully parsed JSON string into BatchKeywordsResponse")
+            except (json.JSONDecodeError, TypeError, ValueError) as e:
+                logger.error(f"❌ Failed to parse JSON response: {e}")
+                logger.debug(f"Response content: {response}")
+                return {}
+        elif hasattr(response, 'devices'):
+            # Already a parsed BatchKeywordsResponse object
+            parsed_response = response
+            logger.debug(f"✅ Using already parsed BatchKeywordsResponse object")
+        else:
+            # Unknown response type
+            logger.error(f"❌ Unknown response type: {type(response)}")
+            logger.debug(f"Response object: {response}")
+            return {}
+        
+        logger.debug(f"🔍 Processing structured response with {len(parsed_response.devices)} device entries")
         
         # Map structured response back to entity IDs
         successful_mappings = 0
         
-        for device_keywords in response.devices:
+        for device_keywords in parsed_response.devices:
             # Convert 1-based device number to 0-based index
             device_index = device_keywords.device_number - 1
             

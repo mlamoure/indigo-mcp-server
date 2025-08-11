@@ -556,16 +556,52 @@ def perform_completion(
     
     # Handle structured output with OpenAI's native support
     if response_model:
-        # Use OpenAI's structured outputs instead of LangSmith parsing
+        # Use OpenAI's structured outputs with parse() method
         logger.debug(f"🔧 Using structured output with {response_model.__name__}")
         try:
-            # Try using OpenAI's native structured outputs (response_format parameter)
-            params["response_format"] = response_model
-            chat_resp = client.chat.completions.create(**params)
+            # Use chat.completions.parse() for structured outputs with BaseModel
+            chat_resp = client.chat.completions.parse(
+                model=model,
+                messages=msgs,
+                response_format=response_model
+            )
+            
+            # Check if we got a parsed object from the API
+            if hasattr(chat_resp, 'choices') and chat_resp.choices:
+                choice = chat_resp.choices[0]
+                if hasattr(choice, 'message') and hasattr(choice.message, 'parsed'):
+                    parsed_obj = choice.message.parsed
+                    if parsed_obj:
+                        logger.debug(f"✅ Received structured response of type: {type(parsed_obj).__name__}")
+                        return parsed_obj
+                    else:
+                        logger.warning("⚠️ Parsed object is None, trying content fallback")
+                
+                # Fallback to content if parsed is not available
+                if hasattr(choice.message, 'content') and choice.message.content:
+                    content = choice.message.content
+                    logger.debug(f"✅ Received structured response of type: str")
+                    logger.debug(f"Response object: {content}")
+                    return content
+                    
         except Exception as e:
-            logger.warning(f"⚠️ Structured output failed, falling back to regular completion: {e}")
+            # More specific error handling for different failure modes
+            if "BaseModel" in str(e) and "parse()" in str(e):
+                logger.warning(f"⚠️ Structured output API usage error (using parse() method now): {e}")
+            else:
+                logger.warning(f"⚠️ Structured output parse failed, falling back to regular completion: {e}")
+            
             # Fallback to regular completion if structured output fails
-            chat_resp = client.chat.completions.create(model=model, messages=msgs)
+            try:
+                chat_resp = client.chat.completions.create(model=model, messages=msgs)
+                if chat_resp and chat_resp.choices and chat_resp.choices[0].message:
+                    content = chat_resp.choices[0].message.content
+                    if content:
+                        logger.debug(f"✅ Fallback completion successful with {len(content)} characters")
+                        return content
+            except Exception as fallback_error:
+                logger.error(f"❌ Fallback completion also failed: {fallback_error}")
+                return ""
     else:
         # Standard chat completion
         chat_resp = client.chat.completions.create(**params)
