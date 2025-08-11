@@ -15,8 +15,8 @@ logger = logging.getLogger("Plugin")
 DEFAULT_SYSTEM_PROMPT = (
     "You are an automation assistant supporting a home automation system called Indigo."
 )
-DEFAULT_MODEL = os.environ.get("LARGE_MODEL", "gpt-4.1")
-SMALL_MODEL = os.environ.get("SMALL_MODEL", "o4-mini")
+DEFAULT_MODEL = os.environ.get("LARGE_MODEL", "gpt-5")
+SMALL_MODEL = os.environ.get("SMALL_MODEL", "gpt-5-mini")
 
 # hard-coded model limits and defaults
 MODEL_TOKEN_LIMITS = {
@@ -24,6 +24,8 @@ MODEL_TOKEN_LIMITS = {
     "gpt-4.1": 1047576,
     "o4-mini": 200000,
     "gpt-4o-mini": 1047576,
+    "gpt-5": 1047576,
+    "gpt-5-mini": 400000,
 }
 DEFAULT_RESPONSE_TOKEN_RESERVE = int(
     os.environ.get("OPENAI_RESPONSE_TOKEN_RESERVE", 2000)
@@ -170,6 +172,141 @@ def _get_embedding_client():
         _embedding_client = OpenAI(api_key=key)
         logger.debug("🔧 OpenAI embedding client initialized (no LangSmith tracing)")
     return _embedding_client
+
+
+def emb_texts_batch(texts: list, entity_names: list = None, progress_callback: callable = None) -> list:
+    """Get embeddings for multiple texts using OpenAI's embedding model with optimized batching."""
+    # Check if parallel processing should be used
+    from .parallel_embeddings import should_use_parallel_processing, get_optimal_concurrency, emb_texts_batch_parallel
+    
+    if should_use_parallel_processing(len(texts)):
+        max_concurrent = get_optimal_concurrency(len(texts))
+        logger.debug(f"🚀 Using parallel embedding processing with {max_concurrent} concurrent batches for {len(texts)} texts")
+        
+        # Try parallel processing first
+        result = emb_texts_batch_parallel(texts, entity_names, progress_callback, max_concurrent)
+        
+        # Check if parallel processing was successful (not all empty embeddings)
+        successful_embeddings = sum(1 for emb in result if emb)
+        success_rate = successful_embeddings / len(texts) if texts else 0
+        
+        if success_rate >= 0.5:  # At least 50% success
+            logger.debug(f"✅ Parallel embedding processing succeeded with {successful_embeddings}/{len(texts)} embeddings ({success_rate:.1%} success rate)")
+            return result
+        else:
+            logger.warning(f"⚠️ Parallel embedding processing had low success rate ({success_rate:.1%}), falling back to sequential processing")
+    else:
+        logger.debug(f"📊 Using sequential embedding processing for {len(texts)} texts (below parallel threshold)")
+    
+    # Fallback to sequential processing
+    return _emb_texts_batch_sequential(texts, entity_names, progress_callback)
+
+
+def _emb_texts_batch_sequential(texts: list, entity_names: list = None, progress_callback: callable = None) -> list:
+    """Get embeddings using sequential batch processing (original implementation)."""
+    import time
+    
+    if not texts or len(texts) == 0:
+        logger.warning("⚠️ Empty text list provided for batch embedding, returning empty list")
+        return []
+
+    # Filter out empty texts and keep track of original indices
+    valid_texts = []
+    valid_indices = []
+    for i, text in enumerate(texts):
+        if text and text.strip():
+            valid_texts.append(text.strip())
+            valid_indices.append(i)
+    
+    if not valid_texts:
+        logger.warning("⚠️ No valid texts provided for batch embedding, returning empty list")
+        return [[] for _ in texts]  # Return empty embeddings for all inputs
+
+    max_retries = 3
+    base_delay = 1.0
+    batch_size = min(len(valid_texts), 100)  # OpenAI allows up to 2048, but we'll be conservative
+
+    embeddings_result = [[] for _ in texts]  # Initialize with empty embeddings
+
+    for attempt in range(max_retries):
+        try:
+            client = _get_embedding_client()  # Use embedding client without LangSmith
+            model = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+
+            # Calculate total batches for progress tracking
+            total_batches = (len(valid_texts) + batch_size - 1) // batch_size
+            processed_count = 0
+            
+            # Report start of embedding processing
+            if progress_callback:
+                logger.debug(f"📊 Starting embedding batch processing: {total_batches} batches of max {batch_size} texts each")
+            
+            # Process in batches
+            for batch_num, i in enumerate(range(0, len(valid_texts), batch_size), 1):
+                batch_start_time = time.time()
+                batch_texts = valid_texts[i:i + batch_size]
+                batch_indices = valid_indices[i:i + batch_size]
+                
+                # Get entity names for this batch if provided
+                batch_entity_names = []
+                if entity_names:
+                    for idx in batch_indices:
+                        if idx < len(entity_names) and entity_names[idx]:
+                            batch_entity_names.append(entity_names[idx])
+                
+                # Debug log before API call
+                if batch_entity_names:
+                    entity_list = ", ".join(batch_entity_names[:5])  # Show first 5 names
+                    if len(batch_entity_names) > 5:
+                        entity_list += f" (+{len(batch_entity_names) - 5} more)"
+                    logger.debug(f"🔄 Processing batch {batch_num}/{total_batches} ({len(batch_texts)} embeddings): [{entity_list}]")
+                else:
+                    logger.debug(f"🔄 Processing batch {batch_num}/{total_batches} ({len(batch_texts)} embeddings)")
+                
+                # Add timeout to prevent hanging
+                response = client.embeddings.create(
+                    model=model, 
+                    input=batch_texts, 
+                    timeout=60.0  # Longer timeout for batch processing
+                )
+
+                # Validate response structure
+                if not response or not response.data or len(response.data) != len(batch_texts):
+                    raise ValueError(f"Invalid or incomplete response from OpenAI embeddings API: expected {len(batch_texts)} embeddings, got {len(response.data) if response.data else 0}")
+
+                # Map embeddings back to original indices
+                for j, embedding_data in enumerate(response.data):
+                    original_index = batch_indices[j]
+                    embedding = embedding_data.embedding
+                    if not embedding or len(embedding) == 0:
+                        logger.warning(f"Empty embedding returned for text at index {original_index}")
+                        embeddings_result[original_index] = []
+                    else:
+                        embeddings_result[original_index] = embedding
+                
+                processed_count += len(batch_texts)
+                batch_time = time.time() - batch_start_time
+                
+                # Debug log after successful API call
+                logger.debug(f"✅ Batch {batch_num}/{total_batches} completed in {batch_time:.2f}s ({len(batch_texts)} embeddings processed, {processed_count}/{len(valid_texts)} total)")
+                
+                # Report progress after each batch
+                if progress_callback:
+                    progress_callback(batch_num, total_batches, batch_size)
+
+            logger.debug(f"✅ Generated {len([e for e in embeddings_result if e])} batch embeddings from {len(texts)} inputs")
+            return embeddings_result
+
+        except Exception as e:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                logger.warning(f"⚠️ Batch embedding attempt {attempt + 1}/{max_retries} failed: {e}, retrying in {delay:.1f}s...")
+                time.sleep(delay)
+            else:
+                logger.error(f"❌ All {max_retries} batch embedding attempts failed: {e}")
+                return [[] for _ in texts]  # Return empty embeddings for all inputs
+
+    return [[] for _ in texts]
 
 
 def emb_text(text: str) -> list:

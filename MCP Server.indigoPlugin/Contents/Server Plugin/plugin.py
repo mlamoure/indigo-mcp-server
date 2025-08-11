@@ -45,10 +45,9 @@ class Plugin(indigo.PluginBase):
         )
 
         # Plugin configuration
-        self.debug = plugin_prefs.get("showDebugInfo", False)
         self.openai_api_key = plugin_prefs.get("openai_api_key", "")
-        self.large_model = plugin_prefs.get("large_model", "gpt-4o")
-        self.small_model = plugin_prefs.get("small_model", "gpt-4o-mini")
+        self.large_model = plugin_prefs.get("large_model", "gpt-5")
+        self.small_model = plugin_prefs.get("small_model", "gpt-5-mini")
 
         # LangSmith configuration
         self.enable_langsmith = plugin_prefs.get("enable_langsmith", False)
@@ -212,7 +211,6 @@ class Plugin(indigo.PluginBase):
         Called after __init__ when the plugin is starting up.
         """
         self.logger.info("MCP Server plugin starting up...")
-        self.logger.debug(f"🐛 Debug logging is working! Log level: {self.log_level}")
 
         # Test connections before proceeding
         if not self.test_connections():
@@ -618,10 +616,14 @@ class Plugin(indigo.PluginBase):
                 logger=self.logger,
             )
 
+            # Update device status to Vector DB Initializing
+            device.updateStateOnServer(key="serverStatus", value="Vector DB Initializing", uiValue="Vector DB Initializing")
+            
+            # Start the MCP server synchronously - this will handle the initialization progress internally
             self.mcp_server_core.start()
-
-            # Update device states
-            device.updateStateOnServer(key="serverStatus", value="Running")
+            
+            # Update device states to Running after completion
+            device.updateStateOnServer(key="serverStatus", value="Running", uiValue="Running")
             device.updateStateOnServer(key="lastActivity", value="Server started")
 
             self.logger.info(f"{device.name} started.")
@@ -657,6 +659,7 @@ class Plugin(indigo.PluginBase):
         """
         self._stop_mcp_server_from_device(device)
         self._start_mcp_server_from_device(device)
+    
 
     def closedPrefsConfigUi(
         self, values_dict: indigo.Dict, user_cancelled: bool
@@ -671,7 +674,6 @@ class Plugin(indigo.PluginBase):
             self.logger.info("Applying configuration changes...")
 
             # Update ALL configuration values from the dialog
-            self.debug = values_dict.get("showDebugInfo", False)
             self.log_level = int(values_dict.get("log_level", 20))
             self.indigo_log_handler.setLevel(self.log_level)
             self.plugin_file_handler.setLevel(self.log_level)
@@ -679,12 +681,11 @@ class Plugin(indigo.PluginBase):
 
             # Core configuration
             self.openai_api_key = values_dict.get("openai_api_key", "")
-            self.large_model = values_dict.get("large_model", "gpt-4o")
-            self.small_model = values_dict.get("small_model", "gpt-4o-mini")
+            self.large_model = values_dict.get("large_model", "gpt-5")
+            self.small_model = values_dict.get("small_model", "gpt-5-mini")
             self.server_port = int(values_dict.get("server_port", 8080))
 
-            # Security configuration (legacy, now handled by device)
-            # Keep for backwards compatibility during migration
+            # Security configuration
             self.access_mode = values_dict.get("access_mode", "local_only")
             self.bearer_token = values_dict.get("bearer_token", "")
 
@@ -766,5 +767,17 @@ class Plugin(indigo.PluginBase):
                 return
 
             self.logger.info(
-                "✅ Configuration updated successfully. MCP server will use new settings on next device restart."
+                "✅ Configuration updated successfully. Restarting MCP server with new settings..."
             )
+            
+            # Restart MCP server automatically with new configuration
+            try:
+                mcp_device = self._get_mcp_server_device()
+                if mcp_device:
+                    self._restart_mcp_server_from_device(mcp_device)
+                    self.logger.info("✅ MCP server restarted successfully with new configuration.")
+                else:
+                    self.logger.info("No MCP Server Indigo Device Found. Create a MCP Server via the New Device Button.")
+            except Exception as e:
+                self.logger.error(f"Failed to restart MCP server automatically: {e}")
+                self.logger.info("Please restart the MCP server device manually.")

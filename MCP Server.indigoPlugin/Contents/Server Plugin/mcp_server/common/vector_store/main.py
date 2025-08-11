@@ -14,7 +14,7 @@ import lancedb
 import pyarrow as pa
 
 from ...adapters.vector_store_interface import VectorStoreInterface
-from ..openai_client.main import emb_text
+from ..openai_client.main import emb_text, emb_texts_batch
 from .progress_tracker import create_progress_tracker
 from .semantic_keywords import generate_batch_device_keywords
 
@@ -77,10 +77,33 @@ class VectorStore(VectorStoreInterface):
             self.db = lancedb.connect(self.db_path)
             self.logger.info(f"Vector database connected at: {self.db_path}")
             
+            # Check database path and permissions
+            self.logger.debug(f"📂 Database path: {self.db_path}")
+            self.logger.debug(f"📂 Database directory exists: {os.path.exists(os.path.dirname(self.db_path))}")
+            if os.path.exists(self.db_path):
+                self.logger.debug(f"📂 Database file exists: True")
+                self.logger.debug(f"📂 Database file size: {os.path.getsize(self.db_path)} bytes")
+            else:
+                self.logger.debug(f"📂 Database file exists: False")
+                
+            # Check existing tables
+            existing_tables = self.db.table_names()
+            self.logger.debug(f"📊 Existing vector store tables: {existing_tables}")
+            
             # Initialize tables for each entity type
             for table_name in ["devices", "variables", "actions"]:
-                if table_name not in self.db.table_names():
+                if table_name not in existing_tables:
+                    self.logger.debug(f"🆕 Creating new table: {table_name}")
                     self._create_table(table_name)
+                else:
+                    self.logger.debug(f"✅ Table exists: {table_name}")
+                    # For existing tables, try to get basic info
+                    try:
+                        table = self.db.open_table(table_name)
+                        row_count = len(table.search().to_list())
+                        self.logger.debug(f"📊 Table {table_name} currently has {row_count} rows")
+                    except Exception as table_error:
+                        self.logger.debug(f"⚠️ Could not check row count for {table_name}: {table_error}")
                     
         except Exception as e:
             self.logger.error(f"Database initialization failed: {e}")
@@ -189,6 +212,20 @@ class VectorStore(VectorStoreInterface):
             self.logger.error(f"Failed to generate embedding: {e}")
             raise
     
+    def _generate_embeddings_batch(self, texts: List[str], entity_names: List[str] = None, progress_callback: Optional[callable] = None) -> List[List[float]]:
+        """Generate embeddings for multiple texts using batch OpenAI API calls with progress tracking."""
+        try:
+            # Add progress tracking to embedding generation
+            if progress_callback:
+                self.logger.debug(f"🚀 Starting embedding generation for {len(texts)} texts with progress tracking")
+            
+            return emb_texts_batch(texts, entity_names, progress_callback)
+            
+        except Exception as e:
+            self.logger.error(f"Failed to generate batch embeddings: {e}")
+            # Return empty embeddings for all texts on failure
+            return [[] for _ in texts]
+    
     def _hash_entity(self, entity: Dict[str, Any]) -> str:
         """Generate hash for entity to detect changes (legacy method)."""
         # Create deterministic string representation using custom encoder
@@ -247,7 +284,7 @@ class VectorStore(VectorStoreInterface):
         self,
         table_name: str,
         entities: List[Dict[str, Any]],
-        batch_size: int = 20
+        batch_size: int = None  # Auto-calculate optimal batch size for keyword generation
     ) -> None:
         """Update embeddings for a specific entity type with enhanced processing."""
         if not entities:
@@ -257,32 +294,54 @@ class VectorStore(VectorStoreInterface):
         try:
             table = self.db.open_table(table_name)
             
-            # Get existing entities with improved error handling
-            existing = {}
-            try:
-                existing_rows = table.search().to_list()
-                existing = {row["id"]: row["hash"] for row in existing_rows}
-                self.logger.debug(f"Found {len(existing)} existing {table_name} records")
-            except Exception as e:
-                self.logger.debug(f"Table {table_name} appears empty or new: {e}")
-            
-            # Analyze what needs updating using static field hashing
+            # Filter valid entities (entities with IDs)
             valid_entities = [e for e in entities if e.get("id") is not None]
-            current_ids = {e["id"] for e in valid_entities}
-            existing_ids = set(existing.keys())
             
-            missing_entities = [e for e in valid_entities if e["id"] not in existing_ids]
-            existing_entities = [e for e in valid_entities if e["id"] in existing_ids]
+            # Load comprehensive validation data
+            from .validation import load_validation_data, perform_comprehensive_validation, prioritize_updates, log_validation_summary
             
-            # Check which existing entities need updates
-            outdated_entities = []
-            for entity in existing_entities:
-                entity_id = entity["id"]
-                new_hash = self._hash_static_fields(entity, table_name)
-                if existing.get(entity_id) != new_hash:
-                    outdated_entities.append(entity)
+            validation_data = load_validation_data(table, self.logger)
             
-            entities_to_process = missing_entities + outdated_entities
+            if not validation_data:
+                self.logger.debug(f"🔍 No existing data found for {table_name}, will create all records")
+                # All entities need to be created
+                entities_to_process = valid_entities
+            else:
+                # Perform comprehensive validation
+                validation_result = perform_comprehensive_validation(
+                    valid_entities, 
+                    validation_data, 
+                    table_name, 
+                    self._hash_static_fields
+                )
+                
+                # Log validation summary
+                log_validation_summary(validation_result, table_name, self.logger)
+                
+                if not validation_result.has_issues():
+                    # All entities are valid, no updates needed
+                    entities_to_process = []
+                else:
+                    # Get prioritized update list
+                    priority_updates = prioritize_updates(validation_result)
+                    
+                    # Combine all entities that need updates
+                    entities_needing_update = set()
+                    entities_needing_update.update(priority_updates.get("critical", []))
+                    entities_needing_update.update(priority_updates.get("high", []))
+                    entities_needing_update.update(priority_updates.get("medium", []))
+                    
+                    # Filter entities to only those needing updates
+                    entities_to_process = [e for e in valid_entities if e["id"] in entities_needing_update]
+                    
+                    # Log priority breakdown for transparency
+                    if priority_updates.get("critical"):
+                        self.logger.info(f"🔴 Critical updates required: {len(priority_updates['critical'])} entities (missing records, invalid embeddings, corrupted data)")
+                    if priority_updates.get("high"):
+                        self.logger.info(f"🟡 High priority updates: {len(priority_updates['high'])} entities (metadata changes)")  
+                    if priority_updates.get("medium"):
+                        self.logger.info(f"🟢 Medium priority updates: {len(priority_updates['medium'])} entities (missing keywords)")
+            
             total_updates = len(entities_to_process)
             
             if total_updates == 0:
@@ -292,9 +351,11 @@ class VectorStore(VectorStoreInterface):
             # Show update summary
             if total_updates > 10:
                 self.logger.info(f"📊 {table_name.title()} embedding updates required:")
-                self.logger.info(f"   New: {len(missing_entities)}")
-                self.logger.info(f"   Updates: {len(outdated_entities)}")
-                self.logger.info(f"   Total: {total_updates}")
+                if validation_data:
+                    self.logger.info(f"   Entities needing updates: {total_updates}")
+                else:
+                    self.logger.info(f"   New entities (first startup): {total_updates}")
+                self.logger.info(f"   Total to process: {total_updates}")
             
             # Initialize progress tracking
             progress = create_progress_tracker(
@@ -303,33 +364,39 @@ class VectorStore(VectorStoreInterface):
                 threshold=10
             )
             
-            # Generate semantic keywords in batch
+            # Generate semantic keywords in batch with progress tracking
             self.logger.debug(f"Generating semantic keywords for {total_updates} {table_name}")
             all_keywords = generate_batch_device_keywords(
                 entities_to_process, 
-                batch_size=min(15, batch_size),
-                collection_name=table_name
+                batch_size=batch_size,  # Auto-calculate optimal batch size if None
+                collection_name=table_name,
+                progress_callback=lambda current, message: progress.update(current, message)
             )
             
-            # Delete outdated records first
-            if outdated_entities:
-                outdated_ids = [str(e["id"]) for e in outdated_entities]
-                try:
-                    if len(outdated_ids) == 1:
-                        delete_condition = f"id = {outdated_ids[0]}"
-                    else:
-                        id_list = ", ".join(outdated_ids)
-                        delete_condition = f"id IN ({id_list})"
-                    table.delete(delete_condition)
-                    self.logger.debug(f"Deleted {len(outdated_ids)} outdated {table_name} records")
-                except Exception as e:
-                    self.logger.error(f"Error deleting outdated {table_name} records: {e}")
+            # Delete existing records that need updates (they will be recreated with fresh data)
+            if validation_data and entities_to_process:
+                # Get IDs of entities being updated that already exist in the store
+                updating_entity_ids = [e["id"] for e in entities_to_process if e["id"] in validation_data]
+                
+                if updating_entity_ids:
+                    try:
+                        updating_ids_str = [str(id_val) for id_val in updating_entity_ids]
+                        if len(updating_ids_str) == 1:
+                            delete_condition = f"id = {updating_ids_str[0]}"
+                        else:
+                            id_list = ", ".join(updating_ids_str)
+                            delete_condition = f"id IN ({id_list})"
+                        table.delete(delete_condition)
+                        self.logger.debug(f"Deleted {len(updating_entity_ids)} existing {table_name} records for update")
+                    except Exception as e:
+                        self.logger.error(f"Error deleting existing {table_name} records for update: {e}")
             
-            # Process embeddings in batches
-            records_to_add = []
-            failed_count = 0
+            # Prepare texts for batch embedding processing
+            texts_for_embedding = []
+            entity_names_for_embedding = []
+            entities_data = []
             
-            for i, entity in enumerate(entities_to_process):
+            for entity in entities_to_process:
                 try:
                     entity_id = entity["id"]
                     
@@ -339,19 +406,56 @@ class VectorStore(VectorStoreInterface):
                     # Generate enhanced embedding text
                     text = self._create_embedding_text(entity, table_name, semantic_keywords)
                     
-                    # Generate embedding
-                    try:
-                        embedding = self._generate_embedding(text)
-                    except Exception as e:
-                        self.logger.error(f"Failed to generate embedding for {table_name} {entity_id}: {e}")
+                    # Store text, entity name, and entity data for batch processing
+                    texts_for_embedding.append(text)
+                    entity_names_for_embedding.append(entity.get("name", f"ID:{entity_id}"))
+                    entities_data.append({
+                        "entity": entity,
+                        "text": text,
+                        "semantic_keywords": semantic_keywords
+                    })
+                    
+                except Exception as e:
+                    self.logger.error(f"Error preparing {table_name} entity {entity.get('id', 'unknown')} for embedding: {e}")
+                    continue
+            
+            if not texts_for_embedding:
+                progress.complete("no texts to embed")
+                return
+                
+            # Generate embeddings in batches - this is the major performance improvement
+            self.logger.info(f"🚀 Generating embeddings for {len(texts_for_embedding)} {table_name} in batches...")
+            
+            # Create embedding progress callback that reports to the overall progress tracker
+            def embedding_progress_callback(current_batch, total_batches, batch_size):
+                # Calculate overall progress (embeddings happen after keyword generation)
+                embedding_progress = int((current_batch / total_batches) * 100)
+                progress.update(total_updates, f"Embedding generation - batch {current_batch}/{total_batches}")
+                
+                # Log embedding progress every 10% or every batch if few batches
+                if current_batch % max(1, total_batches // 10) == 0 or current_batch == total_batches:
+                    self.logger.info(f"📊 Embedding Generation progress: {embedding_progress}% complete (batch {current_batch}/{total_batches}, {current_batch * batch_size}/{len(texts_for_embedding)} texts)")
+            
+            batch_embeddings = self._generate_embeddings_batch(texts_for_embedding, entity_names_for_embedding, embedding_progress_callback)
+            
+            # Create records with batch embeddings
+            records_to_add = []
+            failed_count = 0
+            
+            for i, (embedding, entity_data) in enumerate(zip(batch_embeddings, entities_data)):
+                try:
+                    if not embedding:  # Empty embedding indicates failure
                         failed_count += 1
                         continue
+                        
+                    entity = entity_data["entity"]
+                    entity_id = entity["id"]
                     
                     # Create record with static field hash
                     record = {
                         "id": entity_id,
                         "name": entity.get("name", ""),
-                        "text": text,
+                        "text": entity_data["text"],
                         "data": json.dumps(entity, cls=DateTimeJSONEncoder),
                         "hash": self._hash_static_fields(entity, table_name),
                         "embedding": embedding
@@ -359,11 +463,8 @@ class VectorStore(VectorStoreInterface):
                     
                     records_to_add.append(record)
                     
-                    # Update progress
-                    progress.update(i + 1)
-                    
                 except Exception as e:
-                    self.logger.error(f"Error processing {table_name} entity {entity.get('id', 'unknown')}: {e}")
+                    self.logger.error(f"Error creating record for {table_name} entity: {e}")
                     failed_count += 1
                     continue
             
@@ -373,6 +474,35 @@ class VectorStore(VectorStoreInterface):
                     table.add(records_to_add)
                     success_count = len(records_to_add)
                     progress.complete(f"added {success_count} records")
+                    
+                    # Verify records were actually added and persisted
+                    try:
+                        # Force a sync/flush if available
+                        if hasattr(table, 'flush'):
+                            table.flush()
+                            self.logger.debug("🔄 Flushed table to ensure data persistence")
+                        
+                        # Wait a moment for write to complete
+                        import time
+                        time.sleep(0.1)
+                        
+                        verification_rows = table.search().to_list()
+                        current_count = len(verification_rows)
+                        self.logger.debug(f"✅ Verification: {table_name} table now contains {current_count} total records")
+                        
+                        if current_count < success_count:
+                            self.logger.warning(f"⚠️ Expected at least {success_count} new records but table shows {current_count} total")
+                            
+                        if current_count > 0:
+                            # Show sample of what was written
+                            sample_record = verification_rows[0]
+                            self.logger.debug(f"Sample record keys: {list(sample_record.keys())}")
+                            if 'id' in sample_record:
+                                self.logger.debug(f"Sample record ID: {sample_record['id']}")
+                                
+                    except Exception as verify_error:
+                        self.logger.warning(f"Could not verify record count after addition: {verify_error}")
+                        
                 except Exception as e:
                     self.logger.error(f"Failed to bulk add {table_name} records: {e}")
                     progress.error(f"failed to add {len(records_to_add)} records")
@@ -380,20 +510,24 @@ class VectorStore(VectorStoreInterface):
             else:
                 progress.complete("no records to add")
             
-            # Handle removed entities
-            removed_ids = existing_ids - current_ids
-            if removed_ids:
-                try:
-                    removed_list = list(removed_ids)
-                    if len(removed_list) == 1:
-                        delete_condition = f"id = {removed_list[0]}"
-                    else:
-                        id_list = ", ".join(map(str, removed_list))
-                        delete_condition = f"id IN ({id_list})"
-                    table.delete(delete_condition)
-                    self.logger.info(f"Removed {len(removed_ids)} deleted {table_name} from vector store")
-                except Exception as e:
-                    self.logger.error(f"Error removing deleted {table_name}: {e}")
+            # Handle orphaned records (entities no longer exist in Indigo)
+            if validation_data:
+                current_ids = {e["id"] for e in valid_entities}
+                existing_ids = set(validation_data.keys())
+                orphaned_ids = existing_ids - current_ids
+                
+                if orphaned_ids:
+                    try:
+                        orphaned_list = list(orphaned_ids)
+                        if len(orphaned_list) == 1:
+                            delete_condition = f"id = {orphaned_list[0]}"
+                        else:
+                            id_list = ", ".join(map(str, orphaned_list))
+                            delete_condition = f"id IN ({id_list})"
+                        table.delete(delete_condition)
+                        self.logger.info(f"🗑️ Removed {len(orphaned_ids)} orphaned {table_name} records from vector store")
+                    except Exception as e:
+                        self.logger.error(f"Error removing orphaned {table_name} records: {e}")
             
             # Final summary
             success_count = len(records_to_add)

@@ -222,10 +222,8 @@ The plugin creates/manages a single MCP Server device with the following:
 4. **Better Integration**: Native Indigo device lifecycle management
 5. **Future Extensibility**: Foundation for advanced server features
 
-#### Migration and Compatibility
+#### Device Management
 
-- **Automatic Migration**: Plugin detects legacy plugin configuration and creates device automatically
-- **Backwards Compatibility**: Continues working with existing setups during transition
 - **Single Device Validation**: Prevents creation of multiple MCP Server devices
 
 ## Environment Variables

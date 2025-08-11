@@ -1,8 +1,8 @@
 # MCP Server Core Dependencies
 fastmcp>=2.11.2
 mcp>=1.12.4
-lancedb>=0.24.2
-pyarrow>=14.0.0,<15.0.0
+lancedb==0.16.0
+pyarrow==14.0.2
 
 # OpenAI Integration
 openai>=1.99.6
@@ -17,7 +17,7 @@ langsmith>=0.4.13
 
 # Data Processing
 pandas>=2.3.1
-numpy>=2.3.2
+numpy>=1.26.4,<2.0
 pyyaml>=6.0
 dicttoxml>=1.7.16
 

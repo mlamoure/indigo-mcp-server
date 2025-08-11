@@ -31,7 +31,7 @@ class ProgressTracker:
         self.should_report_progress = total >= threshold
 
         if self.should_report_progress:
-            logger.info(f"🚀 Starting {stage}: processing {total} items...")
+            logger.info(f"🚀 Starting {stage}: processing {total} items. Updates will be displayed every 10% until finished.")
 
     def update(self, current: int, operation: str = ""):
         """

@@ -101,14 +101,6 @@ The MCP Server device provides real-time status information:
 - **Device-level Control**: Start/stop server via device communication
 - **Better Integration**: Native Indigo device management
 
-### Migration from Plugin Configuration
-
-**Automatic Migration**: If you're upgrading from an older version, the plugin will automatically:
-
-1. **Detect Legacy Configuration**: Check for existing plugin-level server access settings
-2. **Create Device**: Automatically create an MCP Server device with your current settings
-3. **Migrate Settings**: Transfer Server Access Mode from plugin to device configuration
-4. **Maintain Compatibility**: Continue working with existing setups
 
 ### Why Vector Store?
 

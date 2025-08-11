@@ -23,18 +23,18 @@
     <Field id="separator2" type="separator"/>
 
     <!-- Model Configuration -->
-    <Field id="large_model" type="menu" defaultValue="gpt-4o">
+    <Field id="large_model" type="menu" defaultValue="gpt-5">
         <Label>Large Model:</Label>
         <List>
-            <Option value="gpt-4o">gpt-4.1</Option>
+            <Option value="gpt-5">gpt-5</Option>
             <Option value="o3">o3</Option>
         </List>
     </Field>
 
-    <Field id="small_model" type="menu" defaultValue="gpt-4o-mini">
+    <Field id="small_model" type="menu" defaultValue="gpt-5-mini">
         <Label>Small Model:</Label>
         <List>
-            <Option value="o4-mini">o4-mini</Option>
+            <Option value="gpt-5-mini">gpt-5-mini</Option>
         </List>
     </Field>
 
@@ -53,7 +53,7 @@
         <Label>LangSmith API Key:</Label>
     </Field>
     <Field enabledBindingId="enable_langsmith" enabledBindingNegate="false" type="textfield" id="langsmith_project"
-           defaultValue="">
+           defaultValue="indigo-mcp-server">
         <Label>LangSmith Project Name:</Label>
     </Field>
 
@@ -98,10 +98,6 @@
     <Field id="separator5a" type="separator"/>
 
     <!-- Debug Settings -->
-    <Field id="showDebugInfo" type="checkbox" defaultValue="false">
-        <Label>Enable debug logging:</Label>
-        <Description>Shows detailed debug information in the Event Log</Description>
-    </Field>
 
     <Field id="log_level" type="menu" defaultValue="20">
         <Label>Event Logging Level:</Label>

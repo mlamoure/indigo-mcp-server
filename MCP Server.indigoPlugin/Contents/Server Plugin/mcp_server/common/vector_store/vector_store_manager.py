@@ -48,6 +48,9 @@ class VectorStoreManager:
         
         # Track last update time for optimization
         self._last_update_time = 0
+        
+        # Progress tracking for initialization
+        self._is_initializing = False
     
     def start(self) -> None:
         """Start the vector store manager."""
@@ -56,6 +59,8 @@ class VectorStoreManager:
             return
         
         try:
+            self._is_initializing = True
+            
             # Initialize vector store
             self._initialize_vector_store()
             
@@ -67,9 +72,11 @@ class VectorStoreManager:
                 self._start_background_updates()
             
             self._running = True
+            self._is_initializing = False
             self.logger.info("Vector store manager started")
             
         except Exception as e:
+            self._is_initializing = False
             self.logger.error(f"Failed to start vector store manager: {e}")
             raise
     
@@ -218,6 +225,7 @@ class VectorStoreManager:
     def is_running(self) -> bool:
         """Check if the vector store manager is running."""
         return self._running
+    
     
     def set_update_interval(self, interval: int) -> None:
         """
