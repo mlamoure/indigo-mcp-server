@@ -1,0 +1,263 @@
+{
+  "devices": [
+    {
+      "id": 1234567,
+      "name": "Living Room Lamp",
+      "description": "Main table lamp in living room",
+      "model": "Smart Switch 6",
+      "deviceTypeId": "dimmer",
+      "type": "dimmer",
+      "address": "01.45.AB.CD",
+      "enabled": true,
+      "states": {
+        "onOffState": true,
+        "brightness": 75,
+        "energyAccumTotal": 12.5
+      },
+      "protocol": "Insteon"
+    },
+    {
+      "id": 2345678,
+      "name": "Kitchen Temperature Sensor",
+      "description": "Temperature monitoring in kitchen",
+      "model": "TempLinc 2441TH",
+      "deviceTypeId": "sensor",
+      "type": "sensor", 
+      "address": "02.67.EF.12",
+      "enabled": true,
+      "states": {
+        "temperature": 72.3,
+        "humidity": 45.2,
+        "batteryLevel": 85
+      },
+      "protocol": "Insteon"
+    },
+    {
+      "id": 3456789,
+      "name": "Front Door Lock",
+      "description": "Smart deadbolt for front entrance",
+      "model": "Yale Connect YRD256",
+      "deviceTypeId": "lock",
+      "type": "lock",
+      "address": "03.89.34.56",
+      "enabled": true,
+      "states": {
+        "locked": true,
+        "batteryLevel": 78,
+        "lockStatus": "locked"
+      },
+      "protocol": "Z-Wave"
+    },
+    {
+      "id": 4567890,
+      "name": "Bedroom Ceiling Fan",
+      "description": "Variable speed ceiling fan with light",
+      "model": "FanLinc 2475F",
+      "deviceTypeId": "speedcontrol",
+      "type": "speedcontrol",
+      "address": "04.BC.78.90", 
+      "enabled": true,
+      "states": {
+        "onOffState": false,
+        "speedLevel": 0,
+        "brightnessLevel": 0
+      },
+      "protocol": "Insteon"
+    },
+    {
+      "id": 5678901,
+      "name": "Garage Door Sensor",
+      "description": "Magnetic contact sensor on garage door",
+      "model": "Door Sensor II 2843-222",
+      "deviceTypeId": "sensor",
+      "type": "sensor",
+      "address": "05.DE.12.34",
+      "enabled": true,
+      "states": {
+        "onOffState": false,
+        "batteryLevel": 92
+      },
+      "protocol": "Insteon"
+    },
+    {
+      "id": 6789012,
+      "name": "Kitchen Under-Cabinet Lights",
+      "description": "LED strip lighting under kitchen cabinets",
+      "model": "Micro Module Dimmer 2466D",
+      "deviceTypeId": "dimmer",
+      "type": "dimmer",
+      "address": "06.56.AB.78",
+      "enabled": true,
+      "states": {
+        "onOffState": true,
+        "brightness": 100
+      },
+      "protocol": "Insteon"
+    },
+    {
+      "id": 7890123,
+      "name": "Thermostat Main Floor",
+      "description": "Programmable thermostat for main living area", 
+      "model": "Venstar T7850",
+      "deviceTypeId": "thermostat",
+      "type": "thermostat",
+      "address": "07.90.CD.12",
+      "enabled": true,
+      "states": {
+        "temperatureInput1": 71.5,
+        "setpointHeat": 70.0,
+        "setpointCool": 74.0,
+        "hvacOperationMode": 2,
+        "hvacFanMode": 0
+      },
+      "protocol": "WiFi"
+    },
+    {
+      "id": 8901234,
+      "name": "Outdoor Motion Sensor",
+      "description": "PIR motion detector for back yard",
+      "model": "Motion Sensor II 2844-222",
+      "deviceTypeId": "sensor",
+      "type": "sensor",
+      "address": "08.34.EF.56",
+      "enabled": true,
+      "states": {
+        "onOffState": false,
+        "batteryLevel": 67
+      },
+      "protocol": "Insteon"
+    },
+    {
+      "id": 9012345,
+      "name": "Master Bedroom Switch",
+      "description": "Wall switch controlling bedroom overhead light",
+      "model": "SwitchLinc Relay 2477S",
+      "deviceTypeId": "relay",
+      "type": "relay",
+      "address": "09.78.12.90",
+      "enabled": true,
+      "states": {
+        "onOffState": false
+      },
+      "protocol": "Insteon"
+    },
+    {
+      "id": 1023456,
+      "name": "Wine Cellar Temperature",
+      "description": "Temperature and humidity monitoring for wine storage",
+      "model": "TempLinc 2441TH",
+      "deviceTypeId": "sensor", 
+      "type": "sensor",
+      "address": "10.AB.56.CD",
+      "enabled": true,
+      "states": {
+        "temperature": 55.8,
+        "humidity": 65.3,
+        "batteryLevel": 91
+      },
+      "protocol": "Insteon"
+    }
+  ],
+  "variables": [
+    {
+      "id": 101,
+      "name": "House_Mode",
+      "value": "Home", 
+      "description": "Current house occupancy mode",
+      "folderId": 1,
+      "readOnly": false
+    },
+    {
+      "id": 102,
+      "name": "Security_Armed",
+      "value": "false",
+      "description": "Security system armed status",
+      "folderId": 1,
+      "readOnly": false
+    },
+    {
+      "id": 103,
+      "name": "Outside_Temperature",
+      "value": "68.4",
+      "description": "Current outdoor temperature from weather service",
+      "folderId": 2,
+      "readOnly": true
+    },
+    {
+      "id": 104,
+      "name": "Sunrise_Time",
+      "value": "06:47",
+      "description": "Today's sunrise time", 
+      "folderId": 2,
+      "readOnly": true
+    },
+    {
+      "id": 105,
+      "name": "Sunset_Time",
+      "value": "19:23",
+      "description": "Today's sunset time",
+      "folderId": 2,
+      "readOnly": true
+    },
+    {
+      "id": 106,
+      "name": "Away_Mode_Timer",
+      "value": "0",
+      "description": "Minutes until away mode activates",
+      "folderId": 1,
+      "readOnly": false
+    },
+    {
+      "id": 107,
+      "name": "Last_Motion_Device",
+      "value": "Outdoor Motion Sensor",
+      "description": "Name of device that last detected motion",
+      "folderId": 3,
+      "readOnly": false
+    }
+  ],
+  "actions": [
+    {
+      "id": 201,
+      "name": "Good Morning",
+      "description": "Morning routine - turn on lights, adjust thermostat", 
+      "folderId": 1
+    },
+    {
+      "id": 202, 
+      "name": "Good Night",
+      "description": "Evening routine - turn off lights, lock doors, arm security",
+      "folderId": 1
+    },
+    {
+      "id": 203,
+      "name": "Away Mode",
+      "description": "Set house to away mode - adjust temperature, turn off non-essential devices",
+      "folderId": 1
+    },
+    {
+      "id": 204,
+      "name": "Welcome Home", 
+      "description": "Return home routine - disarm security, turn on lights",
+      "folderId": 1
+    },
+    {
+      "id": 205,
+      "name": "Movie Time",
+      "description": "Dim lights for movie watching",
+      "folderId": 2
+    },
+    {
+      "id": 206,
+      "name": "Party Mode",
+      "description": "Set lighting and music for entertaining",
+      "folderId": 2
+    },
+    {
+      "id": 207,
+      "name": "Security Alert",
+      "description": "Emergency actions when security is triggered",
+      "folderId": 3
+    }
+  ]
+}

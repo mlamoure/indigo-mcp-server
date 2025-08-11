@@ -16,7 +16,7 @@ from .adapters.data_provider import DataProvider
 from .common.indigo_device_types import IndigoDeviceType, IndigoEntityType
 from .common.json_encoder import safe_json_dumps
 from .common.vector_store.vector_store_manager import VectorStoreManager
-from .handlers import ListHandlers
+from .handlers.list_handlers import ListHandlers
 from .resources import DeviceResource, VariableResource, ActionResource
 from .security import CertManager, SecurityConfig, AccessMode
 from .tools.action_control import ActionControlHandler

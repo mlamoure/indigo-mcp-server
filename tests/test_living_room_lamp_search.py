@@ -16,7 +16,7 @@ from mcp_server.common.vector_store.semantic_keywords import (
     _generate_llm_keywords,
     clear_llm_keyword_cache
 )
-from mcp_server.tools.search_entities.query_parser import QueryParser
+from mcp_server.tools.search_entities.query_parser import QueryParser, clear_query_expansion_cache
 from mcp_server.tools.search_entities.main import SearchEntitiesHandler
 
 
@@ -108,8 +108,11 @@ class TestLivingRoomLampSearch:
     @patch('mcp_server.common.openai_client.main.perform_completion')
     def test_query_expansion_for_light_search(self, mock_llm):
         """Test that query expansion improves 'living room light' searches."""
-        # Mock LLM response for query expansion
-        mock_llm.return_value = "living room light lamp illumination lighting fixture lounge family room"
+        # Clear cache to ensure fresh test
+        clear_query_expansion_cache()
+        
+        # Mock LLM response for query expansion (kept short to pass validation)
+        mock_llm.return_value = "living room light lamp illumination lighting"
         
         parser = QueryParser()
         expanded = parser.expand_query("living room light")
@@ -127,6 +130,9 @@ class TestLivingRoomLampSearch:
     @patch('mcp_server.common.openai_client.main.perform_completion')
     def test_query_parser_caches_expansions(self, mock_llm):
         """Test that query expansion results are cached properly."""
+        # Clear cache to ensure fresh test
+        clear_query_expansion_cache()
+        
         mock_llm.return_value = "living room light lamp illumination"
         
         parser = QueryParser()
@@ -159,6 +165,9 @@ class TestLivingRoomLampSearch:
     @patch('mcp_server.common.openai_client.main.perform_completion')
     def test_end_to_end_search_integration(self, mock_query_llm, mock_data_provider, mock_vector_store):
         """Test end-to-end search integration with LLM enhancements."""
+        # Clear cache to ensure fresh test
+        clear_query_expansion_cache()
+        
         # Mock query expansion
         mock_query_llm.return_value = "living room light lamp illumination lighting"
         

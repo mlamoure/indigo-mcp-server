@@ -20,12 +20,8 @@ SMALL_MODEL = os.environ.get("SMALL_MODEL", "gpt-5-mini")
 
 # hard-coded model limits and defaults
 MODEL_TOKEN_LIMITS = {
-    "gpt-4o": 128000,
-    "gpt-4.1": 1047576,
-    "o4-mini": 200000,
-    "gpt-4o-mini": 1047576,
-    "gpt-5": 1047576,
-    "gpt-5-mini": 400000,
+    "gpt-5": 400000,  # GPT-5: 272k input + 128k output = 400k total context
+    "gpt-5-mini": 400000,  # GPT-5-mini: Same 400k context as GPT-5
 }
 DEFAULT_RESPONSE_TOKEN_RESERVE = int(
     os.environ.get("OPENAI_RESPONSE_TOKEN_RESERVE", 2000)
@@ -552,34 +548,33 @@ def perform_completion(
 
         return ""
 
-    # Fallback to LangSmith responses endpoint
-    kwargs: Dict[str, Any] = {
+    # Use OpenAI Chat Completions API for all completions
+    params = {
         "model": model,
-        "input": msgs,
+        "messages": msgs,
     }
-
-    # Apply trace context configuration if provided
-    if config is not None:
-        # Extract metadata from config for LangSmith
-        metadata = config.get("metadata", {})
-
-        if metadata:
-            # Convert any non-string values to strings for LangSmith API compatibility
-            processed_metadata = {}
-            for key, value in metadata.items():
-                if isinstance(value, (int, float, bool)):
-                    processed_metadata[key] = str(value)
-                elif isinstance(value, (list, tuple)):
-                    processed_metadata[key] = str(value)
-                else:
-                    processed_metadata[key] = value
-
-            kwargs["metadata"] = processed_metadata
-
+    
+    # Handle structured output with OpenAI's native support
     if response_model:
-        kwargs["text_format"] = response_model
-        resp = client.responses.parse(**kwargs)
-        return resp.output_parsed if resp.output_parsed is not None else ""
+        # Use OpenAI's structured outputs instead of LangSmith parsing
+        logger.debug(f"🔧 Using structured output with {response_model.__name__}")
+        try:
+            # Try using OpenAI's native structured outputs (response_format parameter)
+            params["response_format"] = response_model
+            chat_resp = client.chat.completions.create(**params)
+        except Exception as e:
+            logger.warning(f"⚠️ Structured output failed, falling back to regular completion: {e}")
+            # Fallback to regular completion if structured output fails
+            chat_resp = client.chat.completions.create(model=model, messages=msgs)
     else:
-        resp = client.responses.create(**kwargs)
-        return resp.output if resp.output is not None else ""
+        # Standard chat completion
+        chat_resp = client.chat.completions.create(**params)
+    
+    # Extract content from OpenAI response
+    if chat_resp and chat_resp.choices and chat_resp.choices[0].message:
+        content = chat_resp.choices[0].message.content
+        logger.debug(f"✅ Chat completion successful with {len(content) if content else 0} characters")
+        return content or ""
+    
+    logger.warning("⚠️ Empty or invalid response from OpenAI Chat Completions API")
+    return ""

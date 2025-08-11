@@ -153,6 +153,10 @@ class MockDataProvider(DataProvider):
                 return copy.deepcopy(action)
         return None
     
+    def get_action_group(self, action_group_id: int) -> Optional[Dict[str, Any]]:
+        """Get a specific action group by ID. In Indigo, actions and action groups are the same."""
+        return self.get_action(action_group_id)
+    
     def add_device(self, device: Dict[str, Any]) -> None:
         """Add a device to the mock data."""
         self.devices.append(device)

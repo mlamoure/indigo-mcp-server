@@ -227,7 +227,7 @@ class TestActionControlHandler:
         handler.logger.info.assert_called()
         # Check that logging was called for both the attempt and success
         log_calls = [call.args[0] for call in handler.logger.info.call_args_list]
-        assert any("immediately" in call for call in log_calls)
+        assert any("(immediate)" in call for call in log_calls)
     
     def test_logging_delayed_execution(self, handler):
         """Test that delayed execution is logged correctly."""
@@ -247,7 +247,7 @@ class TestActionControlHandler:
         handler.logger.info.assert_called()
         # Check that logging mentions the delay
         log_calls = [call.args[0] for call in handler.logger.info.call_args_list]
-        assert any(f"{delay} seconds" in call for call in log_calls)
+        assert any(f"(delayed {delay}s)" in call for call in log_calls)
     
     def test_logging_error(self, handler):
         """Test that errors are logged."""

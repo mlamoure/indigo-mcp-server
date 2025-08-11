@@ -30,6 +30,13 @@ class MockDataProvider(DataProvider):
     def get_all_actions(self): return []
     def get_action(self, action_id): return None
     def get_all_entities_for_vector_store(self): return {"devices": [], "variables": [], "actions": []}
+    
+    # Control methods required by abstract interface
+    def turn_on_device(self, device_id): return {"success": True}
+    def turn_off_device(self, device_id): return {"success": True}
+    def set_device_brightness(self, device_id, brightness): return {"success": True}
+    def update_variable(self, variable_id, value): return {"success": True}
+    def execute_action_group(self, action_group_id, delay=None): return {"success": True}
 
 
 class MockSearchHandler:

@@ -904,22 +904,16 @@ Return only the keywords as a comma-separated list, no explanations."""
         
         # Handle different response types from perform_completion
         response_text = ""
+        # Use standardized response handling utility
+        from ..response_utils import extract_text_content
+        
         try:
-            if isinstance(response, list):
-                # Multi-stage RAG returns a list - take the first item
-                if response:
-                    first_item = response[0]
-                    response_text = _extract_text_content(first_item, name)
-                else:
-                    response_text = ""
-            elif isinstance(response, str):
-                # Normal completion returns a string
-                response_text = response
-            else:
-                # Handle other response types (like ResponseReasoningItem, BaseModel, etc.)
-                response_text = _extract_text_content(response, name)
+            response_text = extract_text_content(response, f"llm_keywords[{name}]")
+            if not response_text:
+                logger.warning(f"Empty response text extracted for '{name}'")
+                response_text = ""
         except Exception as e:
-            logger.error(f"Unexpected error in response handling for '{name}': {e}")
+            logger.error(f"Error in response extraction for '{name}': {e}")
             response_text = ""
         
         # Parse response into keywords list
@@ -950,113 +944,6 @@ Return only the keywords as a comma-separated list, no explanations."""
         logger.error(f"Error generating LLM keywords for '{entity_name}': {e}")
         return []
 
-
-def _extract_text_content(response_obj: Any, entity_name: str) -> str:
-    """
-    Extract text content from various response object types.
-    
-    Args:
-        response_obj: Response object from LLM (could be ResponseReasoningItem, BaseModel, list, etc.)
-        entity_name: Entity name for error logging
-        
-    Returns:
-        Extracted text content as string
-    """
-    try:
-        logger.debug(f"🔍 Extracting text from {type(response_obj).__name__} for {entity_name}")
-        
-        # Handle list responses (common with some LLM configurations)
-        if isinstance(response_obj, list):
-            logger.debug(f"📋 Processing list response with {len(response_obj)} items for {entity_name}")
-            
-            if not response_obj:
-                logger.warning(f"⚠️ Empty list response for {entity_name}")
-                return ""
-            
-            # Try to extract content from first valid item in list
-            for i, item in enumerate(response_obj):
-                logger.debug(f"🔍 Trying list item {i}: {type(item).__name__}")
-                
-                # Recursively extract from list items
-                extracted = _extract_text_content_from_object(item, f"{entity_name}-item-{i}")
-                if extracted:
-                    logger.debug(f"✅ Extracted text from list item {i} for {entity_name}")
-                    return extracted
-            
-            # If no items had content, try str() on the whole list
-            logger.warning(f"⚠️ Using str() fallback for list response for {entity_name}")
-            list_str = str(response_obj)
-            logger.debug(f"List str preview: {list_str[:200]}...")
-            return list_str
-        
-        # Handle single object responses
-        return _extract_text_content_from_object(response_obj, entity_name)
-        
-    except Exception as e:
-        logger.error(f"❌ Error extracting text content from {type(response_obj).__name__} for '{entity_name}': {e}")
-        return ""
-
-
-def _extract_text_content_from_object(response_obj: Any, entity_name: str) -> str:
-    """
-    Extract text content from a single response object.
-    
-    Args:
-        response_obj: Single response object (not a list)
-        entity_name: Entity name for error logging
-        
-    Returns:
-        Extracted text content as string
-    """
-    try:
-        # Handle string responses directly
-        if isinstance(response_obj, str):
-            logger.debug(f"✅ Direct string response for {entity_name}")
-            return response_obj
-        
-        # Check for content attribute (ResponseReasoningItem, etc.)
-        if hasattr(response_obj, 'content') and response_obj.content:
-            logger.debug(f"✅ Extracted content from {type(response_obj).__name__} for {entity_name}")
-            return str(response_obj.content)
-        
-        # Check for text attribute
-        if hasattr(response_obj, 'text') and response_obj.text:
-            logger.debug(f"✅ Extracted text from {type(response_obj).__name__} for {entity_name}")
-            return str(response_obj.text)
-        
-        # Check for message attribute
-        if hasattr(response_obj, 'message') and response_obj.message:
-            logger.debug(f"✅ Extracted message from {type(response_obj).__name__} for {entity_name}")
-            return str(response_obj.message)
-        
-        # Check for output attribute
-        if hasattr(response_obj, 'output') and response_obj.output:
-            logger.debug(f"✅ Extracted output from {type(response_obj).__name__} for {entity_name}")
-            return str(response_obj.output)
-        
-        # Try converting to dict and look for common content fields
-        if hasattr(response_obj, '__dict__'):
-            obj_dict = response_obj.__dict__
-            logger.debug(f"🔍 Checking dict attributes for {entity_name}: {list(obj_dict.keys())}")
-            for content_field in ['content', 'text', 'message', 'output', 'response', 'value']:
-                if content_field in obj_dict and obj_dict[content_field]:
-                    logger.debug(f"✅ Extracted {content_field} from dict for {entity_name}")
-                    return str(obj_dict[content_field])
-        
-        # Log available attributes for debugging
-        if hasattr(response_obj, '__dict__'):
-            available_attrs = [attr for attr in dir(response_obj) if not attr.startswith('_')]
-            logger.debug(f"Available attributes: {available_attrs}")
-        
-        # Last resort: try str() conversion but warn about it
-        logger.warning(f"⚠️ Using str() fallback for {type(response_obj).__name__} response for {entity_name}")
-        str_result = str(response_obj)
-        logger.debug(f"Fallback str() result preview: {str_result[:200]}...")
-        return str_result
-        
-    except Exception as e:
-        logger.error(f"❌ Error extracting text content from {type(response_obj).__name__} for '{entity_name}': {e}")
-        return ""
 
 
 def _create_entity_cache_key(entity: Dict[str, Any]) -> str:

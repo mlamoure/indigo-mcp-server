@@ -65,13 +65,18 @@ class VectorStore(VectorStoreInterface):
         
         # Initialize database
         self._init_database()
+        
+        # Check and manage embedding model metadata
+        self._manage_embedding_metadata()
     
     
     def _init_database(self) -> None:
         """Initialize LanceDB database and create tables if needed."""
         try:
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+            # Ensure directory exists (only if db_path has a directory part)
+            db_dir = os.path.dirname(self.db_path)
+            if db_dir:
+                os.makedirs(db_dir, exist_ok=True)
             
             # Connect to LanceDB
             self.db = lancedb.connect(self.db_path)
@@ -135,6 +140,112 @@ class VectorStore(VectorStoreInterface):
         
         self.db.create_table(table_name, empty_data)
         self.logger.debug(f"Created table: {table_name}")
+    
+    def _manage_embedding_metadata(self) -> None:
+        """Check and manage embedding model metadata."""
+        import os
+        current_model = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        
+        # Check if metadata table exists
+        existing_tables = self.db.table_names()
+        if "metadata" not in existing_tables:
+            # Create metadata table and store current embedding model
+            self._create_metadata_table()
+            self._store_embedding_model(current_model)
+            self.logger.info(f"📊 Created metadata table with embedding model: {current_model}")
+        else:
+            # Check stored embedding model
+            stored_model = self._get_stored_embedding_model()
+            if stored_model is None:
+                # No stored model (legacy database), assume current model
+                self._store_embedding_model(current_model)
+                self.logger.info(f"📊 Legacy database detected, assumed embedding model: {current_model}")
+            elif stored_model != current_model:
+                # Model has changed, need to rebuild vector store
+                self.logger.warning(f"🔄 Embedding model changed from '{stored_model}' to '{current_model}' - vector store rebuild required")
+                self._rebuild_vector_store_for_new_model(current_model)
+            else:
+                self.logger.debug(f"✅ Embedding model verified: {current_model}")
+    
+    def _create_metadata_table(self) -> None:
+        """Create metadata table for storing embedding model information."""
+        schema = pa.schema([
+            pa.field("key", pa.string()),
+            pa.field("value", pa.string()),
+            pa.field("updated_at", pa.timestamp('us'))
+        ])
+        
+        # Create empty metadata table
+        empty_data = pa.Table.from_arrays(
+            [
+                pa.array([], type=pa.string()),  # key
+                pa.array([], type=pa.string()),  # value  
+                pa.array([], type=pa.timestamp('us'))  # updated_at
+            ],
+            schema=schema
+        )
+        
+        self.db.create_table("metadata", empty_data)
+        self.logger.debug("Created metadata table")
+    
+    def _store_embedding_model(self, model: str) -> None:
+        """Store the current embedding model in metadata."""
+        import datetime
+        
+        metadata_table = self.db.open_table("metadata")
+        
+        # Check if embedding_model key already exists
+        try:
+            existing_records = metadata_table.search().where(f"key = 'embedding_model'").to_list()
+            if existing_records:
+                # Update existing record
+                metadata_table.delete(f"key = 'embedding_model'")
+        except Exception:
+            # Table might be empty, continue with insert
+            pass
+        
+        # Insert new/updated record
+        new_record = pa.Table.from_arrays([
+            pa.array(["embedding_model"]),
+            pa.array([model]),
+            pa.array([datetime.datetime.now()])
+        ], names=["key", "value", "updated_at"])
+        
+        metadata_table.add(new_record)
+        self.logger.debug(f"Stored embedding model: {model}")
+    
+    def _get_stored_embedding_model(self) -> Optional[str]:
+        """Get the stored embedding model from metadata."""
+        try:
+            metadata_table = self.db.open_table("metadata")
+            records = metadata_table.search().where(f"key = 'embedding_model'").to_list()
+            if records:
+                return records[0]['value']
+        except Exception as e:
+            self.logger.debug(f"Could not retrieve embedding model metadata: {e}")
+        return None
+    
+    def _rebuild_vector_store_for_new_model(self, new_model: str) -> None:
+        """Rebuild the entire vector store when embedding model changes."""
+        self.logger.warning("🔄 Rebuilding vector store for new embedding model...")
+        
+        # Drop all entity tables
+        for table_name in ["devices", "variables", "actions"]:
+            try:
+                self.db.drop_table(table_name)
+                self.logger.info(f"Dropped table: {table_name}")
+            except Exception as e:
+                self.logger.debug(f"Could not drop table {table_name}: {e}")
+        
+        # Recreate tables
+        for table_name in ["devices", "variables", "actions"]:
+            self._create_table(table_name)
+        
+        # Update metadata with new model
+        self._store_embedding_model(new_model)
+        
+        self.logger.info(f"✅ Vector store rebuilt for embedding model: {new_model}")
+        self.logger.info("🔄 Note: Vector store is now empty and needs to be repopulated with embeddings")
     
     def _create_embedding_text(self, entity: Dict[str, Any], entity_type: str, semantic_keywords: List[str] = None) -> str:
         """

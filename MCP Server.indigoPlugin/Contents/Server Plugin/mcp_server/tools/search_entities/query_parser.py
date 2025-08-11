@@ -215,43 +215,20 @@ Example: "living room light" -> "living room light lamp illumination lighting fi
                 logger.debug(f"❌ QUERY_PARSER: Empty response, returning original query: '{query}'")
                 return query
             
-            # Handle different response types from perform_completion with detailed logging and error handling
-            try:
-                if isinstance(response, list):
-                    # Multi-stage RAG returns a list - take the first item
-                    logger.debug(f"📋 QUERY_PARSER: Processing list response with {len(response)} items for query: '{query}'")
-                    if response:
-                        first_item = response[0]
-                        logger.debug(f"🔍 QUERY_PARSER: First list item - type: {type(first_item)}, repr: {repr(first_item)[:100]}")
-                        try:
-                            expanded = first_item.strip().strip('"').strip("'")
-                            logger.debug(f"✅ QUERY_PARSER: Successfully processed list item")
-                        except AttributeError as e:
-                            logger.error(f"❌ QUERY_PARSER: AttributeError on list item: {e}, item_type: {type(first_item)}")
-                            expanded = str(first_item).strip().strip('"').strip("'")
-                    else:
-                        expanded = query
-                elif isinstance(response, str):
-                    # Normal completion returns a string
-                    logger.debug(f"📄 QUERY_PARSER: Processing string response for query: '{query}'")
-                    try:
-                        expanded = response.strip().strip('"').strip("'")
-                        logger.debug(f"✅ QUERY_PARSER: Successfully processed string response")
-                    except AttributeError as e:
-                        logger.error(f"❌ QUERY_PARSER: AttributeError on string response: {e}")
-                        expanded = query
-                else:
-                    # Handle other response types (like ResponseReasoningItem)
-                    logger.debug(f"🔧 QUERY_PARSER: Processing {type(response).__name__} response for query: '{query}'")
-                    try:
-                        expanded = str(response).strip().strip('"').strip("'")
-                        logger.debug(f"✅ QUERY_PARSER: Successfully processed {type(response).__name__} response")
-                    except Exception as e:
-                        logger.error(f"❌ QUERY_PARSER: Error processing {type(response).__name__}: {e}")
-                        expanded = query
-            except Exception as e:
-                logger.error(f"💥 QUERY_PARSER: Unexpected error in response handling: {e}, response_type: {type(response)}, response_repr: {repr(response)[:200]}")
+            # Use standardized response handling utility
+            from ...common.response_utils import extract_text_content
+            
+            logger.debug(f"🔄 QUERY_PARSER: Using standardized response extraction for query: '{query}'")
+            expanded = extract_text_content(response, f"query_expansion[{query[:50]}...]")
+            
+            if not expanded or (not isinstance(response, str) and expanded == str(response)):
+                # If extraction failed or returned raw object string, fallback to original query
+                logger.debug(f"⚠️ QUERY_PARSER: Response extraction failed or invalid, using original query")
                 expanded = query
+            else:
+                # Clean up the expanded query
+                expanded = expanded.strip().strip('"').strip("'")
+                logger.debug(f"✅ QUERY_PARSER: Successfully extracted and cleaned expanded query")
             
             # Validate the expansion isn't too long or malformed  
             if len(expanded) > len(query) * 4 or '"' in expanded:
