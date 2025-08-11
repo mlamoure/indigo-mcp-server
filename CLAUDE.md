@@ -8,7 +8,7 @@ This is an Indigo MCP (Model Context Protocol) Server plugin that provides AI as
 Indigo Domotics home automation system. The plugin implements a FastMCP server with HTTP transport, semantic search
 capabilities and read-only access to Indigo entities.
 
-## Python Enviornment
+## Python Environment
 
 This project uses a virtual environment in the .venv folder
 Use source .venv/bin/activate to activate the virtual environment
@@ -42,6 +42,14 @@ MCP Server.indigoPlugin/
 │           ├── common/
 │           │   ├── __init__.py
 │           │   ├── json_encoder.py            # JSON encoding utilities
+│           │   ├── state_filter.py            # State filtering utilities
+│           │   ├── indigo_device_types.py     # Device classification system
+│           │   ├── influxdb/                  # InfluxDB integration
+│           │   │   ├── __init__.py
+│           │   │   ├── main.py                # Main InfluxDB interface
+│           │   │   ├── client.py              # InfluxDB client
+│           │   │   ├── queries.py             # Query builders
+│           │   │   └── time_utils.py          # Time utility functions
 │           │   ├── openai_client/             # OpenAI client utilities
 │           │   │   ├── __init__.py
 │           │   │   ├── main.py
@@ -52,6 +60,9 @@ MCP Server.indigoPlugin/
 │           │       ├── progress_tracker.py    # Progress tracking for vector operations
 │           │       ├── semantic_keywords.py   # Semantic keyword extraction
 │           │       └── vector_store_manager.py # Vector store lifecycle management
+│           ├── handlers/      # Shared handler utilities
+│           │   ├── __init__.py
+│           │   └── list_handlers.py           # Shared listing functionality
 │           ├── resources/     # MCP resource handlers
 │           │   ├── __init__.py
 │           │   ├── devices.py   # Device resource endpoints
@@ -64,11 +75,27 @@ MCP Server.indigoPlugin/
 │           │   └── security_config.py # Security configuration
 │           └── tools/         # MCP tool implementations
 │               ├── __init__.py
-│               └── search_entities/      # Natural language search tool library
+│               ├── base_handler.py            # Base handler architecture
+│               ├── search_entities/           # Natural language search
+│               │   ├── __init__.py
+│               │   ├── main.py                # SearchEntitiesHandler implementation
+│               │   ├── query_parser.py        # Query parsing logic
+│               │   └── result_formatter.py    # Result formatting
+│               ├── device_control/            # Device control tools
+│               │   ├── __init__.py
+│               │   └── device_control_handler.py
+│               ├── variable_control/          # Variable control tools
+│               │   ├── __init__.py
+│               │   └── variable_control_handler.py
+│               ├── action_control/            # Action group control
+│               │   ├── __init__.py
+│               │   └── action_control_handler.py
+│               ├── get_devices_by_type/       # Device type filtering
+│               │   ├── __init__.py
+│               │   └── main.py
+│               └── historical_analysis/       # Historical data analysis
 │                   ├── __init__.py
-│                   ├── main.py           # SearchEntitiesHandler implementation
-│                   ├── query_parser.py   # Query parsing logic
-│                   └── result_formatter.py # Result formatting
+│                   └── main.py
 ```
 
 ## Key Components
@@ -111,6 +138,35 @@ MCP Server.indigoPlugin/
 - **AuthManager**: Authentication and authorization management
 - **CertManager**: SSL/TLS certificate management
 - **SecurityConfig**: Security configuration settings
+
+### Handlers System (mcp_server/handlers/)
+
+- **ListHandlers**: Shared handlers for listing Indigo entities
+- Provides consistent behavior between MCP tools and resources
+- Handles state filtering and device type classification
+- Used by both listing tools and resource endpoints
+
+### Common Utilities (mcp_server/common/)
+
+- **StateFilter**: Advanced state filtering with complex operators (gt, gte, lt, lte, eq, ne, contains, regex)
+- **IndigoDeviceTypes**: Device classification system for logical device type mapping
+- **JSONEncoder**: JSON encoding utilities for Indigo objects
+- **InfluxDB Integration**: Historical data access and time-series analysis
+
+### InfluxDB Integration (mcp_server/common/influxdb/)
+
+- **InfluxDBClient**: Client interface for InfluxDB connections
+- **QueryBuilder**: Flux query construction for historical data
+- **TimeUtils**: Time range handling and timezone utilities
+- **Main Interface**: High-level API for historical data analysis
+- Supports configurable time ranges and device filtering
+
+### Base Handler Architecture (mcp_server/tools/)
+
+- **BaseHandler**: Common base class for all MCP tool handlers
+- Provides logging, error handling, and validation
+- Standardizes tool implementation patterns
+- Enables consistent tool behavior and error reporting
 
 ### Resource Handlers (mcp_server/resources/)
 
@@ -161,7 +217,7 @@ PYTHONPATH="MCP Server.indigoPlugin/Contents/Server Plugin:$PYTHONPATH" python -
 - Some tests require specific environment variables (see `.env` file)
 - Tests that require the `indigo` module will be skipped in non-Indigo environments
 
-**Note:** The test suite includes ~280 tests covering unit tests, integration tests, and mock implementations of all
+**Note:** The test suite includes 343 tests covering unit tests, integration tests, and mock implementations of all
 major components.
 
 ### Dependencies
@@ -297,58 +353,88 @@ stdio transport.
 
 ### Available Tools
 
+The MCP server provides 12 comprehensive tools for interacting with your Indigo system:
+
+#### Search and Discovery Tools
+
 1. **search_entities**: Natural language search across all Indigo entities
-    - Returns all results above 0.15 similarity threshold with intelligent result limiting
-    - Includes complete device properties (not filtered by default)
-    - Supports device type filtering (dimmer, relay, sensor, etc.)
-    - **NEW**: Optional state_filter parameter for post-search state filtering
-    - **NEW**: Automatically detects state keywords and increases result limits
-    - **NEW**: Provides suggestions for using specialized tools when state queries are detected
-    - Enhanced with semantic keywords for better search accuracy
+    - Advanced semantic search using AI embeddings for context understanding
+    - Intelligent result limiting: adjusts count and detail level based on query keywords
+    - Default: 10 results, "few"/"some": 5 results, "many"/"list": 20 results, "all": 50 results
+    - Automatic field optimization for large result sets (20+ results use minimal fields)
+    - Supports device type filtering and optional state filtering
+    - Enhanced with semantic keywords for improved search accuracy
+    - Provides suggestions for using specialized tools when state queries detected
 
-2. **list_devices**: List all devices with optional state filtering ⭐ NEW
-    - Returns ALL devices without semantic filtering or limits
-    - Optional state_filter parameter using Indigo state names
-    - Perfect for queries like "all lights that are on": `list_devices({"onState": true})`
-    - Supports complex conditions: `{"brightnessLevel": {"gt": 50}}`
-    - Includes full device properties and states
+2. **get_devices_by_type**: Get all devices of a specific type
+    - Returns ALL devices of specified logical type without semantic filtering
+    - Supports device types: dimmer, relay, sensor, thermostat, sprinkler, multiio, speedcontrol, device
+    - No result limits - complete device information with full properties
+    - Ideal for type-based device discovery and inventory
 
-3. **list_variables**: List all variables ⭐ NEW
+#### Listing Tools (Complete Data Access)
+
+3. **list_devices**: List all devices with optional state filtering
+    - Returns ALL devices without semantic filtering or artificial limits
+    - Optional advanced state filtering with complex operators
+    - Supports conditions: gt, gte, lt, lte, eq, ne, contains, regex
+    - Perfect for comprehensive device inventory and state-based queries
+    - Example: `list_devices({"onState": true})` for all devices that are on
+
+4. **list_variables**: List all variables
     - Returns ALL variables with current values
     - No filtering or limits - complete variable information
+    - Ideal for variable inventory and value monitoring
 
-4. **list_action_groups**: List all action groups ⭐ NEW
+5. **list_action_groups**: List all action groups  
     - Returns ALL action groups with descriptions
     - No filtering or limits - complete action group information
+    - Perfect for scene and automation discovery
 
-5. **get_devices_by_state**: Get devices by state conditions ⭐ NEW
-    - Purpose-built for state-based queries
-    - Returns all devices matching state conditions without limits
-    - Supports complex operators: gt, gte, lt, lte, eq, ne, contains, regex
-    - Optional device type filtering
-    - Examples: `get_devices_by_state({"onState": true}, ["dimmer"])`
+6. **get_devices_by_state**: Get devices by state conditions
+    - Purpose-built for state-based device queries
+    - Advanced state filtering with complex operators and conditions
+    - Optional device type filtering for refined results
+    - No artificial limits - returns all matching devices
+    - Example: `get_devices_by_state({"onState": true}, ["dimmer"])` for on dimmers
 
-6. **get_devices_by_type**: Get all devices of a specific type
-    - Returns ALL devices of specified type without semantic filtering
-    - Supports all device types: dimmer, relay, sensor, multiio, speedcontrol, sprinkler, thermostat, device
-    - Includes complete device properties
+#### Device Control Tools
 
-7. **Device Control Tools**:
-    - **device_turn_on**: Turn on a device by device_id
-    - **device_turn_off**: Turn off a device by device_id
-    - **device_set_brightness**: Set brightness level (0-1 or 0-100) for dimmable devices
+7. **device_turn_on**: Turn on a device
+    - Turns on device by device_id
+    - Works with all controllable on/off devices
+    - Returns success/failure status with details
 
-8. **variable_update**: Update a variable's value
-    - Updates variable by variable_id with new string value
+8. **device_turn_off**: Turn off a device  
+    - Turns off device by device_id
+    - Works with all controllable on/off devices
+    - Returns success/failure status with details
 
-9. **action_execute_group**: Execute an action group
-    - Executes action group by action_group_id
-    - Optional delay parameter in seconds
+9. **device_set_brightness**: Set device brightness
+    - Sets brightness level for dimmable devices
+    - Accepts values 0-1 (float) or 0-100 (integer)
+    - Automatically detects and validates device dimming capability
 
-10. **analyze_historical_data**: Analyze historical device data using LangGraph workflow
-    - Natural language queries about device behavior and patterns
-    - Analyzes specified device names over configurable time range (1-365 days, default: 30)
-    - Uses AI-powered analysis workflow for insights and trends
+#### Variable and Action Control
+
+10. **variable_update**: Update variable value
+     - Updates variable by variable_id with new string value
+     - Works with all variable types
+     - Returns updated variable information
+
+11. **action_execute_group**: Execute action group
+     - Executes action group by action_group_id
+     - Optional delay parameter in seconds
+     - Returns execution status and details
+
+#### Historical Analysis (Advanced)
+
+12. **analyze_historical_data**: AI-powered historical data analysis
+     - Natural language queries about device behavior and patterns
+     - Analyzes specified device names over configurable time range (1-365 days, default: 30)
+     - Uses LangGraph workflow for intelligent data analysis
+     - Requires InfluxDB integration for historical data access
+     - Provides insights, trends, and behavioral pattern analysis
 
 ### Available Resources
 
