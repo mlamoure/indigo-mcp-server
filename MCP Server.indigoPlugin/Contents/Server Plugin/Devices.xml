@@ -10,6 +10,11 @@
             
             <Field id="separator1" type="separator"/>
             
+            <Field id="serverPort" type="textfield" defaultValue="8080">
+                <Label>Server Port:</Label>
+                <Description>HTTP port for the MCP server (1024-65535)</Description>
+            </Field>
+            
             <Field id="server_access_mode" type="menu" defaultValue="local_only">
                 <Label>Server Access:</Label>
                 <Description>Control how the MCP server accepts connections</Description>

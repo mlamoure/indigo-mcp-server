@@ -14,14 +14,6 @@
 
     <Field id="separator1" type="separator"/>
 
-    <!-- Server Configuration -->
-    <Field id="server_port" type="textfield" defaultValue="8080">
-        <Label>Server Port:</Label>
-        <Description>HTTP port for the FastMCP server (1024-65535)</Description>
-    </Field>
-
-    <Field id="separator2" type="separator"/>
-
     <!-- Model Configuration -->
     <Field id="large_model" type="menu" defaultValue="gpt-5">
         <Label>Large Model:</Label>
@@ -38,7 +30,7 @@
         </List>
     </Field>
 
-    <Field id="separator3" type="separator"/>
+    <Field id="separator2" type="separator"/>
 
     <!-- LangSmith Configuration -->
     <Field type="checkbox" id="enable_langsmith" defaultValue="false">
@@ -57,7 +49,7 @@
         <Label>LangSmith Project Name:</Label>
     </Field>
 
-    <Field id="separator4" type="separator"/>
+    <Field id="separator3" type="separator"/>
 
     <!-- InfluxDB Configuration -->
     <Field type="checkbox" id="enable_influxdb" defaultValue="false">
@@ -95,7 +87,7 @@
         <Description>Name of the database containing historical data (default: indigo)</Description>
     </Field>
 
-    <Field id="separator5a" type="separator"/>
+    <Field id="separator4" type="separator"/>
 
     <!-- Debug Settings -->
 
@@ -125,7 +117,7 @@
         <CallbackMethod>regenerate_bearer_token_button</CallbackMethod>
     </Field>
 
-    <Field id="separator7" type="separator"/>
+    <Field id="separator6" type="separator"/>
 
     <!-- Connection Testing -->
     <Field id="test_connections_button" type="button">

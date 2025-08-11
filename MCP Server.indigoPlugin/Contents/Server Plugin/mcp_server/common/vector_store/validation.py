@@ -92,7 +92,8 @@ def load_validation_data(table, logger) -> Dict[int, Dict[str, Any]]:
     """
     try:
         # Load all necessary fields for validation
-        existing_rows = table.search().to_list()
+        # IMPORTANT: Must specify a large limit to get all records, otherwise LanceDB defaults to 10
+        existing_rows = table.search().limit(999999).to_list()
         logger.debug(f"🔍 Raw search returned {len(existing_rows)} rows for validation")
         
         validation_data = {}

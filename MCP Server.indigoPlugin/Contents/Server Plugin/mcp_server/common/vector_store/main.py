@@ -105,7 +105,8 @@ class VectorStore(VectorStoreInterface):
                     # For existing tables, try to get basic info
                     try:
                         table = self.db.open_table(table_name)
-                        row_count = len(table.search().to_list())
+                        # IMPORTANT: Must specify a large limit to get all records, otherwise LanceDB defaults to 10
+                        row_count = len(table.search().limit(999999).to_list())
                         self.logger.debug(f"📊 Table {table_name} currently has {row_count} rows")
                     except Exception as table_error:
                         self.logger.debug(f"⚠️ Could not check row count for {table_name}: {table_error}")
@@ -598,7 +599,8 @@ class VectorStore(VectorStoreInterface):
                         import time
                         time.sleep(0.1)
                         
-                        verification_rows = table.search().to_list()
+                        # IMPORTANT: Must specify a large limit to get all records, otherwise LanceDB defaults to 10
+                        verification_rows = table.search().limit(999999).to_list()
                         current_count = len(verification_rows)
                         self.logger.debug(f"✅ Verification: {table_name} table now contains {current_count} total records")
                         
@@ -810,7 +812,8 @@ class VectorStore(VectorStoreInterface):
         for table_name in ["devices", "variables", "actions"]:
             try:
                 table = self.db.open_table(table_name)
-                count = len(table.search().to_list())
+                # IMPORTANT: Must specify a large limit to get all records, otherwise LanceDB defaults to 10
+                count = len(table.search().limit(999999).to_list())
                 stats["tables"][table_name] = count
             except Exception:
                 stats["tables"][table_name] = 0

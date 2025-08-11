@@ -287,27 +287,26 @@ class Plugin(indigo.PluginBase):
     # Menu Actions
     ########################################
 
-    def show_mcp_status_menu(self) -> None:
-        """Menu action to show MCP server status."""
+    def show_mcp_client_info_menu(self) -> None:
+        """Menu action to show Claude Desktop MCP client connection information."""
         if self.mcp_server_core and self.mcp_server_core.is_running:
             security_config = self.mcp_server_core.get_security_config()
-            status_info = security_config.get_status_info(self.server_port)
-
-            status_lines = [
-                f"MCP Server Status: Running",
-                f"  Server URL: {status_info['server_url']}",
-                f"  Access Mode: {status_info['access_mode'].replace('_', ' ').title()}",
-                f"  SSL Enabled: {status_info['ssl_enabled']}",
-                f"  Authentication: {'Enabled' if status_info['authentication_enabled'] else 'Disabled'}",
+            claude_config = security_config.get_claude_desktop_config(self.server_port)
+            
+            import json
+            config_json = json.dumps(claude_config, indent=2)
+            
+            config_lines = [
+                "Claude Desktop MCP Client Connection Information:",
+                "",
+                "Add the following configuration to your claude_desktop_config.json file:",
+                "",
+                config_json
             ]
-
-            if hasattr(self.mcp_server_core, "vector_store_manager"):
-                stats = self.mcp_server_core.vector_store_manager.get_stats()
-                status_lines.append(f"  Vector Store Stats: {stats}")
-
-            self.logger.info("\n".join(status_lines))
+            
+            self.logger.info("\n".join(config_lines))
         else:
-            self.logger.info("MCP Server Status: Not running")
+            self.logger.info("MCP Server is not running - start an MCP Server device first")
 
     def regenerate_bearer_token_menu(self) -> None:
         """Menu action to regenerate bearer token."""
@@ -409,13 +408,6 @@ class Plugin(indigo.PluginBase):
         if not api_key or api_key == "xxxxx-xxxxx-xxxxx-xxxxx":
             errors_dict["openai_api_key"] = "Please enter a valid OpenAI API key"
 
-        # Validate server port
-        try:
-            port = int(values_dict.get("server_port", 8080))
-            if port < 1024 or port > 65535:
-                errors_dict["server_port"] = "Port must be between 1024 and 65535"
-        except (ValueError, TypeError):
-            errors_dict["server_port"] = "Port must be a valid number"
 
         # Validate log level
         try:
@@ -520,9 +512,18 @@ class Plugin(indigo.PluginBase):
             )
             new_access_mode = newDev.pluginProps.get("server_access_mode", "local_only")
 
+            # Check if server port changed
+            old_server_port = origDev.pluginProps.get("serverPort")
+            new_server_port = newDev.pluginProps.get("serverPort")
+
             if old_access_mode != new_access_mode:
                 self.logger.info(
                     f"Access mode changed from {old_access_mode} to {new_access_mode}, restarting server"
+                )
+                self._restart_mcp_server_from_device(newDev)
+            elif old_server_port != new_server_port:
+                self.logger.info(
+                    f"Server port changed from {old_server_port} to {new_server_port}, restarting server"
                 )
                 self._restart_mcp_server_from_device(newDev)
 
@@ -549,6 +550,18 @@ class Plugin(indigo.PluginBase):
             server_name = valuesDict.get("serverName", "").strip()
             if not server_name:
                 errors_dict["serverName"] = "Server name is required"
+
+            # Validate server port
+            server_port = valuesDict.get("serverPort", "").strip()
+            if not server_port:
+                errors_dict["serverPort"] = "Server port is required"
+            else:
+                try:
+                    port = int(server_port)
+                    if port < 1024 or port > 65535:
+                        errors_dict["serverPort"] = "Port must be between 1024 and 65535"
+                except (ValueError, TypeError):
+                    errors_dict["serverPort"] = "Port must be a valid number"
 
         return (len(errors_dict) == 0, valuesDict, errors_dict)
 
@@ -579,6 +592,15 @@ class Plugin(indigo.PluginBase):
             # Store reference to device
             self.mcp_server_device = device
 
+            # Get server port from device properties (with fallback to plugin prefs for compatibility)
+            device_server_port = device.pluginProps.get("serverPort")
+            if device_server_port:
+                server_port = int(device_server_port)
+            else:
+                # Fallback to plugin preferences for existing installations
+                server_port = self.server_port
+                self.logger.debug(f"Using plugin-level server port {server_port} for device {device.name}")
+
             # Get access mode from device properties
             device_access_mode = device.pluginProps.get(
                 "server_access_mode", "local_only"
@@ -593,7 +615,7 @@ class Plugin(indigo.PluginBase):
 
             # Update device states
             device.updateStateOnServer(key="serverStatus", value="Starting")
-            device.updateStateOnServer(key="serverPort", value=self.server_port)
+            device.updateStateOnServer(key="serverPort", value=server_port)
             device.updateStateOnServer(
                 key="accessMode", value=device_access_mode.replace("_", " ").title()
             )
@@ -610,7 +632,7 @@ class Plugin(indigo.PluginBase):
             self.mcp_server_core = MCPServerCore(
                 data_provider=self.data_provider,
                 server_name="indigo-mcp-server",
-                port=self.server_port,
+                port=server_port,
                 access_mode=access_mode,
                 bearer_token=self.bearer_token,
                 logger=self.logger,
