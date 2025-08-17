@@ -87,22 +87,8 @@ class QueryParser:
     
     def _extract_entity_types(self, query_lower: str) -> List[str]:
         """Extract entity types to search from query."""
-        # Check for device-specific keywords
-        device_keywords = ["device", "devices", "sensor", "switch", "light", "thermostat", "dimmer"]
-        if any(word in query_lower for word in device_keywords):
-            return ["devices"]
-        
-        # Check for variable-specific keywords
-        variable_keywords = ["variable", "variables", "var"]
-        if any(word in query_lower for word in variable_keywords):
-            return ["variables"]
-        
-        # Check for action-specific keywords
-        action_keywords = ["action", "actions", "scene", "scenes", "group"]
-        if any(word in query_lower for word in action_keywords):
-            return ["actions"]
-        
-        # Default to all entity types
+        # Always search all entity types to ensure comprehensive results
+        # This prevents missing relevant actions or variables due to keyword ambiguity
         return ["devices", "variables", "actions"]
     
     def _extract_result_count_and_fields(self, query_lower: str) -> tuple[int, bool]:
@@ -142,11 +128,9 @@ class QueryParser:
         Returns:
             Expanded query string with additional terms
         """
-        logger.debug(f"🏁 QUERY_PARSER: ENTERING expand_query with query: '{query}', enable_llm: {enable_llm}")
-        
         try:
             if not enable_llm or not query.strip():
-                logger.debug(f"🏁 QUERY_PARSER: EXITING expand_query early (no LLM or empty query)")
+                logger.debug(f"Query expansion skipped (LLM disabled or empty query)")
                 return query
             
             # Check cache first
@@ -160,16 +144,13 @@ class QueryParser:
             expanded = self._generate_llm_query_expansion(query)
             if expanded and expanded != query:
                 _query_expansion_cache[cache_key] = expanded
-                logger.debug(f"🎯 QUERY_PARSER: Expanded query: '{query}' -> '{expanded}'")
-                logger.debug(f"🏁 QUERY_PARSER: EXITING expand_query successfully with expansion")
+                logger.info(f"Query expanded: '{query}' -> '{expanded}'")
                 return expanded
             
-            logger.debug(f"🏁 QUERY_PARSER: EXITING expand_query with original query (no expansion)")
             return query
             
         except Exception as e:
-            logger.error(f"💥 QUERY_PARSER: EXCEPTION in expand_query for '{query}': {e}")
-            logger.debug(f"🏁 QUERY_PARSER: EXITING expand_query with error")
+            logger.warning(f"Query expansion failed for '{query}': {e}")
             return query
     
     def _generate_llm_query_expansion(self, query: str) -> str:
@@ -200,8 +181,6 @@ Keep the expansion concise and focused. Return only the expanded query text, no 
 Example: "living room light" -> "living room light lamp illumination lighting fixture"
 """
 
-            logger.debug(f"🚀 QUERY_PARSER: About to call perform_completion for query: '{query}'")
-            
             # Call LLM with small model for efficiency
             response = perform_completion(
                 messages=prompt,
@@ -209,30 +188,31 @@ Example: "living room light" -> "living room light lamp illumination lighting fi
                 response_token_reserve=50
             )
             
-            logger.debug(f"📥 QUERY_PARSER: Received response - type: {type(response)}, repr: {repr(response)[:200]}")
-            
             if not response:
-                logger.debug(f"❌ QUERY_PARSER: Empty response, returning original query: '{query}'")
+                logger.debug(f"Empty LLM response for query expansion")
                 return query
             
             # Use standardized response handling utility
             from ...common.response_utils import extract_text_content
             
-            logger.debug(f"🔄 QUERY_PARSER: Using standardized response extraction for query: '{query}'")
             expanded = extract_text_content(response, f"query_expansion[{query[:50]}...]")
             
-            if not expanded or (not isinstance(response, str) and expanded == str(response)):
-                # If extraction failed or returned raw object string, fallback to original query
-                logger.debug(f"⚠️ QUERY_PARSER: Response extraction failed or invalid, using original query")
+            if not expanded or not expanded.strip():
+                # If extraction failed or returned empty string, fallback to original query
+                logger.debug(f"LLM expansion extraction failed, using original query")
                 expanded = query
             else:
                 # Clean up the expanded query
                 expanded = expanded.strip().strip('"').strip("'")
-                logger.debug(f"✅ QUERY_PARSER: Successfully extracted and cleaned expanded query")
             
-            # Validate the expansion isn't too long or malformed  
-            if len(expanded) > len(query) * 4 or '"' in expanded:
-                logger.debug(f"LLM expansion rejected as too long or malformed")
+            # Validate the expansion isn't too long or obviously malformed  
+            if len(expanded) > len(query) * 6 or len(expanded) > 200:
+                logger.debug(f"LLM expansion rejected as too long ({len(expanded)} chars)")
+                return query
+            
+            # Check for obvious malformed content (but allow reasonable punctuation)
+            if any(char in expanded for char in ['<', '>', '{', '}', '[', ']', '|']):
+                logger.debug(f"LLM expansion rejected as malformed (contains special chars)")
                 return query
             
             return expanded

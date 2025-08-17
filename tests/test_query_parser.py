@@ -10,33 +10,33 @@ class TestQueryParser:
     """Test cases for the QueryParser class."""
     
     def test_parse_device_query(self, query_parser):
-        """Test parsing device-specific queries."""
+        """Test parsing device-specific queries now searches all entity types."""
         result = query_parser.parse("find all lights")
-        assert result["entity_types"] == ["devices"]
+        assert result["entity_types"] == ["devices", "variables", "actions"]
         assert result["top_k"] == 50  # "all" keyword
         
         result = query_parser.parse("show me switches")
-        assert result["entity_types"] == ["devices"]
+        assert result["entity_types"] == ["devices", "variables", "actions"]
         
         result = query_parser.parse("dimmer in living room")
-        assert result["entity_types"] == ["devices"]
+        assert result["entity_types"] == ["devices", "variables", "actions"]
     
     def test_parse_variable_query(self, query_parser):
-        """Test parsing variable-specific queries."""
+        """Test parsing variable-specific queries now searches all entity types."""
         result = query_parser.parse("house mode variable")
-        assert result["entity_types"] == ["variables"]
+        assert result["entity_types"] == ["devices", "variables", "actions"]
         
         result = query_parser.parse("show all vars")
-        assert result["entity_types"] == ["variables"]
+        assert result["entity_types"] == ["devices", "variables", "actions"]
         assert result["top_k"] == 50  # "all" keyword
     
     def test_parse_action_query(self, query_parser):
-        """Test parsing action-specific queries."""
+        """Test parsing action-specific queries now searches all entity types."""
         result = query_parser.parse("good night scene")
-        assert result["entity_types"] == ["actions"]
+        assert result["entity_types"] == ["devices", "variables", "actions"]
         
         result = query_parser.parse("list all actions")
-        assert result["entity_types"] == ["actions"]
+        assert result["entity_types"] == ["devices", "variables", "actions"]
         assert result["top_k"] == 50  # "all" keyword
     
     def test_parse_general_query(self, query_parser):
@@ -98,7 +98,7 @@ class TestQueryParser:
     def test_combined_keywords(self, query_parser):
         """Test queries with multiple keywords."""
         result = query_parser.parse("show all exact devices like switches")
-        assert result["entity_types"] == ["devices"]
+        assert result["entity_types"] == ["devices", "variables", "actions"]
         assert result["top_k"] == 50  # "all" takes precedence
         assert result["threshold"] == 0.7  # "exact" takes precedence over "like"
     
@@ -188,7 +188,7 @@ class TestQueryParserEnhancedFeatures:
         
         # Should behave like original parse method
         assert result["device_types"] == []  # Default empty
-        assert result["entity_types"] == ["devices"]  # Should detect from query
+        assert result["entity_types"] == ["devices", "variables", "actions"]  # Now searches all entity types
         assert result["top_k"] == 50  # Should detect "all" from query
     
     def test_preserve_query_based_parameters_when_not_overridden(self, query_parser):
