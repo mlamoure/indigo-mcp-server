@@ -719,8 +719,38 @@ class VectorStore(VectorStoreInterface):
             except Exception as e:
                 self.logger.error(f"Search failed for {entity_type}: {e}")
         
-        # Sort by similarity score (highest first)
-        all_results.sort(key=lambda x: x.get("_similarity_score", 0), reverse=True)
+        # Deduplicate results by entity ID and type, keeping highest similarity score
+        seen_entities = {}
+        deduplicated_results = []
+        
+        for result in all_results:
+            entity_id = result.get("id")
+            entity_type = result.get("_entity_type")
+            
+            if entity_id is not None and entity_type:
+                # Create unique key combining type and ID
+                entity_key = f"{entity_type}_{entity_id}"
+                current_score = result.get("_similarity_score", 0)
+                
+                # Keep the result with the highest similarity score for this entity
+                if entity_key not in seen_entities or current_score > seen_entities[entity_key]["_similarity_score"]:
+                    seen_entities[entity_key] = result
+                    
+        # Convert deduplicated dict back to list
+        deduplicated_results = list(seen_entities.values())
+        
+        # Log deduplication stats if any duplicates were found
+        original_count = len(all_results)
+        deduplicated_count = len(deduplicated_results)
+        if original_count > deduplicated_count:
+            duplicates_removed = original_count - deduplicated_count
+            self.logger.debug(f"Deduplication removed {duplicates_removed} duplicate entities ({original_count} -> {deduplicated_count})")
+        
+        # Sort deduplicated results by similarity score (highest first)
+        deduplicated_results.sort(key=lambda x: x.get("_similarity_score", 0), reverse=True)
+        
+        # Use deduplicated results for further processing
+        all_results = deduplicated_results
         
         # Calculate metadata
         total_found = len(all_results)

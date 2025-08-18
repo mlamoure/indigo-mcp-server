@@ -8,6 +8,7 @@ except ImportError:
     pass
 
 import logging
+import time
 from typing import Dict, List, Any, Optional
 
 from .data_provider import DataProvider
@@ -135,6 +136,18 @@ class IndigoDataProvider(DataProvider):
             
         return None
     
+    def get_action_group(self, action_group_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific action group by ID.
+        
+        Args:
+            action_group_id: The action group ID
+            
+        Returns:
+            Action group dictionary or None if not found
+        """
+        return self.get_action(action_group_id)
+    
     def get_all_devices_unfiltered(self) -> List[Dict[str, Any]]:
         """
         Get all devices from Indigo with complete data (unfiltered for vector store).
@@ -179,21 +192,25 @@ class IndigoDataProvider(DataProvider):
             if device_id not in indigo.devices:
                 return {"error": f"Device {device_id} not found"}
             
-            device = indigo.devices[device_id]
-            previous_state = device.onState
+            # Get initial device state
+            device_before = indigo.devices[device_id]
+            previous_state = device_before.onState
             
             # Turn on the device
             indigo.device.turnOn(device_id)
             
-            # Get updated state
-            device.refreshFromServer()
-            current_state = device.onState
+            # Wait 1 second for device state to update
+            time.sleep(1)
+            
+            # Get fresh device object from Indigo to detect actual state changes
+            device_after = indigo.devices[device_id]
+            current_state = device_after.onState
             
             return {
                 "changed": previous_state != current_state,
                 "previous": previous_state,
                 "current": current_state,
-                "device_name": device.name
+                "device_name": device_after.name
             }
             
         except Exception as e:
@@ -214,21 +231,25 @@ class IndigoDataProvider(DataProvider):
             if device_id not in indigo.devices:
                 return {"error": f"Device {device_id} not found"}
             
-            device = indigo.devices[device_id]
-            previous_state = device.onState
+            # Get initial device state
+            device_before = indigo.devices[device_id]
+            previous_state = device_before.onState
             
             # Turn off the device
             indigo.device.turnOff(device_id)
             
-            # Get updated state
-            device.refreshFromServer()
-            current_state = device.onState
+            # Wait 1 second for device state to update
+            time.sleep(1)
+            
+            # Get fresh device object from Indigo to detect actual state changes
+            device_after = indigo.devices[device_id]
+            current_state = device_after.onState
             
             return {
                 "changed": previous_state != current_state,
                 "previous": previous_state,
                 "current": current_state,
-                "device_name": device.name
+                "device_name": device_after.name
             }
             
         except Exception as e:
@@ -250,13 +271,14 @@ class IndigoDataProvider(DataProvider):
             if device_id not in indigo.devices:
                 return {"error": f"Device {device_id} not found"}
             
-            device = indigo.devices[device_id]
+            # Get initial device state
+            device_before = indigo.devices[device_id]
             
             # Check if device supports brightness
-            if not hasattr(device, 'brightness'):
+            if not hasattr(device_before, 'brightness'):
                 return {"error": f"Device {device_id} does not support brightness control"}
             
-            previous_brightness = device.brightness
+            previous_brightness = device_before.brightness
             
             # Normalize brightness value
             # If value is between 0 and 1, convert to 0-100 range
@@ -270,15 +292,18 @@ class IndigoDataProvider(DataProvider):
             # Set brightness
             indigo.dimmer.setBrightness(device_id, value=brightness_value)
             
-            # Get updated brightness
-            device.refreshFromServer()
-            current_brightness = device.brightness
+            # Wait 1 second for device state to update
+            time.sleep(1)
+            
+            # Get fresh device object from Indigo to detect actual state changes
+            device_after = indigo.devices[device_id]
+            current_brightness = device_after.brightness
             
             return {
                 "changed": previous_brightness != current_brightness,
                 "previous": previous_brightness,
                 "current": current_brightness,
-                "device_name": device.name
+                "device_name": device_after.name
             }
             
         except Exception as e:
@@ -342,10 +367,8 @@ class IndigoDataProvider(DataProvider):
             # Execute action group with optional delay
             if delay and delay > 0:
                 indigo.actionGroup.execute(action_group_id, delay=delay)
-                self.logger.info(f"Action group {action_group_id} scheduled for execution in {delay} seconds")
             else:
                 indigo.actionGroup.execute(action_group_id)
-                self.logger.info(f"Action group {action_group_id} executed immediately")
             
             return {
                 "success": True,

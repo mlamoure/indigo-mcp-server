@@ -96,6 +96,19 @@ class DataProvider(ABC):
         pass
     
     @abstractmethod
+    def get_action_group(self, action_group_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific action group by ID.
+        
+        Args:
+            action_group_id: The action group ID
+            
+        Returns:
+            Action group dictionary or None if not found
+        """
+        pass
+    
+    @abstractmethod
     def turn_on_device(self, device_id: int) -> Dict[str, Any]:
         """
         Turn on a device.

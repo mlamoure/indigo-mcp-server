@@ -15,9 +15,9 @@ Use source .venv/bin/activate to activate the virtual environment
 
 ## System Requirements
 
-- **macOS**: 10.14 (Mojave) or later
+- **macOS**: 10.15 (Catalina) or later
 - **Python**: 3.9+ (as required by dependencies)
-- **PyArrow**: 14.0.x (pinned for macOS 10.14+ compatibility with pre-built wheels)
+- **PyArrow**: 21.0.0+ (latest with pre-built wheels for macOS 10.15+)
 
 ## Plugin Structure
 
@@ -353,7 +353,7 @@ stdio transport.
 
 ### Available Tools
 
-The MCP server provides 12 comprehensive tools for interacting with your Indigo system:
+The MCP server provides 15 comprehensive tools for interacting with your Indigo system:
 
 #### Search and Discovery Tools
 
@@ -372,26 +372,46 @@ The MCP server provides 12 comprehensive tools for interacting with your Indigo 
     - No result limits - complete device information with full properties
     - Ideal for type-based device discovery and inventory
 
+#### Direct Entity Lookup Tools (NEW)
+
+3. **get_device_by_id**: Get a specific device by its exact ID
+    - Fast, precise device retrieval when you know the device ID
+    - Returns complete device information or error if not found
+    - Faster than semantic search for known device IDs
+    - Example: `get_device_by_id(1994440374)` - Get device with ID 1994440374
+
+4. **get_variable_by_id**: Get a specific variable by its exact ID
+    - Fast, precise variable retrieval when you know the variable ID
+    - Returns complete variable information or error if not found
+    - Faster than semantic search for known variable IDs
+    - Example: `get_variable_by_id(123456789)` - Get variable with specific ID
+
+5. **get_action_group_by_id**: Get a specific action group by its exact ID
+    - Fast, precise action group retrieval when you know the action group ID
+    - Returns complete action group information or error if not found
+    - Faster than semantic search for known action group IDs
+    - Example: `get_action_group_by_id(987654321)` - Get action group with specific ID
+
 #### Listing Tools (Complete Data Access)
 
-3. **list_devices**: List all devices with optional state filtering
+6. **list_devices**: List all devices with optional state filtering
     - Returns ALL devices without semantic filtering or artificial limits
     - Optional advanced state filtering with complex operators
     - Supports conditions: gt, gte, lt, lte, eq, ne, contains, regex
     - Perfect for comprehensive device inventory and state-based queries
     - Example: `list_devices({"onState": true})` for all devices that are on
 
-4. **list_variables**: List all variables
+7. **list_variables**: List all variables
     - Returns ALL variables with current values
     - No filtering or limits - complete variable information
     - Ideal for variable inventory and value monitoring
 
-5. **list_action_groups**: List all action groups  
+8. **list_action_groups**: List all action groups  
     - Returns ALL action groups with descriptions
     - No filtering or limits - complete action group information
     - Perfect for scene and automation discovery
 
-6. **get_devices_by_state**: Get devices by state conditions
+9. **get_devices_by_state**: Get devices by state conditions
     - Purpose-built for state-based device queries
     - Advanced state filtering with complex operators and conditions
     - Optional device type filtering for refined results
@@ -400,36 +420,39 @@ The MCP server provides 12 comprehensive tools for interacting with your Indigo 
 
 #### Device Control Tools
 
-7. **device_turn_on**: Turn on a device
+10. **device_turn_on**: Turn on a device
     - Turns on device by device_id
     - Works with all controllable on/off devices
     - Returns success/failure status with details
+    - **Enhanced**: Now waits 1 second and refreshes device state for accurate change detection
 
-8. **device_turn_off**: Turn off a device  
+11. **device_turn_off**: Turn off a device  
     - Turns off device by device_id
     - Works with all controllable on/off devices
     - Returns success/failure status with details
+    - **Enhanced**: Now waits 1 second and refreshes device state for accurate change detection
 
-9. **device_set_brightness**: Set device brightness
+12. **device_set_brightness**: Set device brightness
     - Sets brightness level for dimmable devices
     - Accepts values 0-1 (float) or 0-100 (integer)
     - Automatically detects and validates device dimming capability
+    - **Enhanced**: Now waits 1 second and refreshes device state for accurate change detection
 
 #### Variable and Action Control
 
-10. **variable_update**: Update variable value
+13. **variable_update**: Update variable value
      - Updates variable by variable_id with new string value
      - Works with all variable types
      - Returns updated variable information
 
-11. **action_execute_group**: Execute action group
+14. **action_execute_group**: Execute action group
      - Executes action group by action_group_id
      - Optional delay parameter in seconds
      - Returns execution status and details
 
 #### Historical Analysis (Advanced)
 
-12. **analyze_historical_data**: AI-powered historical data analysis
+15. **analyze_historical_data**: AI-powered historical data analysis
      - Natural language queries about device behavior and patterns
      - Analyzes specified device names over configurable time range (1-365 days, default: 30)
      - Uses LangGraph workflow for intelligent data analysis
@@ -486,6 +509,14 @@ The `get_devices_by_type` endpoint supports logical device types:
 - Complete variable listing: `list_variables()` - All variables with current values
 - Complete action listing: `list_action_groups()` - All action groups
 
+### NEW Direct Lookup Tool Examples:
+
+- Get specific device: `get_device_by_id(1994440374)` - Fast retrieval when you know the device ID
+- Get specific variable: `get_variable_by_id(123456789)` - Fast retrieval when you know the variable ID  
+- Get specific action group: `get_action_group_by_id(987654321)` - Fast retrieval when you know the action group ID
+- **Use case**: After finding entities with search tools, use direct lookup for subsequent operations
+- **Performance**: Bypasses semantic search when exact ID is known
+
 ### Control Tool Examples:
 
 - Turn on device ID 123: `device_turn_on(123)`
@@ -495,6 +526,7 @@ The `get_devices_by_type` endpoint supports logical device types:
 - Update variable: `variable_update(variable_id, "new_value")`
 - Execute scene: `action_execute_group(action_group_id)`
 - Execute scene with delay: `action_execute_group(action_group_id, 30)` (30 second delay)
+- **Enhanced**: All device control tools now provide accurate state change detection
 
 ### Historical Analysis Examples:
 
@@ -514,6 +546,28 @@ The `get_devices_by_type` endpoint supports logical device types:
 - `list_devices({"onState": true})` - Returns ALL devices that are on
 - `get_devices_by_state({"onState": true}, ["dimmer", "relay"])` - All lights that are on
 - `search_entities("lights on")` - Now detects state query and suggests better tools
+
+## Recent Improvements (2025.0.1-beta.3+)
+
+### Search Performance and Accuracy Enhancements
+
+**Issues Addressed:**
+- **Duplicate Search Results**: Fixed vector store returning 8-10 duplicates of same device
+- **Multiple Failed Searches**: Eliminated need for 4+ search attempts to find target devices
+- **Inaccurate Device State**: Device control tools now provide reliable before/after state detection
+- **LLM Query Expansion**: Fixed validation logic that was rejecting all query expansions
+
+**Key Improvements:**
+1. **Search Deduplication**: Vector store now automatically removes duplicate entries by entity ID
+2. **Direct ID Lookup**: Added 3 new tools for fast entity retrieval when ID is known
+3. **Enhanced Device Control**: All device commands wait 1 second and refresh state for accuracy
+4. **Improved LLM Expansion**: Fixed overly restrictive validation allowing better semantic matching
+5. **User-Friendly Logging**: Reduced debug verbosity with cleaner progress messages
+
+**Performance Impact:**
+- **Search Efficiency**: "turn off sunroom lamp" requests now succeed in 1-2 operations instead of 4+
+- **State Accuracy**: Device control provides reliable change detection and status reporting
+- **Result Quality**: Eliminated duplicate entries improving search result clarity
 
 ## Development Environment
 

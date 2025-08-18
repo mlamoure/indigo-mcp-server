@@ -590,6 +590,120 @@ class MCPServerCore:
                 self.logger.error(f"Get devices by state error: {e}")
                 return safe_json_dumps({"error": str(e), "success": False})
 
+        @self.mcp_server.tool()
+        def get_device_by_id(device_id: int) -> str:
+            """
+            Get a specific device by its ID.
+
+            This tool retrieves a single device using its exact ID. It's faster and more precise
+            than semantic search when you know the device ID.
+
+            Args:
+                device_id: The exact ID of the device to retrieve
+
+            Returns:
+                JSON with device information or error if device not found
+
+            Examples:
+                - get_device_by_id(1994440374) - Get device with ID 1994440374
+                - get_device_by_id(123456789) - Get any device by its exact ID
+            """
+            try:
+                self.logger.info(f"[get_device_by_id]: Retrieving device with ID: {device_id}")
+                device = self.data_provider.get_device(device_id)
+                
+                if device is None:
+                    return safe_json_dumps({
+                        "error": f"Device with ID {device_id} not found",
+                        "device_id": device_id,
+                        "success": False
+                    })
+                
+                return safe_json_dumps({
+                    "device": device,
+                    "device_id": device_id,
+                    "success": True
+                })
+            except Exception as e:
+                self.logger.error(f"[get_device_by_id]: Error retrieving device {device_id} - {e}")
+                return safe_json_dumps({"error": str(e), "device_id": device_id, "success": False})
+
+        @self.mcp_server.tool()
+        def get_variable_by_id(variable_id: int) -> str:
+            """
+            Get a specific variable by its ID.
+
+            This tool retrieves a single variable using its exact ID. It's faster and more precise
+            than semantic search when you know the variable ID.
+
+            Args:
+                variable_id: The exact ID of the variable to retrieve
+
+            Returns:
+                JSON with variable information or error if variable not found
+
+            Examples:
+                - get_variable_by_id(123456789) - Get variable with specific ID
+                - get_variable_by_id(987654321) - Get any variable by its exact ID
+            """
+            try:
+                self.logger.info(f"[get_variable_by_id]: Retrieving variable with ID: {variable_id}")
+                variable = self.data_provider.get_variable(variable_id)
+                
+                if variable is None:
+                    return safe_json_dumps({
+                        "error": f"Variable with ID {variable_id} not found",
+                        "variable_id": variable_id,
+                        "success": False
+                    })
+                
+                return safe_json_dumps({
+                    "variable": variable,
+                    "variable_id": variable_id,
+                    "success": True
+                })
+            except Exception as e:
+                self.logger.error(f"[get_variable_by_id]: Error retrieving variable {variable_id} - {e}")
+                return safe_json_dumps({"error": str(e), "variable_id": variable_id, "success": False})
+
+        @self.mcp_server.tool()
+        def get_action_group_by_id(action_group_id: int) -> str:
+            """
+            Get a specific action group by its ID.
+
+            This tool retrieves a single action group using its exact ID. It's faster and more precise
+            than semantic search when you know the action group ID.
+
+            Args:
+                action_group_id: The exact ID of the action group to retrieve
+
+            Returns:
+                JSON with action group information or error if action group not found
+
+            Examples:
+                - get_action_group_by_id(123456789) - Get action group with specific ID
+                - get_action_group_by_id(987654321) - Get any action group by its exact ID
+            """
+            try:
+                self.logger.info(f"[get_action_group_by_id]: Retrieving action group with ID: {action_group_id}")
+                action_group = self.data_provider.get_action(action_group_id)
+                
+                if action_group is None:
+                    return safe_json_dumps({
+                        "error": f"Action group with ID {action_group_id} not found",
+                        "action_group_id": action_group_id,
+                        "success": False
+                    })
+                
+                return safe_json_dumps({
+                    "action_group": action_group,
+                    "action_group_id": action_group_id,
+                    "success": True
+                })
+            except Exception as e:
+                self.logger.error(f"[get_action_group_by_id]: Error retrieving action group {action_group_id} - {e}")
+                return safe_json_dumps({"error": str(e), "action_group_id": action_group_id, "success": False})
+
     def _create_static_token_auth(self):
         """
         Create a static token authentication provider.

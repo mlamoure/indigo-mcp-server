@@ -16,7 +16,7 @@ Search, analyize, and control your Indigo devices using natural language:
 ## Requirements
 
 - **Indigo Domotics**: 2024.2 or later
-- **macOS**: 10.14 (Mojave) or later
+- **macOS**: 10.15 (Catalina) or later
 - **Claude Desktop**: Primary MCP client (ChatGPT support coming to Plus plan)
 - **OpenAI API Key**: Required for semantic search ([Get API key](https://platform.openai.com/api-keys))
     - Sends device metadata to OpenAI for embeddings (minimal cost)

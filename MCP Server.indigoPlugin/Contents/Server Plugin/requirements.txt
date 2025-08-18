@@ -1,15 +1,15 @@
 # MCP Server Core Dependencies
-fastmcp>=2.11.2
-mcp>=1.12.4
-lancedb==0.16.0
-pyarrow==14.0.2
+fastmcp>=2.11.3
+mcp>=1.13.0
+lancedb>=0.24.3
+pyarrow>=21.0.0
 
 # OpenAI Integration
-openai>=1.99.6
+openai>=1.99.9
 tiktoken>=0.11.0
 
 # LangGraph and LangSmith
-langgraph>=0.6.4
+langgraph>=0.6.5
 langgraph-checkpoint>=2.1.1
 langgraph-prebuilt>=0.6.4
 langgraph-sdk>=0.2.0

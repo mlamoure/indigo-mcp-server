@@ -144,7 +144,7 @@ class QueryParser:
             expanded = self._generate_llm_query_expansion(query)
             if expanded and expanded != query:
                 _query_expansion_cache[cache_key] = expanded
-                logger.info(f"Query expanded: '{query}' -> '{expanded}'")
+                logger.debug(f"Query expanded: '{query}' -> '{expanded}'")
                 return expanded
             
             return query
@@ -205,14 +205,20 @@ Example: "living room light" -> "living room light lamp illumination lighting fi
                 # Clean up the expanded query
                 expanded = expanded.strip().strip('"').strip("'")
             
-            # Validate the expansion isn't too long or obviously malformed  
-            if len(expanded) > len(query) * 6 or len(expanded) > 200:
-                logger.debug(f"LLM expansion rejected as too long ({len(expanded)} chars)")
-                return query
+            # Validate and potentially truncate the expansion if too long
+            max_length = min(len(query) * 6, 250)  # Allow up to 250 chars or 6x original, whichever is smaller
+            if len(expanded) > max_length:
+                # Truncate at word boundary to preserve meaning
+                truncated = expanded[:max_length].rstrip()
+                # Find the last space to avoid cutting words in half
+                last_space = truncated.rfind(' ')
+                if last_space > max_length * 0.8:  # Only use word boundary if we don't lose too much
+                    truncated = truncated[:last_space]
+                
+                expanded = truncated
             
             # Check for obvious malformed content (but allow reasonable punctuation)
             if any(char in expanded for char in ['<', '>', '{', '}', '[', ']', '|']):
-                logger.debug(f"LLM expansion rejected as malformed (contains special chars)")
                 return query
             
             return expanded

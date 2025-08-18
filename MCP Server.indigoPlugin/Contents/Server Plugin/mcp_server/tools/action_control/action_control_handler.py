@@ -38,11 +38,13 @@ class ActionControlHandler(BaseToolHandler):
         Returns:
             Dictionary with operation results
         """
-        # Log incoming request
-        params = {"action_group_id": action_group_id}
-        if delay is not None:
-            params["delay"] = delay
-        self.log_incoming_request("execute", params)
+        # Get action group name for better logging
+        action_group = self.data_provider.get_action_group(action_group_id)
+        action_name = action_group.get('name', f'ID {action_group_id}') if action_group else f'ID {action_group_id}'
+        
+        # Log incoming request with action group name
+        delay_text = f" with {delay}s delay" if delay else ""
+        self.info_log(f"▶️ Received execute action group request for '{action_name}'{delay_text}")
         
         try:
             # Validate action_group_id
@@ -58,14 +60,11 @@ class ActionControlHandler(BaseToolHandler):
                     self.log_tool_outcome("execute", False, "Invalid delay value")
                     return error_result
             
-            # Get action group name for better logging
-            action_group = self.data_provider.get_action_group(action_group_id)
-            action_name = action_group.get('name', f'ID {action_group_id}') if action_group else f'ID {action_group_id}'
             
             if delay:
-                self.debug_log(f"Scheduling action group {action_name} for execution in {delay} seconds")
+                self.debug_log(f"Scheduling action group {action_name} (ID: {action_group_id}) for execution in {delay} seconds")
             else:
-                self.debug_log(f"Executing action group {action_name} immediately")
+                self.debug_log(f"Executing action group {action_name} (ID: {action_group_id}) immediately")
             
             # Execute the action group
             result = self.data_provider.execute_action_group(action_group_id, delay)

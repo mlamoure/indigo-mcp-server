@@ -57,23 +57,32 @@ class SearchEntitiesHandler(BaseToolHandler):
             Dictionary with formatted search results
         """
         try:
-            # Log query and parameters
-            self.info_log(f"Search query: '{query}'")
-            if device_types:
-                self.info_log(f"Device type filter: {device_types}")
-            if entity_types:
-                self.info_log(f"Entity type filter: {entity_types}")
+            # Log search request 
+            self.info_log(f"🔍 Received request - query: '{query}', device_types: {device_types}, entity_types: {entity_types}, state_filter: {state_filter}")
             
             # Parse query to determine search parameters
             search_params = self.query_parser.parse(query, device_types, entity_types)
             self.debug_log(f"Search parameters: {search_params}")
             
             # Expand query with LLM for better semantic matching
+            self.info_log("⬆️ Augmenting search results with suggested terms from OpenAI")
             expanded_query = self.query_parser.expand_query(query, enable_llm=True)
-            if expanded_query != query:
-                self.info_log(f"Query expanded: '{query}' -> '{expanded_query}'")
             
-            # Perform vector search with expanded query
+            # Show expansion terms if different from original
+            if expanded_query != query and len(expanded_query.strip()) > 0:
+                # Extract additional terms (words not in original query)
+                original_words = set(query.lower().split())
+                expanded_words = expanded_query.lower().split()
+                additional_terms = [word for word in expanded_words if word not in original_words]
+                
+                if additional_terms:
+                    # Show up to 6 additional terms
+                    terms_to_show = additional_terms[:6]
+                    more_text = f" (and {len(additional_terms) - 6} more)" if len(additional_terms) > 6 else ""
+                    self.info_log(f"⬆️ Additional search terms: {', '.join(terms_to_show)}{more_text}")
+            
+            # Start vector search
+            self.info_log("🔦 Vector Store Search starting...")
             raw_results, search_metadata = self.vector_store.search(
                 query=expanded_query,
                 entity_types=search_params["entity_types"],
@@ -88,14 +97,20 @@ class SearchEntitiesHandler(BaseToolHandler):
             # Group results by entity type
             grouped_results = self._group_results_by_type(raw_results)
             
+            # Log vector search completion with counts
+            device_count = len(grouped_results.get("devices", []))
+            variable_count = len(grouped_results.get("variables", []))
+            action_count = len(grouped_results.get("actions", []))
+            self.info_log(f"🔦 Vector Store Search Completed: Returned {device_count} Devices, {variable_count} Variables, {action_count} Action Groups")
+            
             # Apply state filtering if specified
             if state_filter is not None and grouped_results.get("devices"):
-                self.info_log(f"Applying state filter: {state_filter}")
+                self.debug_log(f"Applying state filter: {state_filter}")
                 filtered_devices = StateFilter.filter_by_state(grouped_results["devices"], state_filter)
                 grouped_results["devices"] = filtered_devices
-                self.info_log(f"Filtered to {len(filtered_devices)} devices by state conditions")
+                self.info_log(f"State filtering: {len(filtered_devices)} devices match conditions")
             
-            # Log result counts
+            # Log final result counts
             self._log_search_results(grouped_results)
             
             # Format results

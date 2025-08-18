@@ -334,7 +334,8 @@ def emb_text(text: str) -> list:
             if not embedding or len(embedding) == 0:
                 raise ValueError("Empty embedding returned from OpenAI API")
 
-            logger.debug(f"✅ Generated embedding with {len(embedding)} dimensions")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Generated embedding ({len(embedding)} dimensions)")
             return embedding
 
         except Exception as e:
@@ -380,9 +381,9 @@ def perform_completion(
     # determine the model
     model = model or DEFAULT_MODEL
 
-    logger.debug(
-        f"🚀 Starting completion: model={model}, stream={stream}, tools={tools is not None}, response_model={response_model is not None}"
-    )
+    # Reduced logging verbosity - only log model selection for debugging
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"OpenAI completion: {model}")
 
     # multi-stage RAG if structured input
     if isinstance(messages, dict) and "context" in messages and "question" in messages:
@@ -465,9 +466,9 @@ def perform_completion(
 
     # enforce token limit
     total_tokens = _count_message_tokens(msgs, model)
-    logger.debug(
-        f"🔢 Tokens: {total_tokens:,} + {response_token_reserve:,} reserve = {total_tokens + response_token_reserve:,} (limit: {MODEL_TOKEN_LIMITS[model]:,})"
-    )
+    # Only log token counts in debug mode for troubleshooting
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"Tokens: {total_tokens:,} (limit: {MODEL_TOKEN_LIMITS[model]:,})")
 
     if total_tokens + response_token_reserve > MODEL_TOKEN_LIMITS[model]:
         raise RuntimeError(
@@ -572,7 +573,6 @@ def perform_completion(
                 if hasattr(choice, 'message') and hasattr(choice.message, 'parsed'):
                     parsed_obj = choice.message.parsed
                     if parsed_obj:
-                        logger.debug(f"✅ Received structured response of type: {type(parsed_obj).__name__}")
                         return parsed_obj
                     else:
                         logger.warning("⚠️ Parsed object is None, trying content fallback")
@@ -580,8 +580,6 @@ def perform_completion(
                 # Fallback to content if parsed is not available
                 if hasattr(choice.message, 'content') and choice.message.content:
                     content = choice.message.content
-                    logger.debug(f"✅ Received structured response of type: str")
-                    logger.debug(f"Response object: {content}")
                     return content
                     
         except Exception as e:
@@ -597,7 +595,6 @@ def perform_completion(
                 if chat_resp and chat_resp.choices and chat_resp.choices[0].message:
                     content = chat_resp.choices[0].message.content
                     if content:
-                        logger.debug(f"✅ Fallback completion successful with {len(content)} characters")
                         return content
             except Exception as fallback_error:
                 logger.error(f"❌ Fallback completion also failed: {fallback_error}")
@@ -609,7 +606,6 @@ def perform_completion(
     # Extract content from OpenAI response
     if chat_resp and chat_resp.choices and chat_resp.choices[0].message:
         content = chat_resp.choices[0].message.content
-        logger.debug(f"✅ Chat completion successful with {len(content) if content else 0} characters")
         return content or ""
     
     logger.warning("⚠️ Empty or invalid response from OpenAI Chat Completions API")
