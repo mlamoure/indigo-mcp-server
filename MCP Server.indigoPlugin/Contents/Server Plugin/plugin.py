@@ -8,6 +8,7 @@ try:
 except ImportError:
     pass
 
+import json
 import logging
 import os
 
@@ -16,7 +17,7 @@ import openai
 # Import our modules
 from mcp_server.adapters.indigo_data_provider import IndigoDataProvider
 from mcp_server.common.openai_client.langsmith_config import get_langsmith_config
-from mcp_server.core import MCPServerCore
+from mcp_server.mcp_handler import MCPHandler
 from mcp_server.security import AuthManager, AccessMode
 
 
@@ -71,9 +72,8 @@ class Plugin(indigo.PluginBase):
 
         # Component instances
         self.data_provider = None
-        self.mcp_server_core = None
+        self.mcp_handler = None
         self.auth_manager = AuthManager(logger=self.logger)
-        self.server_port = plugin_prefs.get("server_port", 8080)
 
         # Device management
         self.mcp_server_device = None
@@ -280,8 +280,63 @@ class Plugin(indigo.PluginBase):
         """
         self.logger.info("MCP Server plugin shutting down...")
 
-        if self.mcp_server_core:
-            self.mcp_server_core.stop()
+        if self.mcp_handler:
+            self.mcp_handler.stop()
+
+    ########################################
+    # MCP Endpoint Handler for IWS
+    ########################################
+    
+    def handle_mcp_endpoint(self, action, dev=None, callerWaitingForResult=True):
+        """
+        Handle MCP requests through Indigo IWS.
+        This method is called when the /message/<plugin_id>/mcp/ endpoint is accessed.
+        
+        Args:
+            action: Indigo action containing request details
+            dev: Optional device reference
+            callerWaitingForResult: Whether caller is waiting for result
+            
+        Returns:
+            Dict with status, headers, and content for IWS response
+        """
+        # Ensure MCP handler is initialized
+        if not self.mcp_handler:
+            # Initialize data provider if needed
+            if not self.data_provider:
+                self.data_provider = IndigoDataProvider(
+                    indigo_instance=indigo,
+                    logger=self.logger
+                )
+            
+            # Initialize MCP handler
+            try:
+                self.mcp_handler = MCPHandler(
+                    data_provider=self.data_provider,
+                    logger=self.logger
+                )
+                self.logger.info("MCP handler initialized for IWS request")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize MCP handler: {e}")
+                return {
+                    "status": 500,
+                    "content": json.dumps({"error": "MCP handler initialization failed"})
+                }
+        
+        # Extract request details from action
+        method = (action.props.get("incoming_request_method") or "").upper()
+        headers = dict(action.props.get("headers", {}))
+        body = action.props.get("request_body") or ""
+        
+        # Delegate to MCP handler
+        try:
+            return self.mcp_handler.handle_request(method, headers, body)
+        except Exception as e:
+            self.logger.error(f"MCP endpoint error: {e}")
+            return {
+                "status": 500,
+                "content": json.dumps({"error": str(e)})
+            }
 
     ########################################
     # Menu Actions
@@ -289,24 +344,36 @@ class Plugin(indigo.PluginBase):
 
     def show_mcp_client_info_menu(self) -> None:
         """Menu action to show Claude Desktop MCP client connection information."""
-        if self.mcp_server_core and self.mcp_server_core.is_running:
-            security_config = self.mcp_server_core.get_security_config()
-            claude_config = security_config.get_claude_desktop_config(self.server_port)
-            
-            import json
-            config_json = json.dumps(claude_config, indent=2)
-            
-            config_lines = [
-                "Claude Desktop MCP Client Connection Information:",
-                "",
-                "Add the following configuration to your claude_desktop_config.json file:",
-                "",
-                config_json
-            ]
-            
-            self.logger.info("\n".join(config_lines))
-        else:
-            self.logger.info("MCP Server is not running - start an MCP Server device first")
+        # With IWS integration, the MCP endpoint is always available
+        # Get the Indigo server host and port from preferences or defaults
+        host = self.pluginPrefs.get("indigo_host", "localhost")
+        port = self.pluginPrefs.get("indigo_port", "8176")  # Default Indigo IWS port
+        
+        claude_config = {
+            "mcpServers": {
+                "indigo": {
+                    "command": "npx",
+                    "args": [
+                        "mcp-remote",
+                        f"http://{host}:{port}/message/com.vtmikel.mcp_server/mcp/"
+                    ]
+                }
+            }
+        }
+        
+        config_json = json.dumps(claude_config, indent=2)
+        
+        config_lines = [
+            "Claude Desktop MCP Client Connection Information:",
+            "",
+            "Add the following configuration to your claude_desktop_config.json file:",
+            "",
+            config_json,
+            "",
+            "Note: Replace host and port with your Indigo server's address if accessing remotely."
+        ]
+        
+        self.logger.info("\n".join(config_lines))
 
     def regenerate_bearer_token_menu(self) -> None:
         """Menu action to regenerate bearer token."""
@@ -464,17 +531,28 @@ class Plugin(indigo.PluginBase):
         Called when a device should start communication.
         """
         if device.deviceTypeId == "mcpServer":
-            self._start_mcp_server_from_device(device)
+            self.logger.info(f"MCP Server device started: {device.name}")
+            # Store reference to device
+            self.mcp_server_device = device
+            
+            # Update device states to show server is available via IWS
+            device.updateStateOnServer(key="serverStatus", value="Running")
+            device.updateStateOnServer(key="serverName", value=device.name)
+            device.updateStateOnServer(key="accessMode", value="IWS")
+            device.updateStateOnServer(key="lastActivity", value=str(indigo.server.getTime()))
 
     def deviceStopComm(self, device: indigo.Device) -> None:
         """
         Called when a device should stop communication.
         """
         if device.deviceTypeId == "mcpServer":
-            self.logger.info(
-                f"Stopping communication for MCP Server device: {device.name}"
-            )
-            self._stop_mcp_server_from_device(device)
+            self.logger.info(f"MCP Server device stopped: {device.name}")
+            # Update device state
+            device.updateStateOnServer(key="serverStatus", value="Stopped")
+            
+            # Clear device reference
+            if self.mcp_server_device and self.mcp_server_device.id == device.id:
+                self.mcp_server_device = None
 
     def deviceUpdated(self, origDev: indigo.Device, newDev: indigo.Device) -> None:
         """
@@ -584,150 +662,7 @@ class Plugin(indigo.PluginBase):
                 return device
         return None
 
-    def _start_mcp_server_from_device(self, device: indigo.Device) -> None:
-        """
-        Start MCP server using device configuration.
-        """
-        try:
-            # Store reference to device
-            self.mcp_server_device = device
-
-            # Get server port from device properties (with fallback to plugin prefs for compatibility)
-            device_server_port = device.pluginProps.get("serverPort")
-            if device_server_port:
-                server_port = int(device_server_port)
-            else:
-                # Fallback to plugin preferences for existing installations
-                server_port = self.server_port
-                self.logger.debug(f"Using plugin-level server port {server_port} for device {device.name}")
-
-            # Get access mode from device properties
-            device_access_mode = device.pluginProps.get(
-                "server_access_mode", "local_only"
-            )
-
-            # Convert access mode string to enum
-            access_mode = (
-                AccessMode.REMOTE_ACCESS
-                if device_access_mode == "remote_access"
-                else AccessMode.LOCAL_ONLY
-            )
-
-            # Update device states
-            device.updateStateOnServer(key="serverStatus", value="Starting")
-            device.updateStateOnServer(key="serverPort", value=server_port)
-            device.updateStateOnServer(
-                key="accessMode", value=device_access_mode.replace("_", " ").title()
-            )
-            device.updateStateOnServer(key="clientCount", value=0)
-
-            # Initialize data provider if needed
-            if not self.data_provider:
-                self.data_provider = IndigoDataProvider(logger=self.logger)
-
-            # Initialize and start MCP server
-            if self.mcp_server_core:
-                self.mcp_server_core.stop()
-
-            self.mcp_server_core = MCPServerCore(
-                data_provider=self.data_provider,
-                server_name="indigo-mcp-server",
-                port=server_port,
-                access_mode=access_mode,
-                bearer_token=self.bearer_token,
-                logger=self.logger,
-            )
-
-            # Update device status to Vector DB Initializing
-            device.updateStateOnServer(key="serverStatus", value="Vector DB Initializing", uiValue="Vector DB Initializing")
-            
-            # Start the MCP server synchronously - this will handle the initialization progress internally
-            self.mcp_server_core.start()
-            
-            # Update device states to Running after completion
-            device.updateStateOnServer(key="serverStatus", value="Running", uiValue="Running")
-            device.updateStateOnServer(key="lastActivity", value="Server started")
-
-            self.logger.info(f"{device.name} started.")
-            
-            # Log registered MCP components
-            self._log_mcp_components()
-
-        except Exception as e:
-            device.updateStateOnServer(key="serverStatus", value="Error")
-            self.logger.error(f"Failed to start MCP server from device: {e}")
-
-    def _stop_mcp_server_from_device(self, device: indigo.Device) -> None:
-        """
-        Stop MCP server for a specific device.
-        """
-        try:
-            device.updateStateOnServer(key="serverStatus", value="Stopping")
-
-            if self.mcp_server_core:
-                self.mcp_server_core.stop()
-                self.mcp_server_core = None
-
-            device.updateStateOnServer(key="serverStatus", value="Stopped")
-            device.updateStateOnServer(key="clientCount", value=0)
-            device.updateStateOnServer(key="lastActivity", value="Server stopped")
-
-            self.logger.info(f"MCP server stopped for device {device.name}")
-
-        except Exception as e:
-            device.updateStateOnServer(key="serverStatus", value="Error")
-            self.logger.error(f"Failed to stop MCP server for device: {e}")
-
-    def _log_mcp_components(self) -> None:
-        """
-        Log registered MCP components (tools, resources, prompts).
-        Simple, synchronous method that queries the FastMCP server directly.
-        """
-        if not self.mcp_server_core or not self.mcp_server_core.mcp_server:
-            return
-            
-        try:
-            # Get registered components from FastMCP
-            import asyncio
-            loop = asyncio.new_event_loop()
-            
-            try:
-                # Get tools
-                tools = loop.run_until_complete(self.mcp_server_core.mcp_server.get_tools())
-                if tools:
-                    tool_names = list(tools.keys())
-                    self.logger.info(f"Published MCP Tools ({len(tool_names)}): {', '.join(tool_names)}")
-                else:
-                    self.logger.info("Published MCP Tools (0): None")
-                    
-                # Get resources
-                resources = loop.run_until_complete(self.mcp_server_core.mcp_server.get_resources())
-                if resources:
-                    resource_names = list(resources.keys())
-                    self.logger.info(f"Published MCP Resources ({len(resource_names)}): {', '.join(resource_names)}")
-                else:
-                    self.logger.info("Published MCP Resources (0): None")
-                    
-                # Get prompts
-                prompts = loop.run_until_complete(self.mcp_server_core.mcp_server.get_prompts())
-                if prompts:
-                    prompt_names = list(prompts.keys())
-                    self.logger.info(f"Published MCP Prompts ({len(prompt_names)}): {', '.join(prompt_names)}")
-                else:
-                    self.logger.info("Published MCP Prompts (0): None")
-                    
-            finally:
-                loop.close()
-                
-        except Exception as e:
-            self.logger.debug(f"Could not log MCP components: {e}")
-
-    def _restart_mcp_server_from_device(self, device: indigo.Device) -> None:
-        """
-        Restart MCP server for a specific device.
-        """
-        self._stop_mcp_server_from_device(device)
-        self._start_mcp_server_from_device(device)
+    # Server management methods removed - MCP is always available via IWS
     
 
     def closedPrefsConfigUi(

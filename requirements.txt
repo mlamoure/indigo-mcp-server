@@ -1,6 +1,4 @@
-# MCP Server Core Dependencies
-fastmcp>=2.11.3
-mcp>=1.13.0
+# MCP Server Core Dependencies (IWS Integration)
 lancedb>=0.24.3
 pyarrow>=21.0.0
 
@@ -21,14 +19,11 @@ numpy>=1.26.4,<2.0
 pyyaml>=6.0
 dicttoxml>=1.7.16
 
-# HTTP Server and Client
-uvicorn[standard]>=0.35.0
-aiohttp>=3.12.15
+# HTTP Client only (no server needed with IWS)
 requests>=2.32.4
 requests-toolbelt>=1.0.0
 
-# Security and Certificates
-cryptography>=45.0.6
+# Security
 certifi>=2025.8.3
 
 # Configuration Management

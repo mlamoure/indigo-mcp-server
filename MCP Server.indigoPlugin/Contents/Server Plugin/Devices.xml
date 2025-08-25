@@ -10,23 +10,12 @@
             
             <Field id="separator1" type="separator"/>
             
-            <Field id="serverPort" type="textfield" defaultValue="8080">
-                <Label>Server Port:</Label>
-                <Description>HTTP port for the MCP server (1024-65535)</Description>
-            </Field>
-            
-            <Field id="server_access_mode" type="menu" defaultValue="local_only">
-                <Label>Server Access:</Label>
-                <Description>Control how the MCP server accepts connections</Description>
-                <List>
-                    <Option value="local_only">Local Only (127.0.0.1)</Option>
-                    <Option value="remote_access">Remote Access (HTTP only)</Option>
-                </List>
-            </Field>
-            
-            <Field id="access_help" type="label" fontSize="small" alignWithControl="false" alignText="left">
-                <Label>Local Only: Server accepts connections only from localhost (recommended)
-Remote Access: Server accepts connections from any IP (configure firewall accordingly)
+            <Field id="iws_info" type="label" fontSize="small" alignWithControl="false" alignText="left">
+                <Label>MCP Server is accessible through Indigo's built-in web server.
+The endpoint URL is: /message/com.vtmikel.mcp_server/mcp/
+
+Configure Claude Desktop to connect using:
+npx mcp-remote http://[indigo_host]:[indigo_port]/message/com.vtmikel.mcp_server/mcp/
                 </Label>
             </Field>
         </ConfigUI>
@@ -38,22 +27,16 @@ Remote Access: Server accepts connections from any IP (configure firewall accord
                 <ControlPageLabel>Status</ControlPageLabel>
             </State>
             
-            <State id="serverPort">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Server Port</TriggerLabel>
-                <ControlPageLabel>Port</ControlPageLabel>
+            <State id="serverName">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Server Name</TriggerLabel>
+                <ControlPageLabel>Name</ControlPageLabel>
             </State>
             
             <State id="accessMode">
                 <ValueType>String</ValueType>
                 <TriggerLabel>Access Mode</TriggerLabel>
                 <ControlPageLabel>Access Mode</ControlPageLabel>
-            </State>
-            
-            <State id="clientCount">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Connected Clients</TriggerLabel>
-                <ControlPageLabel>Clients</ControlPageLabel>
             </State>
             
             <State id="lastActivity">
