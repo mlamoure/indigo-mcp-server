@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from ...adapters.data_provider import DataProvider
 from ..base_handler import BaseToolHandler
 from ...common.influxdb import InfluxDBClient, InfluxDBQueryBuilder
+from ...common.openai_client.main import _get_client
 
 
 # Alternative fields to try for device properties
@@ -86,6 +87,20 @@ class HistoricalAnalysisHandler(BaseToolHandler):
                     "validating time range"
                 )
             
+            # Validate device names exist
+            validation_result = self._validate_device_names(device_names)
+            if not validation_result["all_valid"]:
+                return {
+                    "success": False,
+                    "error": validation_result["error_message"],
+                    "tool": self.tool_name,
+                    "report": validation_result["detailed_report"],
+                    "valid_devices": validation_result["valid_devices"],
+                    "invalid_devices": validation_result["invalid_devices"],
+                    "suggestions": validation_result["suggestions"],
+                    "analysis_duration_seconds": time.time() - start_time
+                }
+            
             # Check if InfluxDB is available
             if os.environ.get("INFLUXDB_ENABLED", "false").lower() != "true":
                 self.warning_log("InfluxDB is not enabled - historical analysis not available")
@@ -105,20 +120,48 @@ class HistoricalAnalysisHandler(BaseToolHandler):
             for device_name in device_names:
                 self.debug_log(f"Querying historical data for device: {device_name}")
                 
-                # Try different device properties to find data
+                # Use LLM to intelligently select device properties based on query
                 device_results = []
-                for device_property in _ALTERNATIVE_FIELDS:
-                    try:
-                        property_results = self._get_historical_device_data(
-                            device_name, device_property, time_range_days
-                        )
-                        if property_results:
-                            device_results.extend(property_results)
-                            self.debug_log(f"Found {len(property_results)} records for {device_name}.{device_property}")
-                            break  # Found data, stop trying other properties
-                    except Exception as e:
-                        self.debug_log(f"No data for {device_name}.{device_property}: {e}")
-                        continue
+                recommended_properties = self._get_recommended_properties(device_name, query)
+                
+                if recommended_properties:
+                    self.info_log(f"LLM recommended properties for {device_name}: {recommended_properties}")
+                    
+                    # Try recommended properties in order
+                    for device_property in recommended_properties:
+                        try:
+                            self.debug_log(f"Querying InfluxDB for {device_name}.{device_property}")
+                            property_results = self._get_historical_device_data(
+                                device_name, device_property, time_range_days
+                            )
+                            if property_results:
+                                device_results.extend(property_results)
+                                self.info_log(f"✅ Found {len(property_results)} records for {device_name}.{device_property}")
+                                break  # Found data, stop trying other properties
+                            else:
+                                self.debug_log(f"❌ No data for {device_name}.{device_property}")
+                        except Exception as e:
+                            self.debug_log(f"❌ Error querying {device_name}.{device_property}: {e}")
+                            continue
+                
+                # Fallback to predefined fields if LLM recommendations didn't work
+                if not device_results:
+                    self.debug_log(f"LLM recommendations failed, falling back to predefined properties: {_ALTERNATIVE_FIELDS}")
+                    for device_property in _ALTERNATIVE_FIELDS:
+                        try:
+                            self.debug_log(f"Trying fallback property: {device_name}.{device_property}")
+                            property_results = self._get_historical_device_data(
+                                device_name, device_property, time_range_days
+                            )
+                            if property_results:
+                                device_results.extend(property_results)
+                                self.info_log(f"✅ Fallback success: Found {len(property_results)} records for {device_name}.{device_property}")
+                                break  # Found data, stop trying other properties
+                            else:
+                                self.debug_log(f"❌ No fallback data for {device_name}.{device_property}")
+                        except Exception as e:
+                            self.debug_log(f"❌ Fallback error for {device_name}.{device_property}: {e}")
+                            continue
                 
                 if device_results:
                     all_results.extend(device_results)
@@ -199,7 +242,10 @@ class HistoricalAnalysisHandler(BaseToolHandler):
             
             results = client.execute_query(query)
             if not results:
+                self.debug_log(f"InfluxDB query returned no results for {device_name}.{device_property}")
                 return []
+            
+            self.debug_log(f"InfluxDB returned {len(results)} raw records for {device_name}.{device_property}")
             
             # Convert to formatted state change messages
             formatted_results = []
@@ -317,7 +363,7 @@ class HistoricalAnalysisHandler(BaseToolHandler):
         """
         try:
             # Get devices from data provider
-            devices = self.data_provider.get_devices()
+            devices = self.data_provider.get_all_devices()
             device_names = [device.get("name", "") for device in devices if device.get("name")]
             
             self.debug_log(f"Found {len(device_names)} available devices")
@@ -344,3 +390,337 @@ class HistoricalAnalysisHandler(BaseToolHandler):
         except Exception as e:
             self.debug_log(f"InfluxDB availability check failed: {e}")
             return False
+    
+    def _get_device_properties(self, device_name: str) -> List[str]:
+        """
+        Get all available properties for a device.
+        
+        Args:
+            device_name: Name of the device
+            
+        Returns:
+            List of property names for the device
+        """
+        try:
+            # Get device from data provider
+            devices = self.data_provider.get_all_devices()
+            target_device = None
+            
+            for device in devices:
+                if device.get("name") == device_name:
+                    target_device = device
+                    break
+            
+            if not target_device:
+                self.debug_log(f"Device '{device_name}' not found")
+                return _ALTERNATIVE_FIELDS  # Fallback to predefined fields
+            
+            # Extract all properties that have values (excluding system/meta properties)
+            properties = []
+            excluded_props = {
+                'id', 'name', 'deviceTypeId', 'pluginId', 'pluginProps', 
+                'sharedProps', 'globalProps', 'errorState', 'configured',
+                'enabled', 'version', 'protocol', 'address', 'description',
+                'model', 'remoteDisplay', 'allowSensorValueChange',
+                'allowOnStateChange', 'supportsStatusRequest', 'buttonGroupCount',
+                'supportsAllOff', 'supportsAllLightsOnOff', 'folderId', 'subModel',
+                'subType', 'lastChanged', 'lastSuccessfulComm', 'ownerProps',
+                'energyAccumBaseTime', 'energyAccumTimeDelta'
+            }
+            
+            # First, extract properties from states dictionary (highest priority for historical analysis)
+            states_dict = target_device.get('states', {})
+            if isinstance(states_dict, dict):
+                self.debug_log(f"Found states dictionary with {len(states_dict)} entries")
+                for state_key, state_value in states_dict.items():
+                    # Skip nested state properties (like state.on, state.off)
+                    if '.' not in state_key and self._is_valid_property_value(state_value):
+                        properties.append(state_key)
+                        self.debug_log(f"Added state property: {state_key} = {state_value}")
+            
+            # Then, extract top-level properties (lower priority)
+            for key, value in target_device.items():
+                # Include properties that are likely state/sensor values
+                if (key not in excluded_props and 
+                    key != 'states' and  # Skip states dict itself
+                    value is not None and 
+                    not key.startswith('_') and
+                    self._is_valid_property_value(value)):
+                    # Only add if not already found in states
+                    if key not in properties:
+                        properties.append(key)
+            
+            self.debug_log(f"Found {len(properties)} properties for {device_name}: {properties}")
+            
+            # Always include common fallback properties if not already present
+            for prop in _ALTERNATIVE_FIELDS:
+                if prop not in properties:
+                    properties.append(prop)
+            
+            return properties
+            
+        except Exception as e:
+            self.debug_log(f"Error getting properties for {device_name}: {e}")
+            return _ALTERNATIVE_FIELDS  # Fallback to predefined fields
+    
+    def _get_recommended_properties(self, device_name: str, user_query: str) -> List[str]:
+        """
+        Use LLM to recommend device properties to analyze based on user query.
+        
+        Args:
+            device_name: Name of the device
+            user_query: User's analysis query
+            
+        Returns:
+            List of 1-3 recommended property names, ordered by relevance
+        """
+        try:
+            # Get all available properties for the device
+            available_properties = self._get_device_properties(device_name)
+            
+            if not available_properties:
+                self.debug_log(f"No properties found for device '{device_name}'")
+                return []
+            
+            # Create LLM prompt
+            properties_str = ", ".join(available_properties)
+            
+            system_prompt = """You are an expert in Indigo home automation system analysis. 
+Given a user's query about analyzing historical data for a device, recommend the most relevant device properties to query.
+
+Rules:
+- Return 1-3 property names that best match the user's query
+- Return properties in order of relevance (most relevant first)  
+- Only return properties from the provided list
+- Properties may come from device states or top-level properties
+- For presence/occupancy queries, prioritize: onOffState, displayState, state, pending, presence
+- For general queries about "state changes" or "activity", prioritize: onState, onOffState, displayState, state
+- For brightness/dimming queries, prioritize: brightness, brightnessLevel  
+- For temperature queries, prioritize: temperature, temperatureInput1
+- For humidity queries, prioritize: humidity, humidityInput1
+- For sensor queries, prioritize: sensorValue, state, displayState
+- For energy/power queries, prioritize: energyAccumTotal, realPower, accumEnergyTotal
+- For timer/persistence devices, prioritize: onOffState, displayState, state, pending
+
+Return only the property names, separated by commas, no explanations."""
+
+            user_prompt = f"""Device: {device_name}
+Available properties: {properties_str}
+User query: "{user_query}"
+
+Recommend 1-3 most relevant properties:"""
+
+            # Get OpenAI client
+            try:
+                client = _get_client()
+            except Exception as e:
+                self.debug_log(f"OpenAI client not available: {e}, using fallback properties")
+                return _ALTERNATIVE_FIELDS[:3]
+            
+            # Make LLM call
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=50
+            )
+            
+            # Parse response
+            recommendations = response.choices[0].message.content.strip()
+            recommended_properties = [prop.strip() for prop in recommendations.split(",")]
+            
+            # Validate recommendations are in available properties
+            valid_properties = []
+            for prop in recommended_properties:
+                if prop in available_properties:
+                    valid_properties.append(prop)
+            
+            if valid_properties:
+                self.debug_log(f"LLM recommended {len(valid_properties)} properties for '{user_query}': {valid_properties}")
+                return valid_properties[:3]  # Max 3 properties
+            else:
+                self.debug_log("LLM recommendations were not valid, using fallback")
+                return _ALTERNATIVE_FIELDS[:3]
+                
+        except Exception as e:
+            self.debug_log(f"Error getting LLM recommendations for {device_name}: {e}")
+            return _ALTERNATIVE_FIELDS[:3]  # Fallback to first 3 predefined fields
+    
+    def _validate_device_names(self, device_names: List[str]) -> Dict[str, Any]:
+        """
+        Validate that all device names exist in the Indigo system.
+        
+        Args:
+            device_names: List of device names to validate
+            
+        Returns:
+            Dictionary with validation results and suggestions
+        """
+        try:
+            # Get all available devices
+            all_devices = self.data_provider.get_all_devices()
+            existing_device_names = {device.get("name", "") for device in all_devices if device.get("name")}
+            
+            valid_devices = []
+            invalid_devices = []
+            suggestions = []
+            
+            # Check each device name
+            for device_name in device_names:
+                if device_name in existing_device_names:
+                    valid_devices.append(device_name)
+                else:
+                    invalid_devices.append(device_name)
+                    
+                    # Find similar device names for suggestions
+                    similar_names = self._find_similar_device_names(device_name, existing_device_names)
+                    if similar_names:
+                        suggestions.append({
+                            "invalid_name": device_name,
+                            "suggestions": similar_names[:3]  # Top 3 suggestions
+                        })
+            
+            all_valid = len(invalid_devices) == 0
+            
+            if all_valid:
+                return {
+                    "all_valid": True,
+                    "valid_devices": valid_devices,
+                    "invalid_devices": [],
+                    "suggestions": [],
+                    "error_message": "",
+                    "detailed_report": ""
+                }
+            else:
+                # Create detailed error report
+                error_lines = [f"Device validation failed. {len(invalid_devices)} of {len(device_names)} devices not found:"]
+                
+                for invalid_device in invalid_devices:
+                    error_lines.append(f"  ❌ '{invalid_device}' - NOT FOUND")
+                    
+                    # Add suggestions if available
+                    device_suggestions = next(
+                        (item["suggestions"] for item in suggestions if item["invalid_name"] == invalid_device),
+                        []
+                    )
+                    if device_suggestions:
+                        error_lines.append(f"     💡 Did you mean: {', '.join(device_suggestions)}")
+                
+                if valid_devices:
+                    error_lines.append(f"\n✅ Valid devices found: {', '.join(valid_devices)}")
+                
+                error_lines.extend([
+                    "\n📋 To find correct device names, use:",
+                    "  • search_entities('your device description')",
+                    "  • list_devices() to see all devices",
+                    "  • get_devices_by_type('device_type') for specific types"
+                ])
+                
+                detailed_report = "\n".join(error_lines)
+                error_message = f"Invalid device names: {', '.join(invalid_devices)}. Use search_entities or list_devices to find correct names."
+                
+                return {
+                    "all_valid": False,
+                    "valid_devices": valid_devices,
+                    "invalid_devices": invalid_devices,
+                    "suggestions": suggestions,
+                    "error_message": error_message,
+                    "detailed_report": detailed_report
+                }
+                
+        except Exception as e:
+            self.error_log(f"Error validating device names: {e}")
+            return {
+                "all_valid": True,  # Allow processing to continue on validation errors
+                "valid_devices": device_names,
+                "invalid_devices": [],
+                "suggestions": [],
+                "error_message": "",
+                "detailed_report": ""
+            }
+    
+    def _find_similar_device_names(self, target_name: str, existing_names: set) -> List[str]:
+        """
+        Find device names similar to the target name using simple string matching.
+        
+        Args:
+            target_name: The device name to find matches for
+            existing_names: Set of all existing device names
+            
+        Returns:
+            List of similar device names, sorted by relevance
+        """
+        try:
+            target_lower = target_name.lower()
+            target_words = set(target_lower.split())
+            
+            matches = []
+            
+            for name in existing_names:
+                if not name:
+                    continue
+                    
+                name_lower = name.lower()
+                name_words = set(name_lower.split())
+                
+                # Calculate similarity score
+                score = 0
+                
+                # Exact substring match (highest score)
+                if target_lower in name_lower or name_lower in target_lower:
+                    score += 100
+                
+                # Word overlap
+                common_words = target_words.intersection(name_words)
+                if common_words:
+                    word_score = len(common_words) * 10
+                    score += word_score
+                
+                # Character similarity (simple approach)
+                if len(target_name) > 2 and len(name) > 2:
+                    common_chars = set(target_lower).intersection(set(name_lower))
+                    char_score = len(common_chars)
+                    score += char_score
+                
+                if score > 0:
+                    matches.append((name, score))
+            
+            # Sort by score (highest first) and return names only
+            matches.sort(key=lambda x: x[1], reverse=True)
+            return [match[0] for match in matches[:5]]  # Top 5 matches
+            
+        except Exception as e:
+            self.debug_log(f"Error finding similar device names: {e}")
+            return []
+    
+    def _is_valid_property_value(self, value) -> bool:
+        """
+        Check if a property value is suitable for historical analysis.
+        
+        Args:
+            value: Property value to check
+            
+        Returns:
+            True if value is suitable for historical tracking
+        """
+        if value is None:
+            return False
+        
+        # Accept basic data types
+        if isinstance(value, (int, float, bool)):
+            return True
+        
+        # Accept strings but filter out very long ones (likely descriptions/configs)
+        if isinstance(value, str):
+            if len(value) > 100:  # Skip long strings
+                return False
+            # Skip obvious non-state values
+            if value.lower() in {'plugin', 'device', 'none', 'null', ''}:
+                return False
+            return True
+        
+        # Reject complex objects
+        return False

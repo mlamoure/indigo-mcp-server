@@ -27,7 +27,7 @@ class MCPHandler:
     """Handles MCP protocol requests through Indigo IWS."""
     
     # MCP Protocol version we support
-    PROTOCOL_VERSION = "2025-03-26"
+    PROTOCOL_VERSION = "2025-06-18"
     
     def __init__(
         self,
@@ -44,8 +44,13 @@ class MCPHandler:
         self.data_provider = data_provider
         self.logger = logger or logging.getLogger("Plugin")
         
+        self.logger.info("="*60)
+        self.logger.info("Initializing MCP Handler")
+        self.logger.info(f"Protocol Version: {self.PROTOCOL_VERSION}")
+        
         # Session management
         self._sessions = {}  # session_id -> {created, last_seen, client_info}
+        self.logger.debug("Session management initialized")
         
         # Get database path from environment variable
         db_path = os.environ.get("DB_FILE")
@@ -61,7 +66,9 @@ class MCPHandler:
         )
         
         # Start vector store manager
+        self.logger.info("Starting vector store manager...")
         self.vector_store_manager.start()
+        self.logger.info("Vector store manager started successfully")
         
         # Initialize handlers
         self._init_handlers()
@@ -71,6 +78,9 @@ class MCPHandler:
         self._resources = {}
         self._register_tools()
         self._register_resources()
+        
+        self.logger.info(f"MCP Handler initialized with {len(self._tools)} tools and {len(self._resources)} resources")
+        self.logger.info("="*60)
         
     def _init_handlers(self):
         """Initialize all handler instances."""
@@ -133,12 +143,23 @@ class MCPHandler:
         Returns:
             Dict with status, headers, and content for IWS response
         """
+        # Log incoming request
+        self.logger.debug("-" * 40)
+        self.logger.debug(f"Incoming MCP Request: {method}")
+        self.logger.debug(f"Headers: {headers}")
+        self.logger.debug(f"Body length: {len(body) if body else 0} bytes")
+        
         # Normalize headers to lowercase
         headers = {k.lower(): v for k, v in headers.items()}
         accept = headers.get("accept", "")
         
+        # Log normalized headers
+        self.logger.debug(f"Normalized Accept header: '{accept}'")
+        self.logger.debug(f"Session ID in headers: {headers.get('mcp-session-id', 'None')}")
+        
         # Only support POST; GET returns 405
         if method == "GET":
+            self.logger.debug("GET request received - returning 405 Method Not Allowed")
             return {
                 "status": 405,
                 "headers": {"Allow": "POST"},
@@ -154,12 +175,23 @@ class MCPHandler:
         
         # Check Accept header - client must accept json or event-stream
         if "application/json" not in accept and "text/event-stream" not in accept:
+            self.logger.warning(f"Invalid Accept header: '{accept}' - returning 406 Not Acceptable")
+            self.logger.warning("Client must accept 'application/json' or 'text/event-stream'")
             return {"status": 406, "content": "Not Acceptable"}
         
         # Parse JSON body
         try:
             payload = json.loads(body) if body else None
-        except Exception:
+            if payload:
+                # Log parsed payload (truncate if too long)
+                payload_str = json.dumps(payload)
+                if len(payload_str) > 500:
+                    self.logger.debug(f"Parsed payload: {payload_str[:500]}...")
+                else:
+                    self.logger.debug(f"Parsed payload: {payload_str}")
+        except Exception as e:
+            self.logger.error(f"Failed to parse JSON body: {e}")
+            self.logger.debug(f"Raw body: {body[:200] if body else 'Empty'}")
             return self._json_response(
                 self._json_error(None, -32700, "Parse error"),
                 status=200
@@ -167,69 +199,48 @@ class MCPHandler:
         
         # Handle empty or invalid payload
         if not payload:
+            self.logger.warning("Empty or null payload received")
             return self._json_response(
                 self._json_error(None, -32600, "Invalid Request"),
                 status=200
             )
         
-        # Check if this is a batch of notifications/responses only (no requests)
-        if isinstance(payload, list) and all(
-            isinstance(x, dict) and "id" not in x for x in payload
-        ):
-            # Only notifications/responses - return 202 Accepted with no body
-            return {"status": 202, "content": ""}
+        # MCP 2025-06-18 spec removes support for JSON-RPC batching
+        # Reject batch requests with an error
+        if isinstance(payload, list):
+            self.logger.warning("Batch requests not supported in MCP 2025-06-18")
+            return self._json_response(
+                self._json_error(None, -32600, "Batch requests not supported"),
+                status=200
+            )
         
-        # Process single message or batch
+        # Process single message
         try:
-            if isinstance(payload, list):
-                # Batch request - process all messages with IDs
-                responses = []
-                session_id = None
-                
-                for msg in payload:
-                    if isinstance(msg, dict) and "id" in msg:
-                        resp = self._dispatch_message(msg, headers)
-                        if resp:  # Skip empty responses (notifications)
-                            responses.append(resp)
-                            # Check for session ID in response
-                            if isinstance(resp, dict) and "_mcp_session_id" in resp:
-                                session_id = resp.pop("_mcp_session_id")
-                
-                # Add session header if present
-                extra_headers = {}
-                if session_id:
-                    extra_headers["Mcp-Session-Id"] = session_id
-                
+            # Single message
+            resp = self._dispatch_message(payload, headers)
+            
+            # If it was a notification (no id), return 200 with empty JSON for IWS compatibility
+            if isinstance(payload, dict) and "id" not in payload:
                 return {
-                    "status": 200,
-                    "headers": {
-                        "Content-Type": "application/json; charset=utf-8",
-                        **extra_headers
-                    },
-                    "content": json.dumps(responses)
+                    "status": 200, 
+                    "headers": {"Content-Type": "application/json; charset=utf-8"},
+                    "content": "{}"
                 }
-            else:
-                # Single message
-                resp = self._dispatch_message(payload, headers)
-                
-                # If it was a notification (no id), return 202
-                if isinstance(payload, dict) and "id" not in payload:
-                    return {"status": 202, "content": ""}
-                
-                # Check for session ID in response
-                extra_headers = {}
-                if isinstance(resp, dict) and "_mcp_session_id" in resp:
-                    session_id = resp.pop("_mcp_session_id")
-                    extra_headers["Mcp-Session-Id"] = session_id
-                
-                return {
-                    "status": 200,
-                    "headers": {
-                        "Content-Type": "application/json; charset=utf-8",
-                        **extra_headers
-                    },
-                    "content": json.dumps(resp)
-                }
+            
+            # Check for session ID in response
+            extra_headers = {}
+            if isinstance(resp, dict) and "_mcp_session_id" in resp:
+                session_id = resp.pop("_mcp_session_id")
+                extra_headers["Mcp-Session-Id"] = session_id
+            
+            return {
+                "status": 200,
+                "headers": {
+                    "Content-Type": "application/json; charset=utf-8",
+                    **extra_headers
+                },
+                "content": json.dumps(resp)
+            }
                 
         except Exception as e:
             self.logger.exception("Unhandled MCP error")
@@ -255,28 +266,63 @@ class MCPHandler:
         """
         # Validate JSON-RPC structure
         if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0" or "method" not in msg:
+            self.logger.warning(f"Invalid JSON-RPC message structure: {msg}")
             return self._json_error(msg.get("id"), -32600, "Invalid Request")
         
         msg_id = msg.get("id")  # May be None for notifications
         method = msg["method"]
         params = msg.get("params") or {}
         
-        # Session validation (skip for initialize)
+        self.logger.debug(f"Dispatching method: {method} (id: {msg_id})")
+        if params:
+            params_str = str(params)
+            if len(params_str) > 200:
+                self.logger.debug(f"Parameters: {params_str[:200]}...")
+            else:
+                self.logger.debug(f"Parameters: {params_str}")
+        
+        # MCP 2025-06-18 requires MCP-Protocol-Version header for HTTP transport
+        # Make it optional for client compatibility, but warn when missing
+        protocol_version_header = headers.get("mcp-protocol-version")
+        if method != "initialize" and not method.startswith("notifications/") and self._sessions:
+            if not protocol_version_header:
+                self.logger.warning(f"MCP-Protocol-Version header missing for method: {method} (proceeding for client compatibility)")
+                # Continue processing instead of returning error
+            elif protocol_version_header != self.PROTOCOL_VERSION:
+                self.logger.warning(f"Invalid protocol version in header: {protocol_version_header}")
+                return self._json_error(msg_id, -32600, f"Unsupported protocol version: {protocol_version_header}")
+        
+        # Session validation (skip for initialize and notifications)
         session_id = headers.get("mcp-session-id")
-        if method != "initialize" and self._sessions:
-            if not session_id or session_id not in self._sessions:
+        if method != "initialize" and not method.startswith("notifications/") and self._sessions:
+            if not session_id:
+                self.logger.warning(f"No session ID provided for method: {method}")
+                self.logger.debug(f"Active sessions: {list(self._sessions.keys())}")
+                return self._json_error(msg_id, -32600, "Missing or invalid Mcp-Session-Id")
+            elif session_id not in self._sessions:
+                self.logger.warning(f"Invalid session ID: {session_id}")
+                self.logger.debug(f"Active sessions: {list(self._sessions.keys())}")
                 return self._json_error(msg_id, -32600, "Missing or invalid Mcp-Session-Id")
             # Update last seen
             self._sessions[session_id]["last_seen"] = time.time()
+            self.logger.debug(f"Session {session_id} validated and updated")
         
         # Route to appropriate handler
         if method == "initialize":
+            self.logger.info("Processing initialize request")
             return self._handle_initialize(msg_id, params)
         elif method == "ping":
+            self.logger.debug("Processing ping request")
             return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
         elif method == "notifications/cancelled":
             # Best effort notification, no response
+            self.logger.debug("Processing cancelled notification")
             self._handle_cancelled(params)
+            return None
+        elif method == "notifications/initialized":
+            # Client signals it's ready for normal operations after successful initialization
+            self.logger.debug("Processing initialized notification - client ready for normal operations")
+            # This is a notification, no response needed
             return None
         
         # Tool methods
@@ -296,14 +342,21 @@ class MCPHandler:
             return {
                 "jsonrpc": "2.0",
                 "id": msg_id,
-                "result": {"prompts": [], "nextCursor": None}
+                "result": {"prompts": []}
             }
         elif method == "prompts/get":
             return self._json_error(msg_id, -32602, "Unknown prompt")
         
         # Unknown method
         else:
-            return self._json_error(msg_id, -32601, "Method not found")
+            if method.startswith("notifications/"):
+                # Unknown notifications should be ignored gracefully (fire-and-forget)
+                self.logger.debug(f"Ignoring unknown notification: {method}")
+                return None
+            else:
+                # Unknown regular methods return an error
+                self.logger.warning(f"Unknown method requested: {method}")
+                return self._json_error(msg_id, -32601, "Method not found")
     
     def _handle_initialize(
         self, 
@@ -313,6 +366,14 @@ class MCPHandler:
         """Handle initialize request."""
         requested_version = str(params.get("protocolVersion") or "")
         client_info = params.get("clientInfo", {})
+        
+        self.logger.info("="*40)
+        self.logger.info("MCP INITIALIZATION REQUEST")
+        self.logger.info(f"Requested protocol version: {requested_version}")
+        self.logger.info(f"Our protocol version: {self.PROTOCOL_VERSION}")
+        self.logger.info(f"Client info: {client_info}")
+        self.logger.info(f"Request ID: {msg_id}")
+        self.logger.info("="*40)
         
         # Check if we support the requested version
         if requested_version == self.PROTOCOL_VERSION:
@@ -344,10 +405,19 @@ class MCPHandler:
             
             # Add session ID for header
             result["_mcp_session_id"] = session_id
+            
+            self.logger.info("✅ Initialization successful - returning capabilities")
+            self.logger.info(f"Server capabilities: {list(result['result']['capabilities'].keys())}")
+            self.logger.info(f"Session {session_id} will be returned in Mcp-Session-Id header")
+            self.logger.info("="*40)
+            
             return result
         else:
             # Unsupported version
-            return {
+            self.logger.warning(f"❌ Unsupported protocol version: {requested_version}")
+            self.logger.warning(f"We only support: {self.PROTOCOL_VERSION}")
+            
+            error_response = {
                 "jsonrpc": "2.0",
                 "id": msg_id,
                 "error": {
@@ -359,6 +429,10 @@ class MCPHandler:
                     }
                 }
             }
+            
+            self.logger.warning("Returning unsupported protocol version error")
+            self.logger.info("="*40)
+            return error_response
     
     def _handle_cancelled(self, params: Dict[str, Any]):
         """Handle cancellation notification."""
@@ -390,8 +464,7 @@ class MCPHandler:
             "jsonrpc": "2.0",
             "id": msg_id,
             "result": {
-                "tools": tools,
-                "nextCursor": None
+                "tools": tools
             }
         }
     
@@ -450,8 +523,7 @@ class MCPHandler:
             "jsonrpc": "2.0",
             "id": msg_id,
             "result": {
-                "resources": resources,
-                "nextCursor": None
+                "resources": resources
             }
         }
     
@@ -665,22 +737,22 @@ class MCPHandler:
         
         # Historical analysis
         self._tools["analyze_historical_data"] = {
-            "description": "Analyze historical device data",
+            "description": "Analyze historical data patterns and trends for specific devices using AI-powered insights. IMPORTANT: Requires EXACT device names - use 'search_entities' or 'list_devices' first to find correct device names. Only works if InfluxDB historical data logging is enabled.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Natural language query about historical data"
+                        "description": "Natural language query about what you want to analyze (e.g., 'show state changes', 'analyze usage patterns', 'track temperature trends'). This helps the system select the right device properties to analyze."
                     },
                     "device_names": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Device names to analyze"
+                        "description": "EXACT device names to analyze (case-sensitive). Must match device names exactly as they appear in Indigo. Use 'search_entities' or 'list_devices' first to find correct names. Examples: ['Living Room Lamp', 'Front Door Sensor', 'Master Bedroom Thermostat']"
                     },
                     "time_range_days": {
                         "type": "integer",
-                        "description": "Number of days to analyze (default: 30)"
+                        "description": "Number of days to analyze (1-365, default: 30). Larger ranges take longer to process."
                     }
                 },
                 "required": ["query", "device_names"]
@@ -945,7 +1017,7 @@ class MCPHandler:
     ) -> str:
         """Analyze historical data tool implementation."""
         try:
-            result = self.historical_analysis_handler.analyze(
+            result = self.historical_analysis_handler.analyze_historical_data(
                 query, device_names, time_range_days
             )
             return safe_json_dumps(result)

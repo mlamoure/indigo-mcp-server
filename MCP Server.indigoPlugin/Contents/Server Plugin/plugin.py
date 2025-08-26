@@ -274,14 +274,39 @@ class Plugin(indigo.PluginBase):
             self.logger.error(f"Failed to initialize data provider: {e}")
             return
 
+        # Initialize MCP handler during startup instead of on first request
+        try:
+            self.logger.info("Initializing MCP handler...")
+            self.mcp_handler = MCPHandler(
+                data_provider=self.data_provider,
+                logger=self.logger
+            )
+            self.logger.info("✅ MCP handler initialized successfully")
+        except Exception as e:
+            self.logger.error(f"❌ Failed to initialize MCP handler: {e}")
+            # Set to None to indicate initialization failure
+            self.mcp_handler = None
+            self.logger.error("MCP server will not be available until plugin is restarted")
+            return
+
     def shutdown(self) -> None:
         """
         Called when the plugin is being shut down.
         """
         self.logger.info("MCP Server plugin shutting down...")
 
+        # Clean up MCP handler
         if self.mcp_handler:
-            self.mcp_handler.stop()
+            try:
+                self.logger.info("Stopping MCP handler...")
+                self.mcp_handler.stop()
+                self.logger.info("✅ MCP handler stopped successfully")
+            except Exception as e:
+                self.logger.error(f"❌ Error stopping MCP handler: {e}")
+            finally:
+                self.mcp_handler = None
+        else:
+            self.logger.debug("No MCP handler to clean up")
 
     ########################################
     # MCP Endpoint Handler for IWS
@@ -300,39 +325,81 @@ class Plugin(indigo.PluginBase):
         Returns:
             Dict with status, headers, and content for IWS response
         """
-        # Ensure MCP handler is initialized
-        if not self.mcp_handler:
-            # Initialize data provider if needed
-            if not self.data_provider:
-                self.data_provider = IndigoDataProvider(
-                    indigo_instance=indigo,
-                    logger=self.logger
-                )
-            
-            # Initialize MCP handler
-            try:
-                self.mcp_handler = MCPHandler(
-                    data_provider=self.data_provider,
-                    logger=self.logger
-                )
-                self.logger.info("MCP handler initialized for IWS request")
-            except Exception as e:
-                self.logger.error(f"Failed to initialize MCP handler: {e}")
-                return {
-                    "status": 500,
-                    "content": json.dumps({"error": "MCP handler initialization failed"})
-                }
+        # Log incoming request at plugin level
+        self.logger.debug("🌐 MCP ENDPOINT ACCESSED")
+        self.logger.debug(f"Caller waiting for result: {callerWaitingForResult}")
+        self.logger.debug(f"Device: {dev.name if dev else 'None'}")
         
-        # Extract request details from action
+        # Extract and log request details
         method = (action.props.get("incoming_request_method") or "").upper()
         headers = dict(action.props.get("headers", {}))
         body = action.props.get("request_body") or ""
         
+        self.logger.debug(f"Raw IWS Action Props Keys: {list(action.props.keys())}")
+        self.logger.debug(f"HTTP Method: {method}")
+        self.logger.debug(f"Headers Count: {len(headers)}")
+        self.logger.debug(f"Body Length: {len(body)}")
+        
+        # Log authentication headers specifically
+        auth_header = headers.get('Authorization') or headers.get('authorization')
+        if auth_header:
+            # Only log first and last few characters for security
+            if auth_header.startswith('Bearer '):
+                token = auth_header[7:]  # Remove 'Bearer '
+                masked_token = f"{token[:8]}...{token[-4:]}"
+                self.logger.debug(f"🔑 Bearer token present: {masked_token}")
+            else:
+                self.logger.debug(f"🔑 Authorization header: {auth_header[:10]}...")
+        else:
+            self.logger.warning("⚠️  No Authorization header found")
+        
+        # Log other important headers
+        accept = headers.get('Accept') or headers.get('accept')
+        content_type = headers.get('Content-Type') or headers.get('content-type')
+        session_id = headers.get('Mcp-Session-Id') or headers.get('mcp-session-id')
+        
+        self.logger.debug(f"Accept header: '{accept}'")
+        self.logger.debug(f"Content-Type header: '{content_type}'")
+        self.logger.debug(f"Mcp-Session-Id header: '{session_id}'")
+        # Validate MCP handler is available
+        if not self.mcp_handler:
+            self.logger.error("❌ MCP handler not initialized - plugin startup may have failed")
+            return {
+                "status": 503,  # Service Unavailable
+                "headers": {"Content-Type": "application/json"},
+                "content": json.dumps({
+                    "error": "MCP server unavailable - plugin initialization failed"
+                })
+            }
+        
+        self.logger.debug("✅ Using pre-initialized MCP handler")
+        
         # Delegate to MCP handler
+        self.logger.debug("🚀 Delegating to MCP handler...")
         try:
-            return self.mcp_handler.handle_request(method, headers, body)
+            response = self.mcp_handler.handle_request(method, headers, body)
+            
+            # Log response details
+            status = response.get('status', 'unknown')
+            response_headers = response.get('headers', {})
+            content_length = len(response.get('content', ''))
+            
+            self.logger.debug(f"📝 Response status: {status}")
+            self.logger.debug(f"Response headers: {response_headers}")
+            self.logger.debug(f"Response content length: {content_length}")
+            
+            if status == 200:
+                self.logger.debug("✅ MCP request processed successfully")
+            elif status == 202:
+                # 202 is used for notifications - also a success
+                self.logger.debug("✅ MCP notification processed successfully")
+            else:
+                self.logger.warning(f"⚠️  MCP request returned non-success status: {status}")
+            
+            return response
+            
         except Exception as e:
-            self.logger.error(f"MCP endpoint error: {e}")
+            self.logger.exception(f"❌ MCP endpoint error: {e}")
             return {
                 "status": 500,
                 "content": json.dumps({"error": str(e)})
@@ -590,18 +657,9 @@ class Plugin(indigo.PluginBase):
             )
             new_access_mode = newDev.pluginProps.get("server_access_mode", "local_only")
 
-            # Check if server port changed
-            old_server_port = origDev.pluginProps.get("serverPort")
-            new_server_port = newDev.pluginProps.get("serverPort")
-
             if old_access_mode != new_access_mode:
                 self.logger.info(
                     f"Access mode changed from {old_access_mode} to {new_access_mode}, restarting server"
-                )
-                self._restart_mcp_server_from_device(newDev)
-            elif old_server_port != new_server_port:
-                self.logger.info(
-                    f"Server port changed from {old_server_port} to {new_server_port}, restarting server"
                 )
                 self._restart_mcp_server_from_device(newDev)
 
@@ -628,18 +686,6 @@ class Plugin(indigo.PluginBase):
             server_name = valuesDict.get("serverName", "").strip()
             if not server_name:
                 errors_dict["serverName"] = "Server name is required"
-
-            # Validate server port
-            server_port = valuesDict.get("serverPort", "").strip()
-            if not server_port:
-                errors_dict["serverPort"] = "Server port is required"
-            else:
-                try:
-                    port = int(server_port)
-                    if port < 1024 or port > 65535:
-                        errors_dict["serverPort"] = "Port must be between 1024 and 65535"
-                except (ValueError, TypeError):
-                    errors_dict["serverPort"] = "Port must be a valid number"
 
         return (len(errors_dict) == 0, valuesDict, errors_dict)
 

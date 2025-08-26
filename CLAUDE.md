@@ -313,10 +313,58 @@ To use with Claude Desktop, add to `claude_desktop_config.json`:
 - Use your server's IP address for Remote Access mode (configure firewall accordingly)
 - Server access mode is controlled by the MCP Server device configuration
 
+## MCP Protocol Compliance
+
+This plugin implements the Model Context Protocol (MCP) 2025-06-18 specification with HTTP transport through Indigo's built-in web server.
+
+### Protocol Version Support:
+
+- **Supported Version**: MCP 2025-06-18 (current latest)
+- **Previous Versions**: No longer supported (2025-03-26 and earlier)
+- **Transport**: HTTP via Indigo Web Server (IWS) integration
+- **Message Format**: JSON-RPC 2.0 (single messages only)
+
+### MCP 2025-06-18 Compliance:
+
+#### ✅ Implemented Features:
+- **Protocol Version Negotiation**: Supports only 2025-06-18
+- **Single Message Processing**: JSON-RPC 2.0 single message handling
+- **Session Management**: Proper session ID validation and tracking
+- **HTTP Transport**: Standards-compliant HTTP with proper headers
+- **Tool System**: 15 comprehensive tools for Indigo interaction
+- **Resource System**: Device, variable, and action group resources
+- **Error Handling**: Proper JSON-RPC error responses
+
+#### ❌ Removed Features (per 2025-06-18 spec):
+- **JSON-RPC Batching**: No longer supported, returns error if attempted
+- **Legacy Protocol Versions**: Only 2025-06-18 is accepted
+
+#### ⚠️ Not Implemented (Optional Features):
+- **Elicitation**: Server-initiated user prompts (new in 2025-06-18)
+- **Resource Links**: Enhanced resource linking in tool responses
+- **Structured Tool Output**: Advanced tool response formatting
+- **OAuth Resource Server**: Security features (not needed for local-only access)
+- **Resource Indicators (RFC 8707)**: Advanced token scoping (not applicable)
+
+### Security Model:
+
+- **Local Access Only**: Server accessible only through Indigo Web Server
+- **No External Authentication**: Relies on Indigo's built-in security
+- **Read-Only Operations**: Most operations are read-only for safety
+- **Controlled Write Access**: Limited device/variable control with proper validation
+
+### Technical Implementation:
+
+- **Transport Layer**: HTTP via Indigo Web Server Actions.xml mapping
+- **Protocol**: MCP 2025-06-18 over HTTP with JSON-RPC 2.0
+- **Message Processing**: Single message only (batching rejected)
+- **Header Validation**: Requires proper MCP headers for authenticated requests
+- **Session Management**: Token-based session tracking
+- **Error Handling**: Standards-compliant JSON-RPC error responses
+
 ## FastMCP Design Architecture
 
-This plugin uses FastMCP with Streamable HTTP transport for improved performance and reliability over the standard MCP
-stdio transport.
+This plugin uses a custom MCP handler with HTTP transport for improved performance and reliability over the standard MCP stdio transport.
 
 ### Key Benefits of FastMCP with HTTP Transport:
 
@@ -453,11 +501,14 @@ The MCP server provides 15 comprehensive tools for interacting with your Indigo 
 #### Historical Analysis (Advanced)
 
 15. **analyze_historical_data**: AI-powered historical data analysis
-     - Natural language queries about device behavior and patterns
+     - **IMPORTANT**: Requires EXACT device names - use `search_entities` or `list_devices` first to find correct names
+     - Natural language queries help AI select optimal device properties for analysis
+     - LLM-powered property selection: analyzes user query + device properties to recommend 1-3 most relevant properties
+     - Intelligent device name validation with similarity matching and helpful suggestions
      - Analyzes specified device names over configurable time range (1-365 days, default: 30)
-     - Uses LangGraph workflow for intelligent data analysis
      - Requires InfluxDB integration for historical data access
      - Provides insights, trends, and behavioral pattern analysis
+     - **Enhanced Error Messages**: Clear guidance when device names are invalid or not found
 
 ### Available Resources
 
@@ -530,10 +581,23 @@ The `get_devices_by_type` endpoint supports logical device types:
 
 ### Historical Analysis Examples:
 
-- "How often did the front door sensor trigger last week?" with device_names=["Front Door Sensor"], time_range_days=7
-- "What was the temperature pattern in the living room last month?" with device_names=["Living Room Thermostat"],
-  time_range_days=30
-- "When were the garage lights most active?" with device_names=["Garage Light Switch"], time_range_days=14
+**✅ Correct Usage (EXACT device names):**
+- `analyze_historical_data("show state changes", ["Front Door Sensor"], 7)` - Front door activity
+- `analyze_historical_data("temperature trends", ["Living Room Thermostat"], 30)` - Temperature patterns
+- `analyze_historical_data("usage patterns", ["Garage Light Switch"], 14)` - Light activity
+
+**❌ Common Mistakes:**
+- Using fuzzy names: `["front door", "living room temp"]` → **WILL FAIL**
+- Not using search first: Always use `search_entities("front door")` to find exact name "Front Door Sensor"
+
+**🔧 Proper Workflow:**
+1. `search_entities("front door")` → Find exact name: "Front Door Sensor" 
+2. `analyze_historical_data("show when opened/closed", ["Front Door Sensor"], 7)`
+
+**🤖 LLM Property Selection:**
+- Query: "show state changes" → AI selects: `["onState", "onOffState", "isPoweredOn"]`
+- Query: "temperature trends" → AI selects: `["temperature", "temperatureInput1"]`
+- Query: "brightness levels" → AI selects: `["brightness", "brightnessLevel"]`
 
 ### Solving the "Lights That Are On" Problem:
 
