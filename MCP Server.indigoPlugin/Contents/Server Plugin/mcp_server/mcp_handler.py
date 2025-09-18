@@ -44,9 +44,7 @@ class MCPHandler:
         self.data_provider = data_provider
         self.logger = logger or logging.getLogger("Plugin")
         
-        self.logger.info("="*60)
-        self.logger.info("Initializing MCP Handler")
-        self.logger.info(f"Protocol Version: {self.PROTOCOL_VERSION}")
+        self.logger.debug(f"Initializing MCP Handler with protocol {self.PROTOCOL_VERSION}")
         
         # Session management
         self._sessions = {}  # session_id -> {created, last_seen, client_info}
@@ -66,9 +64,9 @@ class MCPHandler:
         )
         
         # Start vector store manager
-        self.logger.info("Starting vector store manager...")
+        self.logger.debug("Starting vector store manager...")
         self.vector_store_manager.start()
-        self.logger.info("Vector store manager started successfully")
+        self.logger.debug("Vector store manager started successfully")
         
         # Initialize handlers
         self._init_handlers()
@@ -79,8 +77,7 @@ class MCPHandler:
         self._register_tools()
         self._register_resources()
         
-        self.logger.info(f"MCP Handler initialized with {len(self._tools)} tools and {len(self._resources)} resources")
-        self.logger.info("="*60)
+        self.logger.info(f"MCP handler ready ({len(self._tools)} tools, {len(self._resources)} resources)")
         
     def _init_handlers(self):
         """Initialize all handler instances."""
@@ -309,7 +306,7 @@ class MCPHandler:
         
         # Route to appropriate handler
         if method == "initialize":
-            self.logger.info("Processing initialize request")
+            self.logger.debug("Processing initialize request")
             return self._handle_initialize(msg_id, params)
         elif method == "ping":
             self.logger.debug("Processing ping request")
@@ -414,8 +411,7 @@ class MCPHandler:
             return result
         else:
             # Unsupported version
-            self.logger.warning(f"❌ Unsupported protocol version: {requested_version}")
-            self.logger.warning(f"We only support: {self.PROTOCOL_VERSION}")
+            self.logger.warning(f"MCP client rejected - unsupported protocol version {requested_version} (requires {self.PROTOCOL_VERSION})")
             
             error_response = {
                 "jsonrpc": "2.0",
@@ -430,8 +426,7 @@ class MCPHandler:
                 }
             }
             
-            self.logger.warning("Returning unsupported protocol version error")
-            self.logger.info("="*40)
+            self.logger.debug("Returning unsupported protocol version error")
             return error_response
     
     def _handle_cancelled(self, params: Dict[str, Any]):

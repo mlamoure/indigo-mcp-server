@@ -20,16 +20,14 @@ except ImportError:
 class MCPServerTester:
     """Test harness for MCP server using FastMCP client."""
     
-    def __init__(self, base_url: str, bearer_token: str):
+    def __init__(self, base_url: str):
         """
         Initialize the tester.
         
         Args:
             base_url: The MCP server endpoint URL
-            bearer_token: Bearer token for authentication
         """
         self.base_url = base_url
-        self.bearer_token = bearer_token
         self.client = None
         self.test_results = []
         
@@ -41,11 +39,8 @@ class MCPServerTester:
             True if connection successful, False otherwise
         """
         try:
-            # Create client with URL and auth token
-            self.client = Client(
-                transport=self.base_url,
-                auth=f"Bearer {self.bearer_token}"
-            )
+            # Create client with URL (no authentication needed - handled by Indigo Web Server)
+            self.client = Client(transport=self.base_url)
             
             # Connect to the server
             await self.client.__aenter__()
@@ -534,10 +529,9 @@ async def main():
     """Main entry point for test script."""
     # Configuration
     BASE_URL = "https://vtmikel.indigodomo.net/message/com.vtmikel.mcp_server/mcp"
-    BEARER_TOKEN = "f1eb0796-dff0-484b-a17d-3a04c24b335c"
     
     # Run tests
-    tester = MCPServerTester(BASE_URL, BEARER_TOKEN)
+    tester = MCPServerTester(BASE_URL)
     success = await tester.run_all_tests()
     
     # Exit with appropriate code

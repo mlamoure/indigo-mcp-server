@@ -177,7 +177,7 @@ def emb_texts_batch(texts: list, entity_names: list = None, progress_callback: c
     
     if should_use_parallel_processing(len(texts)):
         max_concurrent = get_optimal_concurrency(len(texts))
-        logger.debug(f"🚀 Using parallel embedding processing with {max_concurrent} concurrent batches for {len(texts)} texts")
+        # Use parallel embedding processing
         
         # Try parallel processing first
         result = emb_texts_batch_parallel(texts, entity_names, progress_callback, max_concurrent)
@@ -187,13 +187,13 @@ def emb_texts_batch(texts: list, entity_names: list = None, progress_callback: c
         success_rate = successful_embeddings / len(texts) if texts else 0
         
         if success_rate >= 0.5:  # At least 50% success
-            logger.debug(f"✅ Parallel embedding processing succeeded with {successful_embeddings}/{len(texts)} embeddings ({success_rate:.1%} success rate)")
+            # Parallel processing succeeded
             return result
         else:
             logger.warning(f"⚠️ Parallel embedding processing had low success rate ({success_rate:.1%}), falling back to sequential processing")
     else:
-        logger.debug(f"📊 Using sequential embedding processing for {len(texts)} texts (below parallel threshold)")
-    
+        # Use sequential embedding processing
+        pass
     # Fallback to sequential processing
     return _emb_texts_batch_sequential(texts, entity_names, progress_callback)
 
@@ -235,8 +235,8 @@ def _emb_texts_batch_sequential(texts: list, entity_names: list = None, progress
             
             # Report start of embedding processing
             if progress_callback:
-                logger.debug(f"📊 Starting embedding batch processing: {total_batches} batches of max {batch_size} texts each")
-            
+                # Start embedding batch processing
+                pass
             # Process in batches
             for batch_num, i in enumerate(range(0, len(valid_texts), batch_size), 1):
                 batch_start_time = time.time()
@@ -255,10 +255,10 @@ def _emb_texts_batch_sequential(texts: list, entity_names: list = None, progress
                     entity_list = ", ".join(batch_entity_names[:5])  # Show first 5 names
                     if len(batch_entity_names) > 5:
                         entity_list += f" (+{len(batch_entity_names) - 5} more)"
-                    logger.debug(f"🔄 Processing batch {batch_num}/{total_batches} ({len(batch_texts)} embeddings): [{entity_list}]")
+                    # Process batch
                 else:
-                    logger.debug(f"🔄 Processing batch {batch_num}/{total_batches} ({len(batch_texts)} embeddings)")
-                
+                    # Process batch
+                    pass
                 # Add timeout to prevent hanging
                 response = client.embeddings.create(
                     model=model, 
@@ -284,7 +284,7 @@ def _emb_texts_batch_sequential(texts: list, entity_names: list = None, progress
                 batch_time = time.time() - batch_start_time
                 
                 # Debug log after successful API call
-                logger.debug(f"✅ Batch {batch_num}/{total_batches} completed in {batch_time:.2f}s ({len(batch_texts)} embeddings processed, {processed_count}/{len(valid_texts)} total)")
+                # Batch completed
                 
                 # Report progress after each batch
                 if progress_callback:

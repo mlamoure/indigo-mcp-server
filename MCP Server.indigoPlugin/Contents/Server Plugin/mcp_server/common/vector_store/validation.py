@@ -43,7 +43,7 @@ class ValidationResult:
         """Add a validation issue."""
         issue = ValidationIssue(entity_id, issue_type, details)
         self.issues.append(issue)
-        logger.debug(f"🔍 Validation issue: {issue}")
+        # Validation issue found
     
     def add_valid(self):
         """Mark an entity as valid."""
@@ -94,7 +94,7 @@ def load_validation_data(table, logger) -> Dict[int, Dict[str, Any]]:
         # Load all necessary fields for validation
         # IMPORTANT: Must specify a large limit to get all records, otherwise LanceDB defaults to 10
         existing_rows = table.search().limit(999999).to_list()
-        logger.debug(f"🔍 Raw search returned {len(existing_rows)} rows for validation")
+        # Load validation data
         
         validation_data = {}
         for row in existing_rows:
@@ -113,14 +113,13 @@ def load_validation_data(table, logger) -> Dict[int, Dict[str, Any]]:
                 }
                 
             except Exception as row_error:
-                logger.warning(f"⚠️ Error processing validation row: {row_error}")
+                # Skip invalid row
                 continue
         
-        logger.debug(f"✅ Loaded validation data for {len(validation_data)} entities")
         return validation_data
         
     except Exception as e:
-        logger.warning(f"⚠️ Failed to load validation data: {e}")
+        # Failed to load validation data
         return {}
 
 
@@ -256,7 +255,7 @@ def perform_comprehensive_validation(
     current_ids = {e["id"] for e in current_entities if e.get("id") is not None}
     stored_ids = set(validation_data.keys())
     
-    logger.debug(f"🔍 Validating {len(current_entities)} {entity_type} entities against {len(validation_data)} stored records")
+    # Validate entities
     
     # Check each current entity
     for entity in current_entities:
@@ -360,26 +359,8 @@ def log_validation_summary(validation_result: ValidationResult, entity_type: str
     summary = validation_result.summary()
     
     if not validation_result.has_issues():
-        logger.debug(f"✅ All {summary['total_checked']} {entity_type} entities are up to date")
         return
     
-    logger.debug(f"📊 {entity_type.title()} validation results:")
-    logger.debug(f"   Total checked: {summary['total_checked']}")
-    logger.debug(f"   Valid: {summary['valid_count']}")
-    logger.debug(f"   Issues found: {summary['total_issues']}")
-    
-    # Log issue breakdown at debug level
-    for issue_type in ValidationIssueType:
-        count = summary.get(issue_type.value, 0)
-        if count > 0:
-            logger.debug(f"     {issue_type.value}: {count}")
-    
-    # Log priority breakdown at debug level
-    priorities = prioritize_updates(validation_result)
-    for priority, ids in priorities.items():
-        if ids:
-            logger.debug(f"   {priority.title()} priority updates: {len(ids)} entities")
-            if len(ids) <= 10:
-                logger.debug(f"     {priority.title()} IDs: {ids}")
-            else:
-                logger.debug(f"     {priority.title()} IDs (first 10): {ids[:10]}...")
+    # Only log if there are significant issues
+    if summary['total_issues'] > 10:
+        logger.debug(f"Validation found {summary['total_issues']} issues in {entity_type} (valid: {summary['valid_count']}/{summary['total_checked']})")

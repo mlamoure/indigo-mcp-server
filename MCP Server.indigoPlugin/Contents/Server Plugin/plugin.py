@@ -68,7 +68,6 @@ class Plugin(indigo.PluginBase):
 
         # Security configuration
         self.access_mode = plugin_prefs.get("access_mode", "local_only")
-        self.bearer_token = plugin_prefs.get("bearer_token", "")
 
         # Component instances
         self.data_provider = None
@@ -219,13 +218,6 @@ class Plugin(indigo.PluginBase):
             )
             return
 
-        # Generate bearer token if not set
-        if not self.bearer_token:
-            self.bearer_token = self.auth_manager.generate_bearer_token()
-            # Save to plugin preferences
-            plugin_prefs = self.pluginPrefs
-            plugin_prefs["bearer_token"] = self.bearer_token
-            self.logger.info("Generated new bearer token for MCP server authentication")
 
         # Set OpenAI API key in environment for the modules to use
         os.environ["OPENAI_API_KEY"] = self.openai_api_key
@@ -276,12 +268,12 @@ class Plugin(indigo.PluginBase):
 
         # Initialize MCP handler during startup instead of on first request
         try:
-            self.logger.info("Initializing MCP handler...")
+            self.logger.debug("Initializing MCP handler...")
             self.mcp_handler = MCPHandler(
                 data_provider=self.data_provider,
                 logger=self.logger
             )
-            self.logger.info("✅ MCP handler initialized successfully")
+            self.logger.debug("MCP handler initialized successfully")
         except Exception as e:
             self.logger.error(f"❌ Failed to initialize MCP handler: {e}")
             # Set to None to indicate initialization failure
@@ -441,43 +433,6 @@ class Plugin(indigo.PluginBase):
         ]
         
         self.logger.info("\n".join(config_lines))
-
-    def regenerate_bearer_token_menu(self) -> None:
-        """Menu action to regenerate bearer token."""
-        try:
-            # Generate new token
-            new_token = self.auth_manager.generate_bearer_token()
-
-            # Update instance variable
-            self.bearer_token = new_token
-
-            # Save to plugin preferences
-            plugin_prefs = self.pluginPrefs
-            plugin_prefs["bearer_token"] = new_token
-
-            self.logger.info(f"New bearer token generated: {new_token}")
-            self.logger.info(
-                "Restart the plugin to apply the new token to the MCP server"
-            )
-
-        except Exception as e:
-            self.logger.error(f"Failed to regenerate bearer token: {e}")
-
-    def regenerate_bearer_token_button(self, values_dict: indigo.Dict) -> indigo.Dict:
-        """Button action to regenerate bearer token."""
-        try:
-            # Generate new token
-            new_token = self.auth_manager.generate_bearer_token()
-
-            # Update values dict
-            values_dict["bearer_token"] = new_token
-
-            self.logger.info("New bearer token generated")
-
-        except Exception as e:
-            self.logger.error(f"Failed to regenerate bearer token: {e}")
-
-        return values_dict
 
     def test_connections_button(self, values_dict: indigo.Dict) -> indigo.Dict:
         """Button action to test connections with current configuration values."""
@@ -737,7 +692,6 @@ class Plugin(indigo.PluginBase):
 
             # Security configuration
             self.access_mode = values_dict.get("access_mode", "local_only")
-            self.bearer_token = values_dict.get("bearer_token", "")
 
             # LangSmith configuration
             self.enable_langsmith = values_dict.get("enable_langsmith", False)
@@ -755,15 +709,6 @@ class Plugin(indigo.PluginBase):
             self.influx_password = values_dict.get("influx_password", "")
             self.influx_database = values_dict.get("influx_database", "indigo")
 
-            # Generate bearer token if not set (same as startup)
-            if not self.bearer_token:
-                self.bearer_token = self.auth_manager.generate_bearer_token()
-                # Save to plugin preferences
-                plugin_prefs = self.pluginPrefs
-                plugin_prefs["bearer_token"] = self.bearer_token
-                self.logger.info(
-                    "Generated new bearer token for MCP server authentication"
-                )
 
             # Set ALL environment variables (same as startup)
             os.environ["OPENAI_API_KEY"] = self.openai_api_key

@@ -122,18 +122,14 @@ class VectorStoreManager:
         
         try:
             update_start = time.time()
-            self.logger.debug("🔄 Starting vector store synchronization...")
+            # Start synchronization
             
             # Get all entity data
             entities = self.data_provider.get_all_entities_for_vector_store()
             
             # Count total entities for progress estimation
             total_entities = sum(len(entity_list) for entity_list in entities.values())
-            if total_entities > 0:
-                self.logger.debug(f"📊 Processing {total_entities} total entities:")
-                self.logger.debug(f"   Devices: {len(entities['devices'])}")
-                self.logger.debug(f"   Variables: {len(entities['variables'])}")
-                self.logger.debug(f"   Actions: {len(entities['actions'])}")
+            # Process entities
             
             # Update vector store with enhanced processing
             self.vector_store.update_embeddings(
@@ -145,7 +141,7 @@ class VectorStoreManager:
             self._last_update_time = time.time()
             elapsed = self._last_update_time - update_start
             
-            self.logger.debug(f"✅ Vector store synchronization completed in {elapsed:.2f}s")
+            self.logger.info(f"✅ Vector store synchronization completed in {elapsed:.2f}s")
             
         except Exception as e:
             self.logger.error(f"❌ Vector store update failed: {e}")
@@ -164,7 +160,7 @@ class VectorStoreManager:
         )
         self._update_thread.start()
         
-        self.logger.info(f"Background vector store updates scheduled (interval: {self.update_interval}s)")
+        # Background updates scheduled
     
     def _stop_background_updates(self) -> None:
         """Stop background update thread."""

@@ -500,15 +500,17 @@ The MCP server provides 15 comprehensive tools for interacting with your Indigo 
 
 #### Historical Analysis (Advanced)
 
-15. **analyze_historical_data**: AI-powered historical data analysis
-     - **IMPORTANT**: Requires EXACT device names - use `search_entities` or `list_devices` first to find correct names
-     - Natural language queries help AI select optimal device properties for analysis
-     - LLM-powered property selection: analyzes user query + device properties to recommend 1-3 most relevant properties
-     - Intelligent device name validation with similarity matching and helpful suggestions
-     - Analyzes specified device names over configurable time range (1-365 days, default: 30)
+15. **analyze_historical_data**: AI-powered historical data analysis for devices and variables
+     - **ENHANCED**: Now supports both devices AND variables in a single analysis
+     - **IMPORTANT**: Requires EXACT entity names - use `search_entities`, `list_devices`, or `list_variables` first
+     - **Device Analysis**: LLM-powered property selection for optimal device properties (1-3 most relevant)
+     - **Variable Analysis**: Simplified value tracking (queries `value` field from `variable_changes`)
+     - **Mixed Analysis**: Can analyze devices and variables together with automatic type detection
+     - **Entity Type Control**: Optional `entity_type` parameter ("auto", "devices", "variables", "mixed")
+     - Smart entity validation with similarity matching and type-specific suggestions
+     - Analyzes entities over configurable time range (1-365 days, default: 30)
+     - Enhanced formatting: devices show property context, variables show simple value changes
      - Requires InfluxDB integration for historical data access
-     - Provides insights, trends, and behavioral pattern analysis
-     - **Enhanced Error Messages**: Clear guidance when device names are invalid or not found
 
 ### Available Resources
 
@@ -581,23 +583,44 @@ The `get_devices_by_type` endpoint supports logical device types:
 
 ### Historical Analysis Examples:
 
-**✅ Correct Usage (EXACT device names):**
+**✅ Device Analysis (EXACT device names):**
 - `analyze_historical_data("show state changes", ["Front Door Sensor"], 7)` - Front door activity
-- `analyze_historical_data("temperature trends", ["Living Room Thermostat"], 30)` - Temperature patterns
+- `analyze_historical_data("temperature trends", ["Living Room Thermostat"], 30)` - Temperature patterns  
 - `analyze_historical_data("usage patterns", ["Garage Light Switch"], 14)` - Light activity
+
+**✅ Variable Analysis (NEW):**
+- `analyze_historical_data("track home status", ["someone_home"], 14)` - Home/away tracking
+- `analyze_historical_data("mode changes", ["house_mode"], 7)` - House mode history
+- `analyze_historical_data("security status", ["security_armed"], 30)` - Security arm/disarm patterns
+
+**✅ Mixed Analysis (NEW - Devices + Variables):**
+- `analyze_historical_data("activity when away", ["Front Door Sensor", "someone_home"], 7)` - Correlate activity with presence
+- `analyze_historical_data("energy usage patterns", ["Main Panel Power", "house_mode"], 30)` - Power vs mode analysis
+
+**🎯 Entity Type Control (NEW):**
+- `analyze_historical_data("...", ["entities"], 7, "auto")` - Auto-detect entity types (default)
+- `analyze_historical_data("...", ["devices"], 7, "devices")` - Devices only (strict validation)
+- `analyze_historical_data("...", ["variables"], 7, "variables")` - Variables only (strict validation)
 
 **❌ Common Mistakes:**
 - Using fuzzy names: `["front door", "living room temp"]` → **WILL FAIL**
 - Not using search first: Always use `search_entities("front door")` to find exact name "Front Door Sensor"
 
 **🔧 Proper Workflow:**
-1. `search_entities("front door")` → Find exact name: "Front Door Sensor" 
-2. `analyze_historical_data("show when opened/closed", ["Front Door Sensor"], 7)`
+1. `search_entities("front door")` → Find exact name: "Front Door Sensor"
+2. `list_variables()` → Find variable names like "someone_home" 
+3. `analyze_historical_data("show when opened/closed", ["Front Door Sensor"], 7)`
+4. `analyze_historical_data("home status changes", ["someone_home"], 7)` (variable analysis)
 
-**🤖 LLM Property Selection:**
+**🤖 Device Property Selection (LLM-Powered):**
 - Query: "show state changes" → AI selects: `["onState", "onOffState", "isPoweredOn"]`
 - Query: "temperature trends" → AI selects: `["temperature", "temperatureInput1"]`
 - Query: "brightness levels" → AI selects: `["brightness", "brightnessLevel"]`
+
+**📊 Variable Value Tracking (Simplified):**
+- Variables always query the `value` field from `variable_changes` measurement
+- No property selection needed - variables have single value field
+- Enhanced formatting: strings in quotes, numbers formatted appropriately
 
 ### Solving the "Lights That Are On" Problem:
 

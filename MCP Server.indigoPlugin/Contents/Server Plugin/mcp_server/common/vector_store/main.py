@@ -82,35 +82,20 @@ class VectorStore(VectorStoreInterface):
             self.db = lancedb.connect(self.db_path)
             self.logger.info(f"Vector database connected at: {self.db_path}")
             
-            # Check database path and permissions
-            self.logger.debug(f"📂 Database path: {self.db_path}")
-            self.logger.debug(f"📂 Database directory exists: {os.path.exists(os.path.dirname(self.db_path))}")
-            if os.path.exists(self.db_path):
-                self.logger.debug(f"📂 Database file exists: True")
-                self.logger.debug(f"📂 Database file size: {os.path.getsize(self.db_path)} bytes")
-            else:
-                self.logger.debug(f"📂 Database file exists: False")
+            # Database initialized
                 
             # Check existing tables
             existing_tables = self.db.table_names()
-            self.logger.debug(f"📊 Existing vector store tables: {existing_tables}")
+            # Check existing tables
             
             # Initialize tables for each entity type
             for table_name in ["devices", "variables", "actions"]:
                 if table_name not in existing_tables:
-                    self.logger.debug(f"🆕 Creating new table: {table_name}")
+                    # Create new table
                     self._create_table(table_name)
                 else:
-                    self.logger.debug(f"✅ Table exists: {table_name}")
-                    # For existing tables, try to get basic info
-                    try:
-                        table = self.db.open_table(table_name)
-                        # IMPORTANT: Must specify a large limit to get all records, otherwise LanceDB defaults to 10
-                        row_count = len(table.search().limit(999999).to_list())
-                        self.logger.debug(f"📊 Table {table_name} currently has {row_count} rows")
-                    except Exception as table_error:
-                        self.logger.debug(f"⚠️ Could not check row count for {table_name}: {table_error}")
-                    
+                    # Table exists
+                    pass
         except Exception as e:
             self.logger.error(f"Database initialization failed: {e}")
             raise
@@ -329,8 +314,8 @@ class VectorStore(VectorStoreInterface):
         try:
             # Add progress tracking to embedding generation
             if progress_callback:
-                self.logger.debug(f"🚀 Starting embedding generation for {len(texts)} texts with progress tracking")
-            
+                # Start embedding generation with progress tracking
+                pass
             return emb_texts_batch(texts, entity_names, progress_callback)
             
         except Exception as e:
@@ -461,14 +446,14 @@ class VectorStore(VectorStoreInterface):
             total_updates = len(entities_to_process)
             
             if total_updates == 0:
-                self.logger.debug(f"All {table_name} embeddings are up to date")
+                # All embeddings are up to date
                 return
             
             # Show update summary at debug level unless significant
             if total_updates > 50:
-                self.logger.info(f"📊 Processing {total_updates} {table_name} entities")
-            else:
-                self.logger.debug(f"📊 Processing {total_updates} {table_name} entities")
+                self.logger.info(f"Processing {total_updates} {table_name} entities")
+            elif total_updates > 10:
+                self.logger.debug(f"Processing {total_updates} {table_name} entities")
             
             # Initialize progress tracking
             progress = create_progress_tracker(
@@ -478,7 +463,7 @@ class VectorStore(VectorStoreInterface):
             )
             
             # Generate semantic keywords in batch with progress tracking
-            self.logger.debug(f"Generating semantic keywords for {total_updates} {table_name}")
+            # Generate semantic keywords
             all_keywords = generate_batch_device_keywords(
                 entities_to_process, 
                 batch_size=batch_size,  # Auto-calculate optimal batch size if None
@@ -500,7 +485,7 @@ class VectorStore(VectorStoreInterface):
                             id_list = ", ".join(updating_ids_str)
                             delete_condition = f"id IN ({id_list})"
                         table.delete(delete_condition)
-                        self.logger.debug(f"Deleted {len(updating_entity_ids)} existing {table_name} records for update")
+                        # Deleted existing records for update
                     except Exception as e:
                         self.logger.error(f"Error deleting existing {table_name} records for update: {e}")
             
@@ -593,26 +578,10 @@ class VectorStore(VectorStoreInterface):
                         # Force a sync/flush if available
                         if hasattr(table, 'flush'):
                             table.flush()
-                            self.logger.debug("🔄 Flushed table to ensure data persistence")
                         
                         # Wait a moment for write to complete
                         import time
                         time.sleep(0.1)
-                        
-                        # IMPORTANT: Must specify a large limit to get all records, otherwise LanceDB defaults to 10
-                        verification_rows = table.search().limit(999999).to_list()
-                        current_count = len(verification_rows)
-                        self.logger.debug(f"✅ Verification: {table_name} table now contains {current_count} total records")
-                        
-                        if current_count < success_count:
-                            self.logger.warning(f"⚠️ Expected at least {success_count} new records but table shows {current_count} total")
-                            
-                        if current_count > 0:
-                            # Show sample of what was written
-                            sample_record = verification_rows[0]
-                            self.logger.debug(f"Sample record keys: {list(sample_record.keys())}")
-                            if 'id' in sample_record:
-                                self.logger.debug(f"Sample record ID: {sample_record['id']}")
                                 
                     except Exception as verify_error:
                         self.logger.warning(f"Could not verify record count after addition: {verify_error}")
@@ -639,7 +608,7 @@ class VectorStore(VectorStoreInterface):
                             id_list = ", ".join(map(str, orphaned_list))
                             delete_condition = f"id IN ({id_list})"
                         table.delete(delete_condition)
-                        self.logger.info(f"🗑️ Removed {len(orphaned_ids)} orphaned {table_name} records from vector store")
+                        # Removed orphaned records
                     except Exception as e:
                         self.logger.error(f"Error removing orphaned {table_name} records: {e}")
             

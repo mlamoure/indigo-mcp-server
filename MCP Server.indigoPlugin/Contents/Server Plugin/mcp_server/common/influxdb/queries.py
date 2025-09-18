@@ -260,3 +260,61 @@ class InfluxDBQueryBuilder:
         
         self.logger.debug(f"Built properties discovery query: {query}")
         return query
+    
+    def build_variable_history_query(
+        self,
+        variable_name: str,
+        time_range_days: int = 60,
+        measurement: str = "variable_changes"
+    ) -> str:
+        """
+        Build a query for variable historical data.
+        
+        Args:
+            variable_name: Name of the variable
+            time_range_days: Number of days to look back
+            measurement: InfluxDB measurement name
+            
+        Returns:
+            InfluxQL query string
+        """
+        # Calculate time range
+        now = datetime.now()
+        start_time = now - timedelta(days=time_range_days)
+        start_time_ms = int(start_time.timestamp() * 1000)
+        
+        # Build query for variable changes (uses 'value' field and 'varname' tag)
+        query = (
+            f'SELECT "value" FROM "{measurement}" '
+            f"WHERE \"varname\" = '{variable_name}' "
+            f"AND time >= {start_time_ms}ms "
+            f'GROUP BY "varname" '
+            f"ORDER BY time ASC"
+        )
+        
+        self.logger.debug(f"Built variable history query: {query}")
+        return query
+    
+    def build_variable_latest_query(
+        self,
+        variable_name: str,
+        measurement: str = "variable_changes"
+    ) -> str:
+        """
+        Build a query for the latest variable value.
+        
+        Args:
+            variable_name: Name of the variable
+            measurement: InfluxDB measurement name
+            
+        Returns:
+            InfluxQL query string
+        """
+        query = (
+            f'SELECT LAST("value") FROM "{measurement}" '
+            f"WHERE \"varname\" = '{variable_name}' "
+            f'GROUP BY "varname"'
+        )
+        
+        self.logger.debug(f"Built latest variable query: {query}")
+        return query

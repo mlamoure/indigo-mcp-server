@@ -12,7 +12,6 @@ def test_initialize_with_logging():
     
     url = "https://vtmikel.indigodomo.net/message/com.vtmikel.mcp_server/mcp"
     headers = {
-        "Authorization": "Bearer f1eb0796-dff0-484b-a17d-3a04c24b335c",
         "Content-Type": "application/json",
         "Accept": "text/event-stream"
     }
@@ -36,7 +35,7 @@ def test_initialize_with_logging():
     
     print("🔍 Testing MCP server debug logging...")
     print(f"📡 Endpoint: {url}")
-    print(f"🔑 Bearer token: {headers['Authorization'][:20]}...")
+    print("🔓 Authentication: Handled by Indigo Web Server")
     print(f"📄 Payload: {json.dumps(payload, indent=2)}")
     print()
     
@@ -82,7 +81,6 @@ def test_tools_list(session_id):
         
     url = "https://vtmikel.indigodomo.net/message/com.vtmikel.mcp_server/mcp"
     headers = {
-        "Authorization": "Bearer f1eb0796-dff0-484b-a17d-3a04c24b335c",
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
         "Mcp-Session-Id": session_id

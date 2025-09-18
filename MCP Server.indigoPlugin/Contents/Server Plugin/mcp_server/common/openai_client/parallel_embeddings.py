@@ -69,7 +69,7 @@ def emb_texts_batch_parallel(texts: List[str], entity_names: List[str] = None, p
             'batch_entity_names': batch_entity_names
         })
     
-    logger.debug(f"🚀 Starting parallel embedding processing: {total_batches} batches with max {max_concurrent_batches} concurrent batches")
+    # Start parallel embedding processing
     
     # Progress tracking for concurrent operations
     progress_lock = threading.Lock()
@@ -88,10 +88,10 @@ def emb_texts_batch_parallel(texts: List[str], entity_names: List[str] = None, p
             entity_list = ", ".join(batch_entity_names[:5])
             if len(batch_entity_names) > 5:
                 entity_list += f" (+{len(batch_entity_names) - 5} more)"
-            logger.debug(f"🔄 Processing parallel batch {batch_num}/{total_batches} ({len(batch_texts)} embeddings): [{entity_list}]")
+            # Process parallel batch
         else:
-            logger.debug(f"🔄 Processing parallel batch {batch_num}/{total_batches} ({len(batch_texts)} embeddings)")
-        
+            # Process parallel batch
+            pass
         try:
             client = _get_embedding_client()
             model = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
@@ -119,7 +119,7 @@ def emb_texts_batch_parallel(texts: List[str], entity_names: List[str] = None, p
                     batch_results.append((original_index, embedding))
             
             batch_time = time.time() - batch_start_time
-            logger.debug(f"✅ Parallel batch {batch_num}/{total_batches} completed in {batch_time:.2f}s ({len(batch_texts)} embeddings processed)")
+            # Batch completed
             
             return {'success': True, 'batch_num': batch_num, 'results': batch_results}
             

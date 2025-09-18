@@ -5,8 +5,4 @@
         <Name>Print MCP Client Connection Information</Name>
         <CallbackMethod>show_mcp_client_info_menu</CallbackMethod>
     </MenuItem>
-    <MenuItem id="regenerate_bearer_token">
-        <Name>Regenerate Bearer Token</Name>
-        <CallbackMethod>regenerate_bearer_token_menu</CallbackMethod>
-    </MenuItem>
 </MenuItems>

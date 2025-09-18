@@ -33,15 +33,15 @@ def generate_keywords_parallel(
     """
     if collection_name != "devices":
         # Only parallelize device keyword generation for now
-        logger.debug(f"🔄 Using sequential processing for {collection_name} (parallel processing only enabled for devices)")
+        # Use sequential processing for non-devices
         return _generate_keywords_sequential_batch(entities, batch_size, collection_name, progress_callback)
     
     if len(entities) < 100:
         # For smaller sets, sequential might be faster due to setup overhead
-        logger.debug(f"📊 Using sequential processing for {len(entities)} entities (below parallel threshold)")
+        # Use sequential for small sets
         return _generate_keywords_sequential_batch(entities, batch_size, collection_name, progress_callback)
     
-    logger.debug(f"🚀 Starting parallel keyword generation for {len(entities)} entities with max {max_concurrent_batches} concurrent batches")
+    # Start parallel keyword generation
     
     # Calculate total batches for progress tracking
     total_batches = (len(entities) + batch_size - 1) // batch_size
@@ -73,7 +73,7 @@ def generate_keywords_parallel(
         batch_size = batch_job['batch_size']
         
         batch_start_time = time.time()
-        logger.debug(f"⚡ Processing parallel keyword batch {batch_num}/{total_batches} ({len(batch_entities)} entities)")
+        # Process batch
         
         try:
             # Generate LLM keywords for this batch with fallback
@@ -81,7 +81,7 @@ def generate_keywords_parallel(
             
             batch_time = time.time() - batch_start_time
             success_count = len(batch_keywords)
-            logger.debug(f"✅ Parallel keyword batch {batch_num}/{total_batches} completed in {batch_time:.2f}s ({success_count} keywords generated)")
+            # Batch completed
             
             return {
                 'success': True, 
@@ -136,13 +136,13 @@ def generate_keywords_parallel(
                 if failed_batches > total_batches // 2:  # More than 50% failed
                     raise Exception(f"Too many keyword batch failures: {failed_batches}/{total_batches} batches failed")
                 
-                logger.debug(f"✅ Parallel keyword processing completed: {successful_batches} successful, {failed_batches} failed out of {total_batches} batches")
+                # Parallel processing completed
                 return all_keywords
                 
         except Exception as e:
             if attempt < max_retries - 1:
                 delay = base_delay * (2 ** attempt)
-                logger.warning(f"⚠️ Parallel keyword attempt {attempt + 1}/{max_retries} failed: {e}, retrying in {delay:.1f}s...")
+                # Retry on failure
                 time.sleep(delay)
                 # Reset progress for retry
                 all_keywords = {}

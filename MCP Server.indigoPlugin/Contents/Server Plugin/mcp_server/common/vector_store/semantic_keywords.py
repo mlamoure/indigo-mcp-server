@@ -82,7 +82,7 @@ def generate_batch_device_keywords(
     keywords_map = {}
     
     try:
-        logger.debug(f"🔄 Starting optimized keyword generation for {len(entities)} {collection_name}")
+        # Start keyword generation
         
         # Calculate optimal batch size if not specified
         if batch_size is None:
@@ -94,13 +94,12 @@ def generate_batch_device_keywords(
             from .parallel_keywords import should_use_parallel_keywords, get_optimal_keyword_concurrency, generate_keywords_parallel
             
             total_batches = (len(entities) + batch_size - 1) // batch_size
-            logger.debug(f"🚀 Using optimized batch LLM processing with batch size {batch_size} (was: 20)")
-            logger.debug(f"📊 Processing {len(entities)} entities in {total_batches} optimized batches (avg {len(entities)//total_batches if total_batches > 0 else 0} entities per batch)")
+            # Calculate batches for LLM processing
             
             # Check if parallel processing should be used
             if should_use_parallel_keywords(len(entities)) and total_batches > 1:
                 max_concurrent = get_optimal_keyword_concurrency(len(entities), total_batches)
-                logger.debug(f"🚀 Using parallel keyword processing with {max_concurrent} concurrent batches")
+                # Use parallel processing
                 
                 # Use parallel processing
                 all_llm_keywords = generate_keywords_parallel(
@@ -111,14 +110,14 @@ def generate_batch_device_keywords(
                     max_concurrent
                 )
             else:
-                logger.debug(f"📊 Using sequential keyword processing (entities: {len(entities)}, batches: {total_batches})")
+                # Use sequential processing
                 
                 # Use sequential processing
                 for batch_num, batch_start in enumerate(range(0, len(entities), batch_size), 1):
                     batch_end = min(batch_start + batch_size, len(entities))
                     batch_entities = entities[batch_start:batch_end]
                     
-                    logger.debug(f"⚡ Processing sequential LLM batch {batch_num}/{total_batches} ({len(batch_entities)} devices)")
+                    # Process batch
                     
                     # Generate LLM keywords for this batch with fallback
                     batch_llm_keywords = _generate_llm_keywords_batch_with_fallback(batch_entities, collection_name, batch_size)
@@ -138,7 +137,6 @@ def generate_batch_device_keywords(
             all_llm_keywords = {}
         
         # Now generate rule-based keywords and combine with LLM keywords
-        logger.debug(f"🔧 Generating rule-based keywords and combining with LLM keywords")
         
         for i, entity in enumerate(entities):
             entity_id = str(entity.get("id", ""))
@@ -159,15 +157,13 @@ def generate_batch_device_keywords(
             # Add cached/batch LLM keywords if available
             if entity_id in all_llm_keywords:
                 keywords.update(all_llm_keywords[entity_id])
-                logger.debug(f"🎯 Combined {len(keywords)} total keywords for {entity_name} (rule-based + LLM)")
+                pass  # Keywords combined
             else:
                 # Fallback to individual LLM generation if not in batch (for edge cases)
                 llm_keywords = _generate_llm_keywords(entity, collection_name)
                 if llm_keywords:
                     keywords.update(llm_keywords)
-                    logger.debug(f"🔍 Combined {len(keywords)} total keywords for {entity_name} (rule-based + individual LLM)")
-                else:
-                    logger.debug(f"🔧 Generated {len(keywords)} rule-based keywords for {entity_name}")
+                    pass  # Keywords generated
             
             keywords_map[entity_id] = list(keywords)
             
@@ -177,12 +173,9 @@ def generate_batch_device_keywords(
                 rule_progress = 50 + int(((i + 1) / len(entities)) * 50)  # 50-100%
                 progress_callback(rule_progress, f"Combining rule-based + LLM keywords")
                 
-                # Log progress every 10% during rule-based processing
-                if (i + 1) % max(1, len(entities) // 10) == 0 or (i + 1) == len(entities):
-                    completion_pct = int(((i + 1) / len(entities)) * 100)
-                    logger.info(f"📊 Keyword Combination progress: {completion_pct}% complete ({i + 1}/{len(entities)} entities) - combining rule-based + LLM keywords")
+                # Progress tracking handled by callback, no need for additional logging
         
-        logger.debug(f"✅ Completed optimized keyword generation: {len(keywords_map)} entities, avg {sum(len(kw) for kw in keywords_map.values()) / len(keywords_map):.1f} keywords per entity")
+        # Keyword generation completed
             
     except Exception as e:
         logger.error(f"Error generating batch keywords for {collection_name}: {e}")
@@ -512,7 +505,6 @@ def _generate_llm_keywords_batch_with_fallback(entities: List[Dict[str, Any]], e
         return result
     
     # If batch processing failed, try fallback strategies
-    logger.warning(f"⚠️ Batch processing had low success rate ({len(result)}/{expected_count}), trying fallback strategies")
     
     # Strategy 1: Try smaller batch sizes
     for fallback_size in [10, 5, 3, 1]:
@@ -538,7 +530,6 @@ def _generate_llm_keywords_batch_with_fallback(entities: List[Dict[str, Any]], e
             return all_results
     
     # If all batch strategies failed, fall back to individual processing
-    logger.warning(f"🔄 All batch strategies failed, falling back to individual LLM processing")
     individual_results = {}
     
     for entity in entities:
@@ -552,7 +543,7 @@ def _generate_llm_keywords_batch_with_fallback(entities: List[Dict[str, Any]], e
                 logger.error(f"Individual LLM processing failed for entity {entity_id}: {e}")
     
     final_success_rate = len(individual_results) / max(expected_count, 1)
-    logger.debug(f"Individual processing results: {len(individual_results)}/{expected_count} ({final_success_rate:.2%})")
+    # Individual processing completed
     
     return individual_results
 
@@ -609,7 +600,7 @@ def _generate_llm_keywords_batch(entities: List[Dict[str, Any]], entity_type: st
             cache_keys.append(cache_key)
         
         if not device_descriptions:
-            logger.debug("No new devices need LLM keyword generation (all cached)")
+            pass  # All cached
             return {}
         
         logger.debug(f"🚀 Batch processing {len(device_descriptions)} devices for LLM keywords")
@@ -884,7 +875,7 @@ def _generate_llm_keywords(entity: Dict[str, Any], entity_type: str) -> List[str
         # Create cache key from entity static fields
         cache_key = _create_entity_cache_key(entity)
         if cache_key in _llm_keyword_cache:
-            logger.debug(f"💾 Using cached LLM keywords for {entity_name}")
+            pass  # Using cached keywords
             return _llm_keyword_cache[cache_key]
         
         logger.debug(f"🤖 Calling LLM for semantic keywords: {entity_name}")

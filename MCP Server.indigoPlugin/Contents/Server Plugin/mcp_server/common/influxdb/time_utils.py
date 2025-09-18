@@ -113,7 +113,8 @@ class TimeFormatter:
         device_name: str,
         state: str,
         start_time: datetime,
-        end_time: datetime
+        end_time: datetime,
+        property_name: str = None
     ) -> str:
         """
         Format a device state change message with duration.
@@ -123,6 +124,7 @@ class TimeFormatter:
             state: Device state (e.g., "on", "off")
             start_time: When the state started
             end_time: When the state ended
+            property_name: Optional property name for context
             
         Returns:
             Formatted message string
@@ -131,12 +133,19 @@ class TimeFormatter:
             hours, minutes, seconds = self.get_delta_summary(start_time, end_time)
             duration = self.format_duration(hours, minutes, seconds)
             
-            # Format timestamps for display
-            start_str = start_time.strftime("%Y-%m-%d %H:%M:%S %Z")
-            end_str = end_time.strftime("%Y-%m-%d %H:%M:%S %Z")
+            # Format timestamps for display with timezone abbreviation
+            # Use timezone abbreviation if available, otherwise offset
+            start_str = self._format_timestamp_with_tz(start_time)
+            end_str = self._format_timestamp_with_tz(end_time)
+            
+            # Include property name if provided
+            if property_name:
+                device_label = f"{device_name}.{property_name}"
+            else:
+                device_label = device_name
             
             message = (
-                f"{device_name} was {state} for {duration}, "
+                f"{device_label} was {state} for {duration}, "
                 f"from {start_str} to {end_str}"
             )
             
@@ -145,6 +154,29 @@ class TimeFormatter:
         except Exception as e:
             self.logger.error(f"Failed to format device state message: {e}")
             return f"{device_name} state change (formatting error)"
+    
+    def _format_timestamp_with_tz(self, timestamp: datetime) -> str:
+        """
+        Format timestamp with proper timezone display.
+        
+        Args:
+            timestamp: Datetime object to format
+            
+        Returns:
+            Formatted timestamp string with timezone
+        """
+        try:
+            # Try to get timezone abbreviation (e.g., EST, PST)
+            tz_name = timestamp.strftime("%Z")
+            if tz_name and tz_name not in ['UTC', '']:
+                # Use abbreviation if available
+                return timestamp.strftime("%Y-%m-%d %H:%M:%S %Z")
+            else:
+                # Fall back to offset format
+                return timestamp.strftime("%Y-%m-%d %H:%M:%S %z")
+        except Exception:
+            # Ultimate fallback
+            return str(timestamp)
     
     def get_time_range_for_period(self, days: int) -> Tuple[datetime, datetime]:
         """
