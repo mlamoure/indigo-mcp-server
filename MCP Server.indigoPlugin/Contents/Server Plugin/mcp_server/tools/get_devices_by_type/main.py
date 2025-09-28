@@ -6,7 +6,7 @@ import logging
 from typing import Dict, List, Any, Optional
 
 from ...adapters.data_provider import DataProvider
-from ...common.indigo_device_types import IndigoDeviceType, DeviceClassifier
+from ...common.indigo_device_types import IndigoDeviceType, DeviceClassifier, DeviceTypeResolver
 from ..base_handler import BaseToolHandler
 
 
@@ -39,13 +39,25 @@ class GetDevicesByTypeHandler(BaseToolHandler):
             Dictionary with list of devices and metadata
         """
         try:
-            # Validate device type
-            if not IndigoDeviceType.is_valid_type(device_type):
+            # Resolve device type using alias system
+            resolved_device_type = DeviceTypeResolver.resolve_device_type(device_type)
+            if not resolved_device_type:
+                # Generate helpful error message with suggestions
+                error_parts = [f"Invalid device type: {device_type}"]
+                error_parts.append(f"Valid types: {IndigoDeviceType.get_all_types()}")
+
+                # Add suggestions
+                suggestions = DeviceTypeResolver.get_suggestions_for_invalid_type(device_type)
+                if suggestions:
+                    error_parts.append(f"Did you mean: {', '.join(suggestions)}")
+
                 return {
-                    "error": f"Invalid device type: {device_type}",
-                    "valid_types": IndigoDeviceType.get_all_types(),
+                    "error": " | ".join(error_parts),
                     "success": False
                 }
+
+            # Use the resolved device type
+            device_type = resolved_device_type
             
             self.info_log(f"Retrieving all devices of type: {device_type}")
             

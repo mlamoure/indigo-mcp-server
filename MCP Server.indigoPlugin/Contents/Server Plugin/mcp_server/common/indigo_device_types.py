@@ -51,10 +51,166 @@ class IndigoEntityType(str, Enum):
         return entity_type in cls.get_all_types()
 
 
+class DeviceTypeResolver:
+    """
+    Resolves device type aliases to valid IndigoDeviceType values.
+
+    This class provides a mapping system to convert common user-friendly device type
+    names (like 'light', 'switch') to valid IndigoDeviceType enum values.
+    """
+
+    # Alias mappings - common user terms to valid device types
+    DEVICE_TYPE_ALIASES = {
+        # Lighting aliases
+        "light": IndigoDeviceType.DIMMER,
+        "lights": IndigoDeviceType.DIMMER,
+        "lamp": IndigoDeviceType.DIMMER,
+        "lamps": IndigoDeviceType.DIMMER,
+        "bulb": IndigoDeviceType.DIMMER,
+        "bulbs": IndigoDeviceType.DIMMER,
+
+        # Switch/Relay aliases
+        "switch": IndigoDeviceType.RELAY,
+        "switches": IndigoDeviceType.RELAY,
+        "outlet": IndigoDeviceType.RELAY,
+        "outlets": IndigoDeviceType.RELAY,
+        "plug": IndigoDeviceType.RELAY,
+        "plugs": IndigoDeviceType.RELAY,
+
+        # Sensor aliases
+        "motion": IndigoDeviceType.SENSOR,
+        "temperature": IndigoDeviceType.SENSOR,
+        "humidity": IndigoDeviceType.SENSOR,
+        "contact": IndigoDeviceType.SENSOR,
+        "door": IndigoDeviceType.SENSOR,
+        "window": IndigoDeviceType.SENSOR,
+        "detector": IndigoDeviceType.SENSOR,
+
+        # Fan/Speed control aliases
+        "fan": IndigoDeviceType.SPEEDCONTROL,
+        "fans": IndigoDeviceType.SPEEDCONTROL,
+
+        # I/O aliases
+        "io": IndigoDeviceType.MULTIIO,
+        "input": IndigoDeviceType.MULTIIO,
+        "output": IndigoDeviceType.MULTIIO,
+
+        # HVAC aliases
+        "hvac": IndigoDeviceType.THERMOSTAT,
+        "climate": IndigoDeviceType.THERMOSTAT,
+        "temp": IndigoDeviceType.THERMOSTAT,
+
+        # Irrigation aliases
+        "irrigation": IndigoDeviceType.SPRINKLER,
+        "water": IndigoDeviceType.SPRINKLER,
+        "watering": IndigoDeviceType.SPRINKLER,
+    }
+
+    @classmethod
+    def resolve_device_type(cls, device_type: str) -> Optional[str]:
+        """
+        Resolve a device type string to a valid IndigoDeviceType value.
+
+        Args:
+            device_type: Device type string (may be alias or valid type)
+
+        Returns:
+            Valid device type string or None if not resolvable
+        """
+        if not device_type:
+            return None
+
+        # Convert to lowercase for case-insensitive matching
+        device_type_lower = device_type.lower().strip()
+
+        # First check if it's already a valid type
+        if IndigoDeviceType.is_valid_type(device_type):
+            return device_type
+
+        # Then check aliases
+        if device_type_lower in cls.DEVICE_TYPE_ALIASES:
+            return cls.DEVICE_TYPE_ALIASES[device_type_lower].value
+
+        return None
+
+    @classmethod
+    def resolve_device_types(cls, device_types: List[str]) -> tuple[List[str], List[str]]:
+        """
+        Resolve a list of device types, returning valid types and any unresolvable ones.
+
+        Args:
+            device_types: List of device type strings
+
+        Returns:
+            Tuple of (resolved_valid_types, unresolvable_types)
+        """
+        if not device_types:
+            return [], []
+
+        valid_types = []
+        invalid_types = []
+
+        for device_type in device_types:
+            resolved = cls.resolve_device_type(device_type)
+            if resolved:
+                valid_types.append(resolved)
+            else:
+                invalid_types.append(device_type)
+
+        return valid_types, invalid_types
+
+    @classmethod
+    def get_suggestions_for_invalid_type(cls, invalid_type: str) -> List[str]:
+        """
+        Get suggestions for an invalid device type based on similarity.
+
+        Args:
+            invalid_type: The invalid device type string
+
+        Returns:
+            List of suggested valid types/aliases
+        """
+        if not invalid_type:
+            return []
+
+        invalid_lower = invalid_type.lower().strip()
+        suggestions = []
+
+        # Check for partial matches in aliases
+        for alias, valid_type in cls.DEVICE_TYPE_ALIASES.items():
+            if invalid_lower in alias or alias in invalid_lower:
+                suggestions.append(f"'{alias}' → {valid_type.value}")
+
+        # Check for partial matches in valid types
+        for valid_type in IndigoDeviceType.get_all_types():
+            if invalid_lower in valid_type or valid_type in invalid_lower:
+                suggestions.append(f"'{valid_type}'")
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_suggestions = []
+        for suggestion in suggestions:
+            if suggestion not in seen:
+                seen.add(suggestion)
+                unique_suggestions.append(suggestion)
+
+        return unique_suggestions[:3]  # Limit to top 3 suggestions
+
+    @classmethod
+    def get_all_aliases(cls) -> Dict[str, str]:
+        """
+        Get all available aliases and their mappings.
+
+        Returns:
+            Dictionary mapping alias to valid device type
+        """
+        return {alias: device_type.value for alias, device_type in cls.DEVICE_TYPE_ALIASES.items()}
+
+
 class DeviceClassifier:
     """
     Classifies Indigo devices into logical types based on class and deviceTypeId.
-    
+
     This class handles the mapping between Indigo's specific device classes and types
     (like 'indigo.DimmerDevice', 'ra2Dimmer') to our logical device types ('dimmer', 'relay').
     """

@@ -223,8 +223,8 @@ class TestGetDevicesByTypeHandler:
         assert result["success"] is False
         assert "error" in result
         assert "Invalid device type" in result["error"]
-        assert "valid_types" in result
-        assert "invalid_type" not in result["valid_types"]
+        assert "Valid types:" in result["error"]
+        assert "invalid_type" in result["error"]
     
     def test_get_devices_empty_string(self, handler):
         """Test handling of empty string device type."""
@@ -307,6 +307,50 @@ class TestGetDevicesByTypeHandler:
             assert "count" in result
             assert "devices" in result
     
+    def test_device_type_alias_resolution(self, mock_data_provider):
+        """Test that device type aliases are properly resolved."""
+        # Test data with dimmer devices
+        test_devices = [
+            {
+                "id": 1,
+                "name": "Living Room Light",
+                "class": "indigo.DimmerDevice",
+                "deviceTypeId": "hueLight",
+                "enabled": True
+            },
+            {
+                "id": 2,
+                "name": "Kitchen Switch",
+                "class": "indigo.RelayDevice",
+                "deviceTypeId": "switch",
+                "enabled": True
+            }
+        ]
+
+        mock_data_provider.get_all_devices_unfiltered.return_value = test_devices
+
+        mock_logger = Mock()
+        handler = GetDevicesByTypeHandler(
+            data_provider=mock_data_provider,
+            logger=mock_logger
+        )
+
+        # Test with "light" alias (should resolve to "dimmer")
+        result = handler.get_devices("light")
+
+        assert result["success"] is True
+        assert result["device_type"] == "dimmer"  # Should be resolved
+        assert result["count"] == 1
+        assert result["devices"][0]["name"] == "Living Room Light"
+
+        # Test with "switch" alias (should resolve to "relay")
+        result = handler.get_devices("switch")
+
+        assert result["success"] is True
+        assert result["device_type"] == "relay"  # Should be resolved
+        assert result["count"] == 1
+        assert result["devices"][0]["name"] == "Kitchen Switch"
+
     def test_real_world_device_classification(self, mock_data_provider):
         """Test with more realistic device examples from your actual system."""
         real_devices = [

@@ -11,7 +11,7 @@ import time
 from typing import Any, Dict, List, Optional, Union
 
 from .adapters.data_provider import DataProvider
-from .common.indigo_device_types import IndigoDeviceType, IndigoEntityType
+from .common.indigo_device_types import IndigoDeviceType, IndigoEntityType, DeviceTypeResolver
 from .common.json_encoder import safe_json_dumps
 from .common.vector_store.vector_store_manager import VectorStoreManager
 from .handlers.list_handlers import ListHandlers
@@ -607,7 +607,7 @@ class MCPHandler:
                     "device_types": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Optional device types to filter"
+                        "description": "Optional device types to filter. Valid types: dimmer, relay, sensor, multiio, speedcontrol, sprinkler, thermostat, device. Common aliases supported: light→dimmer, switch→relay, motion→sensor, fan→speedcontrol, etc."
                     },
                     "entity_types": {
                         "type": "array",
@@ -632,7 +632,7 @@ class MCPHandler:
                 "properties": {
                     "device_type": {
                         "type": "string",
-                        "description": "Device type (dimmer, relay, sensor, etc.)"
+                        "description": "Device type. Valid types: dimmer, relay, sensor, multiio, speedcontrol, sprinkler, thermostat, device. Aliases supported: light→dimmer, switch→relay, motion→sensor, fan→speedcontrol, etc."
                     }
                 },
                 "required": ["device_type"]
@@ -801,7 +801,7 @@ class MCPHandler:
                     "device_types": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Optional device types to filter"
+                        "description": "Optional device types to filter. Valid types: dimmer, relay, sensor, multiio, speedcontrol, sprinkler, thermostat, device. Common aliases supported: light→dimmer, switch→relay, motion→sensor, fan→speedcontrol, etc."
                     }
                 },
                 "required": ["state_conditions"]
@@ -908,15 +908,25 @@ class MCPHandler:
         try:
             # Validate device types
             if device_types:
-                invalid_device_types = [
-                    dt for dt in device_types
-                    if not IndigoDeviceType.is_valid_type(dt)
-                ]
+                resolved_types, invalid_device_types = DeviceTypeResolver.resolve_device_types(device_types)
                 if invalid_device_types:
+                    # Generate helpful error message with suggestions
+                    error_parts = [f"Invalid device types: {invalid_device_types}"]
+                    error_parts.append(f"Valid types: {IndigoDeviceType.get_all_types()}")
+
+                    # Add suggestions for each invalid type
+                    for invalid_type in invalid_device_types:
+                        suggestions = DeviceTypeResolver.get_suggestions_for_invalid_type(invalid_type)
+                        if suggestions:
+                            error_parts.append(f"Did you mean: {', '.join(suggestions)}")
+
                     return safe_json_dumps({
-                        "error": f"Invalid device types: {invalid_device_types}",
+                        "error": " | ".join(error_parts),
                         "query": query
                     })
+
+                # Use resolved types for the search
+                device_types = resolved_types
             
             # Validate entity types
             if entity_types:
@@ -1056,14 +1066,24 @@ class MCPHandler:
         try:
             # Validate device types if provided
             if device_types:
-                invalid_types = [
-                    dt for dt in device_types
-                    if not IndigoDeviceType.is_valid_type(dt)
-                ]
+                resolved_types, invalid_types = DeviceTypeResolver.resolve_device_types(device_types)
                 if invalid_types:
+                    # Generate helpful error message with suggestions
+                    error_parts = [f"Invalid device types: {invalid_types}"]
+                    error_parts.append(f"Valid types: {IndigoDeviceType.get_all_types()}")
+
+                    # Add suggestions for each invalid type
+                    for invalid_type in invalid_types:
+                        suggestions = DeviceTypeResolver.get_suggestions_for_invalid_type(invalid_type)
+                        if suggestions:
+                            error_parts.append(f"Did you mean: {', '.join(suggestions)}")
+
                     return safe_json_dumps({
-                        "error": f"Invalid device types: {invalid_types}"
+                        "error": " | ".join(error_parts)
                     })
+
+                # Use resolved types for the query
+                device_types = resolved_types
             
             devices = self.list_handlers.get_devices_by_state(
                 state_conditions, device_types
