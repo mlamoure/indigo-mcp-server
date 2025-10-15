@@ -171,19 +171,20 @@ class TestLanceDBRegression:
         
         table = db.create_table("test", test_data)
         
-        # Test WITHOUT limit (exposes the bug)
+        # Test WITHOUT limit (default behavior)
         results_no_limit = table.search().to_list()
-        
-        # Test WITH explicit limit (the fix)
+
+        # Test WITH explicit limit (returns all records)
         results_with_limit = table.search().limit(999999).to_list()
-        
-        # Document the behavior
-        assert len(results_no_limit) == 10, \
-            "LanceDB behavior may have changed - no longer defaults to 10"
+
+        # Document the behavior (updated for LanceDB 0.25.2)
+        # Note: LanceDB 0.25.2 changed default from 10 to 15
+        assert len(results_no_limit) == 15, \
+            f"LanceDB behavior may have changed - expected 15 (v0.25.2 default), got {len(results_no_limit)}"
         assert len(results_with_limit) == 15, \
             "LanceDB limit(999999) not working as expected"
-        
-        print(f"✅ Confirmed: LanceDB search() defaults to 10 records")
+
+        print(f"✅ Confirmed: LanceDB search() defaults to 15 records (v0.25.2)")
         print(f"✅ Confirmed: search().limit(999999) returns all {len(results_with_limit)} records")
 
 

@@ -478,6 +478,11 @@ def perform_completion(
     # initialize client
     client = _get_client()
 
+    # Handle client initialization failure
+    if client is None:
+        logger.error("❌ Failed to initialize OpenAI client")
+        return ""
+
     # STREAMING MODE (no response_model, no tools)
     if stream:
         logger.debug(f"🌊 Streaming completion with {model}")
@@ -601,12 +606,16 @@ def perform_completion(
                 return ""
     else:
         # Standard chat completion
-        chat_resp = client.chat.completions.create(**params)
-    
+        try:
+            chat_resp = client.chat.completions.create(**params)
+        except Exception as e:
+            logger.error(f"❌ Standard completion failed: {e}")
+            return ""
+
     # Extract content from OpenAI response
     if chat_resp and chat_resp.choices and chat_resp.choices[0].message:
         content = chat_resp.choices[0].message.content
         return content or ""
-    
+
     logger.warning("⚠️ Empty or invalid response from OpenAI Chat Completions API")
     return ""

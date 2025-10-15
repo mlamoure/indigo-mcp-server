@@ -16,7 +16,7 @@ from mcp_server.common.openai_client.main import perform_completion
 
 
 # Test BaseModel for structured output testing
-class MockMockTestResponse(BaseModel):
+class MockTestResponse(BaseModel):
     """Test response model for structured output tests."""
     items: List[str]
     count: int
@@ -32,11 +32,16 @@ class TestOpenAIClient:
         mock_completion = Mock()
         mock_completion.choices = [Mock()]
         mock_completion.choices[0].message.content = "Test response"
-        
+        # Ensure tool_calls is None by default (not a Mock object)
+        mock_completion.choices[0].message.tool_calls = None
+        mock_completion.choices[0].message.function_call = None
+        # For structured output, add parsed attribute (OpenAI 2.x)
+        mock_completion.choices[0].message.parsed = "Test response"
+
         # Mock both create and parse methods
         mock_client.chat.completions.create.return_value = mock_completion
         mock_client.chat.completions.parse.return_value = mock_completion
-        
+
         return mock_client
 
     @patch('mcp_server.common.openai_client.main._get_client')
@@ -100,20 +105,23 @@ class TestOpenAIClient:
     def test_perform_completion_with_tools(self, mock_client_func, mock_openai_client):
         """Test completion with tools (should use create() method)."""
         mock_client_func.return_value = mock_openai_client
-        
+
         messages = [{"role": "user", "content": "Test message"}]
         tools = [{"type": "function", "function": {"name": "test_tool"}}]
-        
+
         result = perform_completion(
-            messages=messages, 
+            messages=messages,
             model="gpt-5-mini",
             tools=tools
         )
-        
+
         # Should use create() method for tool calls
         mock_openai_client.chat.completions.create.assert_called_once()
         mock_openai_client.chat.completions.parse.assert_not_called()
-        assert result == "Test response"
+        # When tools are provided, result is a dict with content and tool_calls
+        assert isinstance(result, dict)
+        assert result["content"] == "Test response"
+        assert "tool_calls" in result
 
     @patch('mcp_server.common.openai_client.main._get_client')
     def test_perform_completion_empty_response(self, mock_client_func, mock_openai_client):
@@ -201,30 +209,34 @@ class TestStructuredOutputIntegration:
         """Test simulation of BatchKeywordsResponse structured output."""
         # Import the actual model used in the error
         from mcp_server.common.vector_store.semantic_keywords import BatchKeywordsResponse
-        
+
         mock_client = Mock()
         mock_client_func.return_value = mock_client
-        
-        # Mock successful parse response
+
+        # Mock successful parse response with parsed attribute
         mock_response = Mock()
         mock_response.choices = [Mock()]
+        # In OpenAI 2.x, parsed attribute contains the actual Pydantic object
+        mock_parsed_obj = Mock()
+        mock_response.choices[0].message.parsed = mock_parsed_obj
         mock_response.choices[0].message.content = '{"devices": [{"device_number": 1, "keywords": ["test"]}]}'
         mock_client.chat.completions.parse.return_value = mock_response
-        
+
         messages = [{"role": "user", "content": "Generate keywords"}]
         result = perform_completion(
             messages=messages,
             model="gpt-5-mini",
             response_model=BatchKeywordsResponse
         )
-        
+
         # Should successfully call parse() method
         mock_client.chat.completions.parse.assert_called_once_with(
             model="gpt-5-mini",
             messages=messages,
             response_format=BatchKeywordsResponse
         )
-        assert result == '{"devices": [{"device_number": 1, "keywords": ["test"]}]}'
+        # Result should be the parsed object (not the string content)
+        assert result == mock_parsed_obj
 
     @patch('mcp_server.common.openai_client.main._get_client')
     def test_batch_keywords_response_fallback(self, mock_client_func):
