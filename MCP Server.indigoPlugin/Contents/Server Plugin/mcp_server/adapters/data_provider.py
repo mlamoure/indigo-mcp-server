@@ -181,15 +181,33 @@ class DataProvider(ABC):
     def execute_action_group(self, action_group_id: int, delay: Optional[int] = None) -> Dict[str, Any]:
         """
         Execute an action group.
-        
+
         Args:
             action_group_id: The action group ID
             delay: Optional delay in seconds before execution
-            
+
         Returns:
             Dictionary with:
             - success: Whether execution was successful
             - job_id: Job ID if available
             - error: Error message if operation failed
+        """
+        pass
+
+    @abstractmethod
+    def get_event_log_list(
+        self,
+        line_count: Optional[int] = None,
+        show_timestamp: bool = True
+    ) -> List[str]:
+        """
+        Get recent event log entries from Indigo server.
+
+        Args:
+            line_count: Number of log entries to return (default: all recent entries)
+            show_timestamp: Include timestamps in log entries (default: True)
+
+        Returns:
+            List of log entry strings
         """
         pass

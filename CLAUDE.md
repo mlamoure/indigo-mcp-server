@@ -401,7 +401,7 @@ This plugin uses a custom MCP handler with HTTP transport for improved performan
 
 ### Available Tools
 
-The MCP server provides 15 comprehensive tools for interacting with your Indigo system:
+The MCP server provides 16 comprehensive tools for interacting with your Indigo system:
 
 #### Search and Discovery Tools
 
@@ -512,6 +512,17 @@ The MCP server provides 15 comprehensive tools for interacting with your Indigo 
      - Enhanced formatting: devices show property context, variables show simple value changes
      - Requires InfluxDB integration for historical data access
 
+#### System and Diagnostics Tools
+
+16. **query_event_log**: Query recent Indigo server event log entries
+     - Retrieves recent event log entries from the Indigo server
+     - Optional line_count parameter: Number of log entries to return (default: 20)
+     - Optional show_timestamp parameter: Include timestamps in entries (default: true)
+     - Returns structured list of log entries for easy parsing
+     - Useful for debugging, monitoring system activity, and tracking events
+     - Example: `query_event_log(line_count=10)` - Get last 10 log entries
+     - Example: `query_event_log(line_count=50, show_timestamp=False)` - Get 50 entries without timestamps
+
 ### Available Resources
 
 1. **Device Resources** (`/devices`):
@@ -621,6 +632,23 @@ The `get_devices_by_type` endpoint supports logical device types:
 - Variables always query the `value` field from `variable_changes` measurement
 - No property selection needed - variables have single value field
 - Enhanced formatting: strings in quotes, numbers formatted appropriately
+
+### Event Log Query Examples:
+
+- Get last 20 log entries (default): `query_event_log()`
+- Get last 10 log entries: `query_event_log(line_count=10)`
+- Get last 50 log entries: `query_event_log(line_count=50)`
+- Get log entries without timestamps: `query_event_log(show_timestamp=False)`
+- Get last 5 entries without timestamps: `query_event_log(line_count=5, show_timestamp=False)`
+- Debug recent activity: `query_event_log(line_count=100)` - Review last 100 events
+- Monitor errors: `query_event_log()` - Check recent log for error messages
+- Track device changes: `query_event_log(line_count=30)` - Review recent device state changes
+
+**Common Use Cases:**
+- **Debugging**: Check for error messages and warnings
+- **Monitoring**: Track recent device state changes and actions
+- **Troubleshooting**: Review what happened before an issue occurred
+- **Auditing**: Track action group executions and variable updates
 
 ### Solving the "Lights That Are On" Problem:
 

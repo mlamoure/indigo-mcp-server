@@ -282,8 +282,56 @@ class MockDataProvider(DataProvider):
         action = self.get_action(action_group_id)
         if not action:
             return {"error": f"Action group {action_group_id} not found", "success": False}
-        
+
         return {
             "success": True,
             "job_id": None
         }
+
+    def get_event_log_list(
+        self,
+        line_count: Optional[int] = None,
+        show_timestamp: bool = True
+    ) -> List[str]:
+        """
+        Mock getting event log entries.
+
+        Args:
+            line_count: Number of log entries to return (default: all entries)
+            show_timestamp: Include timestamps in log entries (default: True)
+
+        Returns:
+            List of mock log entry strings
+        """
+        # Generate mock log entries
+        if show_timestamp:
+            mock_entries = [
+                "2025-01-15 10:30:45  Device 'Living Room Light' on",
+                "2025-01-15 10:30:50  Device 'Kitchen Lights' off",
+                "2025-01-15 10:31:00  Variable 'House Mode' set to 'Away'",
+                "2025-01-15 10:31:15  Action group 'Good Night Scene' executed",
+                "2025-01-15 10:31:30  Device 'Front Door Lock' locked",
+                "2025-01-15 10:31:45  Error: Device 'Garage Door' communication failure",
+                "2025-01-15 10:32:00  Variable 'Security Armed' set to 'True'",
+                "2025-01-15 10:32:15  Device 'Kitchen Temperature' reading: 72.5°F",
+                "2025-01-15 10:32:30  Action group 'Morning Routine' executed",
+                "2025-01-15 10:32:45  Plugin 'MCP Server' started"
+            ]
+        else:
+            mock_entries = [
+                "Device 'Living Room Light' on",
+                "Device 'Kitchen Lights' off",
+                "Variable 'House Mode' set to 'Away'",
+                "Action group 'Good Night Scene' executed",
+                "Device 'Front Door Lock' locked",
+                "Error: Device 'Garage Door' communication failure",
+                "Variable 'Security Armed' set to 'True'",
+                "Device 'Kitchen Temperature' reading: 72.5°F",
+                "Action group 'Morning Routine' executed",
+                "Plugin 'MCP Server' started"
+            ]
+
+        # Return limited entries if line_count is specified
+        if line_count is not None:
+            return mock_entries[:line_count]
+        return mock_entries

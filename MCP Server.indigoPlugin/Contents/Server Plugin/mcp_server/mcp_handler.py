@@ -19,6 +19,7 @@ from .tools.action_control import ActionControlHandler
 from .tools.device_control import DeviceControlHandler
 from .tools.get_devices_by_type import GetDevicesByTypeHandler
 from .tools.historical_analysis import HistoricalAnalysisHandler
+from .tools.log_query import LogQueryHandler
 from .tools.search_entities import SearchEntitiesHandler
 from .tools.variable_control import VariableControlHandler
 
@@ -114,7 +115,11 @@ class MCPHandler:
             logger=self.logger
         )
         self.historical_analysis_handler = HistoricalAnalysisHandler(
-            data_provider=self.data_provider, 
+            data_provider=self.data_provider,
+            logger=self.logger
+        )
+        self.log_query_handler = LogQueryHandler(
+            data_provider=self.data_provider,
             logger=self.logger
         )
     
@@ -854,7 +859,26 @@ class MCPHandler:
             },
             "function": self._tool_get_action_group_by_id
         }
-    
+
+        # Log query tool
+        self._tools["query_event_log"] = {
+            "description": "Query recent Indigo server event log entries",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "line_count": {
+                        "type": "integer",
+                        "description": "Number of log entries to return (default: 20)"
+                    },
+                    "show_timestamp": {
+                        "type": "boolean",
+                        "description": "Include timestamps in log entries (default: true)"
+                    }
+                }
+            },
+            "function": self._tool_query_event_log
+        }
+
     def _register_resources(self):
         """Register all available resources."""
         # Device resources
@@ -1131,7 +1155,23 @@ class MCPHandler:
         except Exception as e:
             self.logger.error(f"Get action group by ID error: {e}")
             return safe_json_dumps({"error": str(e)})
-    
+
+    def _tool_query_event_log(
+        self,
+        line_count: int = 20,
+        show_timestamp: bool = True
+    ) -> str:
+        """Query event log tool implementation."""
+        try:
+            result = self.log_query_handler.query(
+                line_count=line_count,
+                show_timestamp=show_timestamp
+            )
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"Query event log error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
     # Resource implementation methods
     def _resource_list_devices(self) -> str:
         """List all devices resource."""

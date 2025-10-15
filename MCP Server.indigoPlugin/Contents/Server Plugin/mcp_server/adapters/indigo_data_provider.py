@@ -378,3 +378,37 @@ class IndigoDataProvider(DataProvider):
         except Exception as e:
             self.logger.error(f"Error executing action group {action_group_id}: {e}")
             return {"error": str(e), "success": False}
+
+    def get_event_log_list(
+        self,
+        line_count: Optional[int] = None,
+        show_timestamp: bool = True
+    ) -> List[str]:
+        """
+        Get recent event log entries from Indigo server.
+
+        Args:
+            line_count: Number of log entries to return (default: all recent entries)
+            show_timestamp: Include timestamps in log entries (default: True)
+
+        Returns:
+            List of log entry strings
+        """
+        try:
+            # Build parameters for getEventLogList
+            params = {
+                "returnAsList": True,  # Always return as list for structured data
+                "showTimeStamp": show_timestamp
+            }
+
+            if line_count is not None:
+                params["lineCount"] = line_count
+
+            # Get log entries from Indigo server
+            log_entries = indigo.server.getEventLogList(**params)
+
+            return log_entries if log_entries else []
+
+        except Exception as e:
+            self.logger.error(f"Error getting event log list: {e}")
+            return []
