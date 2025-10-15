@@ -1,21 +1,21 @@
 # MCP Server Core Dependencies (IWS Integration)
-lancedb>=0.24.3
+lancedb>=0.25.2
 pyarrow>=21.0.0
 
 # OpenAI Integration
-openai>=1.99.9
+openai>=2.3.0
 tiktoken>=0.11.0
 
 # LangGraph and LangSmith
-langgraph>=0.6.5
-langgraph-checkpoint>=2.1.1
+langgraph>=0.6.10
+langgraph-checkpoint>=2.1.2
 langgraph-prebuilt>=0.6.4
 langgraph-sdk>=0.2.0
-langsmith>=0.4.13
+langsmith>=0.4.35
 
 # Data Processing
-pandas>=2.3.1
-numpy>=1.26.4,<2.0
+pandas>=2.3.3
+numpy>=2.3.3
 pyyaml>=6.0
 dicttoxml>=1.7.16
 
@@ -28,8 +28,8 @@ certifi>=2025.8.3
 
 # Configuration Management
 python-dotenv>=1.1.1
-pydantic>=2.11.7
-pydantic-settings>=2.10.1
+pydantic>=2.12.2
+pydantic-settings>=2.11.0
 
 # InfluxDB Integration
 influxdb==5.3.2

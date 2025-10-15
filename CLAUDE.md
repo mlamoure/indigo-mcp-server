@@ -17,7 +17,9 @@ Use source .venv/bin/activate to activate the virtual environment
 
 - **macOS**: 10.15 (Catalina) or later
 - **Python**: 3.9+ (as required by dependencies)
-- **PyArrow**: 21.0.0+ (latest with pre-built wheels for macOS 10.15+)
+- **NumPy**: 2.3.3+ (NumPy 2.x fully supported as of October 2025)
+- **PyArrow**: 21.0.0+ (compatible with NumPy 2.x)
+- **OpenAI**: 2.3.0+ (OpenAI API v2.x)
 
 ## Plugin Structure
 
@@ -228,14 +230,53 @@ major components.
     - When adding a new Python library via pip in the virtual environment, update BOTH requirements.txt files to ensure
       dependency consistency
 
-Dependencies:
+Dependencies (as of October 2025):
 
-- fastmcp - FastMCP library with HTTP transport support
-- lancedb - Vector database
-- pyarrow - Required by LanceDB
-- openai - For embeddings
-- pyyaml - YAML support
-- dicttoxml - XML support
+**Core MCP & Vector Store:**
+- lancedb >=0.25.2 - Vector database (NumPy 2.x compatible)
+- pyarrow >=21.0.0 - Required by LanceDB
+
+**AI & LLM:**
+- openai >=2.3.0 - For embeddings and structured output
+- tiktoken >=0.11.0 - Token counting
+- langgraph >=0.6.10 - LangGraph framework
+- langsmith >=0.4.35 - LangSmith observability
+
+**Data Processing:**
+- pandas >=2.3.3 - Data manipulation (NumPy 2.x compatible)
+- numpy >=2.3.3 - Numerical computing (v2.x fully supported)
+- pyyaml >=6.0 - YAML support
+- dicttoxml >=1.7.16 - XML support
+
+**Configuration & Validation:**
+- pydantic >=2.12.2 - Data validation
+- pydantic-settings >=2.11.0 - Settings management
+- python-dotenv >=1.1.1 - Environment variables
+
+**Historical Data:**
+- influxdb ==5.3.2 - InfluxDB 1.x client
+- influxdb-client >=1.49.0 - InfluxDB 2.x client
+
+**HTTP & Security:**
+- requests >=2.32.4 - HTTP client
+- certifi >=2025.8.3 - CA certificates
+
+### Dependency Upgrade History
+
+**October 2025 Upgrade:**
+Major version upgrades to NumPy 2.x and OpenAI 2.x with full compatibility verification:
+- numpy: 1.26.4 → 2.3.4 (removed <2.0 constraint)
+- openai: 1.99.9 → 2.3.0
+- lancedb: 0.24.3 → 0.25.2 (default search limit changed 10→15)
+- pandas: 2.3.1 → 2.3.3
+- langgraph: 0.6.5 → 0.6.10
+- pydantic: 2.11.7 → 2.12.2
+- Plus 15+ additional package updates
+
+Compatibility verified:
+- ✅ NumPy 2.x compatible with PyArrow 21.0, Pandas 2.3.3, LanceDB 0.25.2
+- ✅ OpenAI 2.x API working (minimal breaking changes)
+- ✅ All core MCP functionality operational
 
 ## Plugin Configuration
 
