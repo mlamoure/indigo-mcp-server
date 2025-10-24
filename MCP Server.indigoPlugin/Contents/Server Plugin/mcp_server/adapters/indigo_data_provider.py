@@ -66,28 +66,53 @@ class IndigoDataProvider(DataProvider):
     
     def get_all_variables(self) -> List[Dict[str, Any]]:
         """
-        Get all variables from Indigo.
-        
+        Get all variables from Indigo with minimal fields for listing.
+
         Returns:
-            List of variable dictionaries with standard fields
+            List of variable dictionaries with minimal fields:
+            - id: Variable ID
+            - name: Variable name
+            - folderName: Folder name (only if not in root, i.e., folderId != 0)
         """
         variables = []
         try:
+            # Build folder lookup map for efficient folder name resolution
+            folder_map = {}
+            try:
+                for folder in indigo.variables.folders:
+                    folder_map[folder.id] = folder.name
+            except Exception as folder_error:
+                self.logger.error(f"Error building folder map: {folder_error}")
+
+            # Get all variables with filtered fields
             for var_id in indigo.variables:
                 var = indigo.variables[var_id]
-                variables.append(dict(var))
+
+                # Build minimal variable dict
+                minimal_var = {
+                    "id": var.id,
+                    "name": var.name
+                }
+
+                # Add folder name if variable is not in root (folderId != 0)
+                if hasattr(var, 'folderId') and var.folderId != 0:
+                    folder_name = folder_map.get(var.folderId, f"Unknown Folder ({var.folderId})")
+                    minimal_var["folderName"] = folder_name
+
+                variables.append(minimal_var)
+
         except Exception as e:
             self.logger.error(f"Error getting all variables: {e}")
-            
+
         return variables
     
     def get_variable(self, variable_id: int) -> Optional[Dict[str, Any]]:
         """
         Get a specific variable by ID.
-        
+
         Args:
             variable_id: The variable ID
-            
+
         Returns:
             Variable dictionary or None if not found
         """
@@ -97,9 +122,26 @@ class IndigoDataProvider(DataProvider):
                 return dict(var)
         except Exception as e:
             self.logger.error(f"Error getting variable {variable_id}: {e}")
-            
+
         return None
-    
+
+    def get_all_variables_unfiltered(self) -> List[Dict[str, Any]]:
+        """
+        Get all variables from Indigo with complete data (unfiltered for vector store).
+
+        Returns:
+            List of complete variable dictionaries with all fields
+        """
+        variables = []
+        try:
+            for var_id in indigo.variables:
+                var = indigo.variables[var_id]
+                variables.append(dict(var))
+        except Exception as e:
+            self.logger.error(f"Error getting all variables (unfiltered): {e}")
+
+        return variables
+
     def get_all_actions(self) -> List[Dict[str, Any]]:
         """
         Get all action groups from Indigo.
@@ -168,13 +210,13 @@ class IndigoDataProvider(DataProvider):
     def get_all_entities_for_vector_store(self) -> Dict[str, List[Dict[str, Any]]]:
         """
         Get all entities formatted for vector store updates with complete data.
-        
+
         Returns:
             Dictionary with 'devices', 'variables', 'actions' keys
         """
         return {
             "devices": self.get_all_devices_unfiltered(),
-            "variables": self.get_all_variables(),
+            "variables": self.get_all_variables_unfiltered(),
             "actions": self.get_all_actions()
         }
     

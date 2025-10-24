@@ -290,16 +290,16 @@ class TestEndToEndWorkflow:
     
     def test_data_provider_and_vector_store_consistency(self, mock_data_provider, mock_vector_store):
         """Test consistency between data provider and vector store."""
-        # Update vector store with data from data provider
+        # Update vector store with data from data provider (use unfiltered for full data)
         mock_vector_store.update_embeddings(
             devices=mock_data_provider.get_all_devices(),
-            variables=mock_data_provider.get_all_variables(),
+            variables=mock_data_provider.get_all_variables_unfiltered(),
             actions=mock_data_provider.get_all_actions()
         )
-        
+
         # Verify counts match
         assert mock_vector_store.get_entity_count("devices") == len(mock_data_provider.get_all_devices())
-        assert mock_vector_store.get_entity_count("variables") == len(mock_data_provider.get_all_variables())
+        assert mock_vector_store.get_entity_count("variables") == len(mock_data_provider.get_all_variables_unfiltered())
         assert mock_vector_store.get_entity_count("actions") == len(mock_data_provider.get_all_actions())
         
         # Test search with known entities

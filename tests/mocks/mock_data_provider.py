@@ -150,15 +150,39 @@ class MockDataProvider(DataProvider):
         return None
     
     def get_all_variables(self) -> List[Dict[str, Any]]:
-        """Get all mock variables."""
-        return [copy.deepcopy(variable) for variable in self.variables]
-    
+        """Get all mock variables with minimal fields for listing."""
+        # Build folder lookup map
+        folder_map = {folder["id"]: folder["name"] for folder in self.variable_folders}
+
+        # Return filtered variables
+        filtered_variables = []
+        for variable in self.variables:
+            # Build minimal variable dict
+            minimal_var = {
+                "id": variable["id"],
+                "name": variable["name"]
+            }
+
+            # Add folder name if variable is not in root (folderId != 0)
+            folder_id = variable.get("folderId", 0)
+            if folder_id != 0:
+                folder_name = folder_map.get(folder_id, f"Unknown Folder ({folder_id})")
+                minimal_var["folderName"] = folder_name
+
+            filtered_variables.append(minimal_var)
+
+        return filtered_variables
+
     def get_variable(self, variable_id: int) -> Optional[Dict[str, Any]]:
         """Get a specific mock variable by ID."""
         for variable in self.variables:
             if variable["id"] == variable_id:
                 return copy.deepcopy(variable)
         return None
+
+    def get_all_variables_unfiltered(self) -> List[Dict[str, Any]]:
+        """Get all mock variables with complete data (unfiltered for vector store)."""
+        return [copy.deepcopy(variable) for variable in self.variables]
     
     def get_all_actions(self) -> List[Dict[str, Any]]:
         """Get all mock action groups."""
@@ -190,13 +214,13 @@ class MockDataProvider(DataProvider):
     def get_all_entities_for_vector_store(self) -> Dict[str, List[Dict[str, Any]]]:
         """
         Get all entities formatted for vector store updates.
-        
+
         Returns:
             Dictionary with 'devices', 'variables', 'actions' keys
         """
         return {
             "devices": self.get_all_devices(),
-            "variables": self.get_all_variables(),
+            "variables": self.get_all_variables_unfiltered(),
             "actions": self.get_all_actions()
         }
     

@@ -80,15 +80,19 @@ class TestListHandlers:
     def test_list_all_variables(self, list_handlers):
         """Test listing all variables."""
         result = list_handlers.list_all_variables()
-        
+
         assert len(result) == 4  # All sample variables
         assert all(isinstance(var, dict) for var in result)
-        assert all("id" in var and "name" in var and "value" in var for var in result)
-        
+        # Check for minimal fields only (id and name)
+        assert all("id" in var and "name" in var for var in result)
+
         # Check specific variables exist
         var_names = [var["name"] for var in result]
         assert "alarm_enabled" in var_names
         assert "house_mode" in var_names
+
+        # Verify folderName is included when variable is in a folder (folderId != 0)
+        # Note: folderName should only be present for variables not in root
     
     def test_list_all_action_groups(self, list_handlers):
         """Test listing all action groups."""

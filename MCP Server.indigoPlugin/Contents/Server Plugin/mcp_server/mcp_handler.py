@@ -805,7 +805,7 @@ class MCPHandler:
         }
         
         self._tools["list_variables"] = {
-            "description": "List all variables",
+            "description": "List all variables with id, name, and folder (when not in root)",
             "inputSchema": {
                 "type": "object",
                 "properties": {}

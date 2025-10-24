@@ -43,15 +43,13 @@ class DataProvider(ABC):
     @abstractmethod
     def get_all_variables(self) -> List[Dict[str, Any]]:
         """
-        Get all variables.
-        
+        Get all variables with minimal fields for listing.
+
         Returns:
-            List of variable dictionaries with standard fields:
+            List of variable dictionaries with minimal fields:
             - id: Variable ID
             - name: Variable name
-            - value: Variable value
-            - folderId: Folder ID
-            - readOnly: Whether variable is read-only
+            - folderName: Folder name (only if not in root, i.e., folderId != 0)
         """
         pass
     
@@ -59,15 +57,31 @@ class DataProvider(ABC):
     def get_variable(self, variable_id: int) -> Optional[Dict[str, Any]]:
         """
         Get a specific variable by ID.
-        
+
         Args:
             variable_id: The variable ID
-            
+
         Returns:
             Variable dictionary or None if not found
         """
         pass
-    
+
+    @abstractmethod
+    def get_all_variables_unfiltered(self) -> List[Dict[str, Any]]:
+        """
+        Get all variables with complete data (unfiltered for vector store).
+
+        Returns:
+            List of complete variable dictionaries with all fields:
+            - id: Variable ID
+            - name: Variable name
+            - value: Variable value
+            - folderId: Folder ID
+            - readOnly: Whether variable is read-only
+            - All other Indigo variable properties
+        """
+        pass
+
     @abstractmethod
     def get_all_actions(self) -> List[Dict[str, Any]]:
         """

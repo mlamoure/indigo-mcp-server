@@ -46,13 +46,16 @@ class TestMockDataProvider:
         assert device is None
     
     def test_get_all_variables(self, mock_data_provider):
-        """Test getting all variables."""
+        """Test getting all variables (minimal fields)."""
         variables = mock_data_provider.get_all_variables()
-        
+
         assert len(variables) == 3
         assert all("id" in var for var in variables)
         assert all("name" in var for var in variables)
-        assert all("value" in var for var in variables)
+        # Minimal fields only - no value, folderId, readOnly
+        # folderName should be present for variables in non-root folders
+        variables_in_folders = [var for var in variables if "folderName" in var]
+        assert len(variables_in_folders) == 3  # All mock variables are in folders (folderId 1 or 2)
     
     def test_get_variable(self, mock_data_provider):
         """Test getting specific variable."""
@@ -172,22 +175,21 @@ class TestMockDataProvider:
             assert isinstance(device["states"], dict)
     
     def test_variable_data_structure(self, mock_data_provider):
-        """Test that variable data has expected structure."""
+        """Test that variable data has expected minimal structure."""
         variables = mock_data_provider.get_all_variables()
-        
+
         for variable in variables:
-            # Required fields
+            # Required minimal fields
             assert "id" in variable
             assert "name" in variable
-            assert "value" in variable
-            assert "folderId" in variable
-            assert "readOnly" in variable
-            
+            # Optional field - folderName only present for non-root variables
+            # Minimal structure does NOT include: value, folderId, readOnly
+
             # Type checks
             assert isinstance(variable["id"], int)
             assert isinstance(variable["name"], str)
-            assert isinstance(variable["folderId"], int)
-            assert isinstance(variable["readOnly"], bool)
+            if "folderName" in variable:
+                assert isinstance(variable["folderName"], str)
     
     def test_action_data_structure(self, mock_data_provider):
         """Test that action data has expected structure."""
