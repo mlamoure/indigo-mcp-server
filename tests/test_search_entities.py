@@ -46,13 +46,13 @@ class TestSearchEntitiesHandler:
         # Should have device results
         if result["total_count"] > 0:
             assert len(result["results"]["devices"]) > 0
-            
+
             # Check device result format
             device = result["results"]["devices"][0]
             assert "id" in device
             assert "name" in device
             assert "relevance_score" in device
-            assert "type" in device
+            assert "deviceTypeId" in device
     
     def test_search_variable_specific(self, search_handler, populated_mock_vector_store):
         """Test variable-specific searches."""
@@ -115,17 +115,12 @@ class TestSearchEntitiesHandler:
         handler = SearchEntitiesHandler(mock_data_provider, failing_store)
         
         result = handler.search("test query")
-        
-        # Should return error response
+
+        # Should return error response (standard format from BaseHandler)
         assert "error" in result
-        assert result["query"] == "test query"
-        assert result["total_count"] == 0
-        assert result["summary"] == "Search failed"
-        
-        # Should have empty results
-        assert len(result["results"]["devices"]) == 0
-        assert len(result["results"]["variables"]) == 0
-        assert len(result["results"]["actions"]) == 0
+        assert result["success"] is False
+        assert result["tool"] == "search_entities"
+        assert "Vector store error" in result["error"]
     
     def test_search_empty_query(self, search_handler, populated_mock_vector_store):
         """Test search with empty query."""

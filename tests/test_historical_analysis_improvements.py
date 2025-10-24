@@ -175,7 +175,7 @@ class TestImprovedHistoricalAnalysis(unittest.TestCase):
         # Check report structure
         self.assertIn("HISTORICAL DATA ANALYSIS REPORT", report)
         self.assertIn("Analysis Period: Last 7 days", report)
-        self.assertIn("Devices Analyzed: 2", report)
+        self.assertIn("Entities Analyzed: 2", report)
         self.assertIn("Total State Changes: 3", report)
         self.assertIn("Average Changes per Device: 1.5", report)
         self.assertIn("Average Changes per Day: 0.4", report)

@@ -23,11 +23,11 @@ class TestHistoricalAnalysisHandler:
         """Test analysis when InfluxDB is disabled."""
         mock_data_provider = Mock()
         handler = HistoricalAnalysisHandler(mock_data_provider)
-        
+
         with patch.dict(os.environ, {"INFLUXDB_ENABLED": "false"}):
             result = handler.analyze_historical_data(
                 query="Test query",
-                device_names=["Device1"],
+                entity_names=["Device1"],
                 time_range_days=7
             )
         
@@ -45,7 +45,7 @@ class TestHistoricalAnalysisHandler:
             # Test missing query (None triggers validation)
             result = handler.analyze_historical_data(
                 query=None,
-                device_names=["Device1"],
+                entity_names=["Device1"],
                 time_range_days=7
             )
         
@@ -56,25 +56,25 @@ class TestHistoricalAnalysisHandler:
         """Test analysis with empty device list."""
         mock_data_provider = Mock()
         handler = HistoricalAnalysisHandler(mock_data_provider)
-        
+
         result = handler.analyze_historical_data(
             query="Test query",
-            device_names=[],
+            entity_names=[],
             time_range_days=7
         )
-        
+
         assert result["success"] is False
-        assert "No device names provided" in result["error"]
+        assert "No entity names provided" in result["error"]
     
     def test_analyze_historical_data_invalid_time_range(self):
         """Test analysis with invalid time range."""
         mock_data_provider = Mock()
         handler = HistoricalAnalysisHandler(mock_data_provider)
-        
+
         # Test time range too large
         result = handler.analyze_historical_data(
             query="Test query",
-            device_names=["Device1"],
+            entity_names=["Device1"],
             time_range_days=400
         )
         
@@ -95,13 +95,13 @@ class TestHistoricalAnalysisHandler:
             
             mock_data_provider = Mock()
             handler = HistoricalAnalysisHandler(mock_data_provider)
-            
+
             result = handler.analyze_historical_data(
                 query="Test query",
-                device_names=["Device1"],
+                entity_names=["Device1"],
                 time_range_days=7
             )
-            
+
             assert result["success"] is False
             assert "No historical data found" in result["error"]
             assert result["summary_stats"]["devices_with_data"] == 0
@@ -134,20 +134,21 @@ class TestHistoricalAnalysisHandler:
             mock_data_provider.get_all_devices.return_value = [
                 {"name": "Device1", "id": 1, "states": {"onState": True}}
             ]
+            mock_data_provider.get_all_variables.return_value = []
             handler = HistoricalAnalysisHandler(mock_data_provider)
-            
+
             result = handler.analyze_historical_data(
                 query="How often was Device1 on yesterday?",
-                device_names=["Device1"],
+                entity_names=["Device1"],
                 time_range_days=7
             )
-            
+
             assert result["success"] is True
-            assert result["data"]["devices_analyzed"] == ["Device1"]
+            assert result["data"]["entities_analyzed"] == ["Device1"]
             assert result["data"]["total_data_points"] > 0
             # Check that we got meaningful state information (either "on" or "off")
             report = result["data"]["report"]
-            assert ("Device1 was on for" in report or "Device1 was off for" in report), f"Expected state information in report: {report}"
+            assert (" was on for" in report or " was off for" in report), f"Expected state information in report: {report}"
             assert result["data"]["summary_stats"]["devices_with_data"] == 1
     
     def test_get_available_devices(self):
@@ -218,22 +219,24 @@ class TestHistoricalAnalysisHandler:
         """Test helper functions for time and state formatting."""
         mock_data_provider = Mock()
         handler = HistoricalAnalysisHandler(mock_data_provider)
-        
+
         # Test get_delta_summary
         from datetime import datetime, timezone
         start = datetime(2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
         end = datetime(2025, 1, 1, 12, 30, 45, tzinfo=timezone.utc)
-        
+
         hours, minutes, seconds = handler._get_delta_summary(start, end)
         assert hours == 2
         assert minutes == 30
         assert seconds == 45
-        
-        # Test format_state_value
+
+        # Test format_state_value with context-aware formatting
         assert handler._format_state_value(True) == "on"
         assert handler._format_state_value(False) == "off"
-        assert handler._format_state_value(1) == "on"
-        assert handler._format_state_value(0) == "off"
+        assert handler._format_state_value(1, "onState") == "on"
+        assert handler._format_state_value(0, "onState") == "off"
+        assert handler._format_state_value(1) == "1"  # Without context, numeric
+        assert handler._format_state_value(0) == "0"  # Without context, numeric
         assert handler._format_state_value(50) == "50"
         assert handler._format_state_value("active") == "active"
         assert handler._format_state_value(None) == "unknown"

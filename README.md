@@ -5,7 +5,7 @@ automation system through natural language queries.
 
 ## What It Does
 
-Search, analyize, and control your Indigo devices using natural language:
+Search, analyze, and control your Indigo devices using natural language:
 
 - "Find all light switches in the bedroom"
 - "Show me temperature sensors"
@@ -73,19 +73,32 @@ Replace `localhost` with your server IP for remote access, and `8080` with your 
 - **list_devices**: Get all devices with optional state filtering
 - **list_variables**: Get all variables with current values
 - **list_action_groups**: Get all action groups/scenes
+- **list_variable_folders**: Get all variable folders with IDs
 - **get_devices_by_state**: Find devices by state conditions
 - **get_devices_by_type**: Get devices by type (dimmer, relay, sensor, etc.)
+- **get_device_by_id**: Get specific device by exact ID
+- **get_variable_by_id**: Get specific variable by exact ID
+- **get_action_group_by_id**: Get specific action group by exact ID
 
 ### Control
 
 - **device_turn_on/off**: Control device power state
 - **device_set_brightness**: Set dimmer brightness (0-100 or 0-1)
+- **variable_create**: Create new variable with optional value and folder
 - **variable_update**: Update variable values
 - **action_execute_group**: Execute action groups/scenes
 
+### System
+
+- **query_event_log**: Query recent Indigo server event log entries
+- **list_plugins**: List all installed Indigo plugins
+- **get_plugin_by_id**: Get specific plugin information by ID
+- **restart_plugin**: Restart an Indigo plugin
+- **get_plugin_status**: Check plugin status and details
+
 ### Analysis
 
-- **analyze_historical_data**: AI-powered historical analysis (requires InfluxDB)
+- **analyze_historical_data**: AI-powered historical analysis for devices and variables (requires InfluxDB)
 
 ## Improving Results
 
