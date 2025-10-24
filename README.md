@@ -56,7 +56,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
       "command": "npx",
       "args": [
         "mcp-remote",
-        "http://localhost:8080/mcp"
+        "http://localhost:8080/actions/com.vtmikel.mcp_server/mcp"
       ]
     }
   }

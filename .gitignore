@@ -77,3 +77,6 @@ venv.bak/
 .pytest_cache/
 # direnv
 .direnv
+
+# Claude Code project instructions (keep local only)
+.claude/CLAUDE.md
