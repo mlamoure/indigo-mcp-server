@@ -12,6 +12,24 @@ class MockDataProvider(DataProvider):
     
     def __init__(self):
         """Initialize with sample test data."""
+        self.variable_folders = [
+            {
+                "id": 1,
+                "name": "System",
+                "description": "System variables"
+            },
+            {
+                "id": 2,
+                "name": "Weather",
+                "description": "Weather-related variables"
+            },
+            {
+                "id": 3,
+                "name": "Home Automation",
+                "description": "Home automation control variables"
+            }
+        ]
+
         self.devices = [
             {
                 "id": 1,
@@ -335,3 +353,62 @@ class MockDataProvider(DataProvider):
         if line_count is not None:
             return mock_entries[:line_count]
         return mock_entries
+
+    def create_variable(
+        self,
+        name: str,
+        value: str = "",
+        folder_id: int = 0
+    ) -> Dict[str, Any]:
+        """
+        Mock creating a new variable.
+
+        Args:
+            name: The variable name (required)
+            value: Initial value (default: empty string)
+            folder_id: Folder ID for organization (default: 0 = root)
+
+        Returns:
+            Dictionary with created variable information or error
+        """
+        # Validate name
+        if not name or not isinstance(name, str):
+            return {"error": "Variable name is required and must be a string"}
+
+        # Validate folder_id
+        if not isinstance(folder_id, int):
+            return {"error": "folder_id must be an integer"}
+
+        # Generate a new variable ID (max existing ID + 1)
+        max_id = max([var["id"] for var in self.variables], default=100)
+        new_id = max_id + 1
+
+        # Create the new variable
+        new_variable = {
+            "id": new_id,
+            "name": name,
+            "value": str(value) if value is not None else "",
+            "folderId": folder_id,
+            "readOnly": False
+        }
+
+        # Add to mock data
+        self.variables.append(new_variable)
+
+        # Return created variable information
+        return {
+            "variable_id": new_id,
+            "name": name,
+            "value": new_variable["value"],
+            "folder_id": folder_id,
+            "read_only": False
+        }
+
+    def get_variable_folders(self) -> List[Dict[str, Any]]:
+        """
+        Mock getting all variable folders.
+
+        Returns:
+            List of folder dictionaries
+        """
+        return [copy.deepcopy(folder) for folder in self.variable_folders]

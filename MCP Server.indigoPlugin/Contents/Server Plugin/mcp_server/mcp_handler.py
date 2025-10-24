@@ -20,6 +20,7 @@ from .tools.device_control import DeviceControlHandler
 from .tools.get_devices_by_type import GetDevicesByTypeHandler
 from .tools.historical_analysis import HistoricalAnalysisHandler
 from .tools.log_query import LogQueryHandler
+from .tools.plugin_control import PluginControlHandler
 from .tools.search_entities import SearchEntitiesHandler
 from .tools.variable_control import VariableControlHandler
 
@@ -119,6 +120,10 @@ class MCPHandler:
             logger=self.logger
         )
         self.log_query_handler = LogQueryHandler(
+            data_provider=self.data_provider,
+            logger=self.logger
+        )
+        self.plugin_control_handler = PluginControlHandler(
             data_provider=self.data_provider,
             logger=self.logger
         )
@@ -714,7 +719,31 @@ class MCPHandler:
             },
             "function": self._tool_variable_update
         }
-        
+
+        # Variable creation
+        self._tools["variable_create"] = {
+            "description": "Create a new variable",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "The name of the variable (required)"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "Initial value for the variable (optional, defaults to empty string)"
+                    },
+                    "folder_id": {
+                        "type": "integer",
+                        "description": "Folder ID for organization (optional, defaults to 0 = root)"
+                    }
+                },
+                "required": ["name"]
+            },
+            "function": self._tool_variable_create
+        }
+
         # Action group control
         self._tools["action_execute_group"] = {
             "description": "Execute an action group",
@@ -792,7 +821,17 @@ class MCPHandler:
             },
             "function": self._tool_list_action_groups
         }
-        
+
+        # List variable folders tool
+        self._tools["list_variable_folders"] = {
+            "description": "List all variable folders for organization",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            },
+            "function": self._tool_list_variable_folders
+        }
+
         # State-based queries
         self._tools["get_devices_by_state"] = {
             "description": "Get devices by state conditions",
@@ -877,6 +916,66 @@ class MCPHandler:
                 }
             },
             "function": self._tool_query_event_log
+        }
+
+        # Plugin control tools
+        self._tools["list_plugins"] = {
+            "description": "List all Indigo plugins",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "include_disabled": {
+                        "type": "boolean",
+                        "description": "Whether to include disabled plugins (default: False)"
+                    }
+                }
+            },
+            "function": self._tool_list_plugins
+        }
+
+        self._tools["get_plugin_by_id"] = {
+            "description": "Get specific plugin information by ID",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "plugin_id": {
+                        "type": "string",
+                        "description": "Plugin bundle identifier (e.g., 'com.vtmikel.mcp_server')"
+                    }
+                },
+                "required": ["plugin_id"]
+            },
+            "function": self._tool_get_plugin_by_id
+        }
+
+        self._tools["restart_plugin"] = {
+            "description": "Restart an Indigo plugin",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "plugin_id": {
+                        "type": "string",
+                        "description": "Plugin bundle identifier"
+                    }
+                },
+                "required": ["plugin_id"]
+            },
+            "function": self._tool_restart_plugin
+        }
+
+        self._tools["get_plugin_status"] = {
+            "description": "Get detailed plugin status",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "plugin_id": {
+                        "type": "string",
+                        "description": "Plugin bundle identifier"
+                    }
+                },
+                "required": ["plugin_id"]
+            },
+            "function": self._tool_get_plugin_status
         }
 
     def _register_resources(self):
@@ -1024,7 +1123,21 @@ class MCPHandler:
         except Exception as e:
             self.logger.error(f"Variable update error: {e}")
             return safe_json_dumps({"error": str(e)})
-    
+
+    def _tool_variable_create(
+        self,
+        name: str,
+        value: str = "",
+        folder_id: int = 0
+    ) -> str:
+        """Create variable tool implementation."""
+        try:
+            result = self.variable_control_handler.create(name, value, folder_id)
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"Variable create error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
     def _tool_action_execute_group(
         self, 
         action_group_id: int, 
@@ -1080,7 +1193,16 @@ class MCPHandler:
         except Exception as e:
             self.logger.error(f"List action groups error: {e}")
             return safe_json_dumps({"error": str(e)})
-    
+
+    def _tool_list_variable_folders(self) -> str:
+        """List variable folders tool implementation."""
+        try:
+            folders = self.list_handlers.list_variable_folders()
+            return safe_json_dumps(folders)
+        except Exception as e:
+            self.logger.error(f"List variable folders error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
     def _tool_get_devices_by_state(
         self, 
         state_conditions: Dict, 
@@ -1170,6 +1292,42 @@ class MCPHandler:
             return safe_json_dumps(result)
         except Exception as e:
             self.logger.error(f"Query event log error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
+    def _tool_list_plugins(self, include_disabled: bool = False) -> str:
+        """List plugins tool implementation."""
+        try:
+            result = self.plugin_control_handler.list_plugins(include_disabled)
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"List plugins error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
+    def _tool_get_plugin_by_id(self, plugin_id: str) -> str:
+        """Get plugin by ID tool implementation."""
+        try:
+            result = self.plugin_control_handler.get_plugin_by_id(plugin_id)
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"Get plugin by ID error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
+    def _tool_restart_plugin(self, plugin_id: str) -> str:
+        """Restart plugin tool implementation."""
+        try:
+            result = self.plugin_control_handler.restart_plugin(plugin_id)
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"Restart plugin error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
+    def _tool_get_plugin_status(self, plugin_id: str) -> str:
+        """Get plugin status tool implementation."""
+        try:
+            result = self.plugin_control_handler.get_plugin_status(plugin_id)
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"Get plugin status error: {e}")
             return safe_json_dumps({"error": str(e)})
 
     # Resource implementation methods

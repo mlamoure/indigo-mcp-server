@@ -150,3 +150,27 @@ class ListHandlers(BaseToolHandler):
         except Exception as e:
             self.logger.error(f"Error getting devices by state: {e}")
             raise
+
+    def list_variable_folders(self) -> Dict[str, Any]:
+        """
+        Get all variable folders.
+
+        Returns:
+            Dictionary with folder list and count
+        """
+        try:
+            # Get all variable folders
+            folders = self.data_provider.get_variable_folders()
+
+            # Create summary
+            summary = f"Found {len(folders)} variable folders"
+
+            return {
+                "folders": folders,
+                "count": len(folders),
+                "summary": summary
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error listing variable folders: {e}")
+            raise

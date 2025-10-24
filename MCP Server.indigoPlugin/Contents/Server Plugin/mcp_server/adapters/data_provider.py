@@ -211,3 +211,41 @@ class DataProvider(ABC):
             List of log entry strings
         """
         pass
+
+    @abstractmethod
+    def create_variable(
+        self,
+        name: str,
+        value: str = "",
+        folder_id: int = 0
+    ) -> Dict[str, Any]:
+        """
+        Create a new variable.
+
+        Args:
+            name: The variable name (required)
+            value: Initial value (default: empty string)
+            folder_id: Folder ID for organization (default: 0 = root)
+
+        Returns:
+            Dictionary with:
+            - variable_id: The created variable's ID
+            - name: Variable name
+            - value: Variable value
+            - folder_id: Folder ID
+            - error: Error message if operation failed
+        """
+        pass
+
+    @abstractmethod
+    def get_variable_folders(self) -> List[Dict[str, Any]]:
+        """
+        Get all variable folders.
+
+        Returns:
+            List of folder dictionaries with standard fields:
+            - id: Folder ID
+            - name: Folder name
+            - description: Folder description
+        """
+        pass

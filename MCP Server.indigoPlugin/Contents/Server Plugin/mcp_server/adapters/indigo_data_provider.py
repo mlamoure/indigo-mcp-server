@@ -412,3 +412,69 @@ class IndigoDataProvider(DataProvider):
         except Exception as e:
             self.logger.error(f"Error getting event log list: {e}")
             return []
+
+    def create_variable(
+        self,
+        name: str,
+        value: str = "",
+        folder_id: int = 0
+    ) -> Dict[str, Any]:
+        """
+        Create a new variable.
+
+        Args:
+            name: The variable name (required)
+            value: Initial value (default: empty string)
+            folder_id: Folder ID for organization (default: 0 = root)
+
+        Returns:
+            Dictionary with variable information or error
+        """
+        try:
+            # Validate name
+            if not name or not isinstance(name, str):
+                return {"error": "Variable name is required and must be a string"}
+
+            # Validate folder_id
+            if not isinstance(folder_id, int):
+                return {"error": "folder_id must be an integer"}
+
+            # Convert value to string (Indigo variables are always strings)
+            value_str = str(value) if value is not None else ""
+
+            # Create the variable using Indigo API
+            # indigo.variable.create(name, value=None, folder=0)
+            new_variable = indigo.variable.create(name, value=value_str, folder=folder_id)
+
+            # Return the created variable information
+            return {
+                "variable_id": new_variable.id,
+                "name": new_variable.name,
+                "value": new_variable.value,
+                "folder_id": new_variable.folderId,
+                "read_only": new_variable.readOnly if hasattr(new_variable, 'readOnly') else False
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error creating variable '{name}': {e}")
+            return {"error": str(e)}
+
+    def get_variable_folders(self) -> List[Dict[str, Any]]:
+        """
+        Get all variable folders.
+
+        Returns:
+            List of folder dictionaries with standard fields
+        """
+        folders = []
+        try:
+            for folder in indigo.variables.folders:
+                folders.append({
+                    "id": folder.id,
+                    "name": folder.name,
+                    "description": folder.description if hasattr(folder, 'description') else ""
+                })
+        except Exception as e:
+            self.logger.error(f"Error getting variable folders: {e}")
+
+        return folders

@@ -442,7 +442,7 @@ This plugin uses a custom MCP handler with HTTP transport for improved performan
 
 ### Available Tools
 
-The MCP server provides 16 comprehensive tools for interacting with your Indigo system:
+The MCP server provides 17 comprehensive tools for interacting with your Indigo system:
 
 #### Search and Discovery Tools
 
@@ -495,12 +495,17 @@ The MCP server provides 16 comprehensive tools for interacting with your Indigo 
     - No filtering or limits - complete variable information
     - Ideal for variable inventory and value monitoring
 
-8. **list_action_groups**: List all action groups  
+8. **list_action_groups**: List all action groups
     - Returns ALL action groups with descriptions
     - No filtering or limits - complete action group information
     - Perfect for scene and automation discovery
 
-9. **get_devices_by_state**: Get devices by state conditions
+9. **list_variable_folders**: List all variable folders
+    - Returns ALL variable folders with IDs, names, and descriptions
+    - Helps discover available folder IDs for organizing variables
+    - Use before creating variables to find appropriate folder_id values
+
+10. **get_devices_by_state**: Get devices by state conditions
     - Purpose-built for state-based device queries
     - Advanced state filtering with complex operators and conditions
     - Optional device type filtering for refined results
@@ -534,14 +539,23 @@ The MCP server provides 16 comprehensive tools for interacting with your Indigo 
      - Works with all variable types
      - Returns updated variable information
 
-14. **action_execute_group**: Execute action group
+14. **variable_create**: Create new variable
+     - Creates a new variable with specified name and optional value
+     - Parameters:
+       - `name` (required): Variable name
+       - `value` (optional): Initial value (defaults to empty string)
+       - `folder_id` (optional): Folder ID for organization (defaults to 0 = root)
+     - Supports duplicate names (per Indigo behavior)
+     - Returns created variable information including variable_id
+
+15. **action_execute_group**: Execute action group
      - Executes action group by action_group_id
      - Optional delay parameter in seconds
      - Returns execution status and details
 
 #### Historical Analysis (Advanced)
 
-15. **analyze_historical_data**: AI-powered historical data analysis for devices and variables
+16. **analyze_historical_data**: AI-powered historical data analysis for devices and variables
      - **ENHANCED**: Now supports both devices AND variables in a single analysis
      - **IMPORTANT**: Requires EXACT entity names - use `search_entities`, `list_devices`, or `list_variables` first
      - **Device Analysis**: LLM-powered property selection for optimal device properties (1-3 most relevant)
@@ -563,6 +577,37 @@ The MCP server provides 16 comprehensive tools for interacting with your Indigo 
      - Useful for debugging, monitoring system activity, and tracking events
      - Example: `query_event_log(line_count=10)` - Get last 10 log entries
      - Example: `query_event_log(line_count=50, show_timestamp=False)` - Get 50 entries without timestamps
+
+#### Plugin Control Tools
+
+17. **list_plugins**: List all installed Indigo plugins
+     - Lists all enabled plugins (default) or all plugins including disabled ones
+     - Optional `include_disabled` parameter (default: False)
+     - Returns: List with id (bundle identifier), name, version, enabled status, path
+     - Performance: Cached for 60 minutes to minimize file system operations
+     - Cache refreshes happen silently (DEBUG logging only)
+     - Example: `list_plugins()` - Get all enabled plugins
+     - Example: `list_plugins(include_disabled=True)` - Get all plugins
+
+18. **get_plugin_by_id**: Get specific plugin information by ID
+     - Required: `plugin_id` (bundle identifier, e.g., "com.vtmikel.mcp_server")
+     - Returns: Plugin details including enabled status, display name, version, path
+     - Returns error if plugin not found with suggestions
+     - Example: `get_plugin_by_id("com.vtmikel.mcp_server")`
+
+19. **restart_plugin**: Restart an Indigo plugin
+     - Required: `plugin_id` (bundle identifier)
+     - Returns: Success/failure status with message
+     - Only works for enabled plugins (returns error if disabled)
+     - Invalidates plugin list cache after successful restart
+     - Example: `restart_plugin("com.vtmikel.mcp_server")`
+     - Note: Waits 1 second for restart to complete
+
+20. **get_plugin_status**: Check plugin status and details
+     - Required: `plugin_id` (bundle identifier)
+     - Returns: Enabled status, display name, version, path, bundle ID
+     - Provides detailed information about plugin state
+     - Example: `get_plugin_status("com.vtmikel.mcp_server")`
 
 ### Available Resources
 
@@ -613,6 +658,7 @@ The `get_devices_by_type` endpoint supports logical device types:
 - Multiple conditions: `get_devices_by_state({"onState": false, "errorState": ""})` - Off devices with no errors
 - Complete variable listing: `list_variables()` - All variables with current values
 - Complete action listing: `list_action_groups()` - All action groups
+- List variable folders: `list_variable_folders()` - All folders with IDs for organization
 
 ### NEW Direct Lookup Tool Examples:
 
@@ -629,6 +675,9 @@ The `get_devices_by_type` endpoint supports logical device types:
   `device_turn_off(device_id)` for each
 - Set dimmer to 50%: `device_set_brightness(device_id, 50)` or `device_set_brightness(device_id, 0.5)`
 - Update variable: `variable_update(variable_id, "new_value")`
+- Create variable: `variable_create("my_variable")` - Basic creation with empty value
+- Create variable with value: `variable_create("temperature_setpoint", "72")`
+- Create variable in folder: First use `list_variable_folders()` to find folder IDs, then `variable_create("bedroom_mode", "Sleep", 5)` - Creates in folder ID 5
 - Execute scene: `action_execute_group(action_group_id)`
 - Execute scene with delay: `action_execute_group(action_group_id, 30)` (30 second delay)
 - **Enhanced**: All device control tools now provide accurate state change detection
@@ -690,6 +739,38 @@ The `get_devices_by_type` endpoint supports logical device types:
 - **Monitoring**: Track recent device state changes and actions
 - **Troubleshooting**: Review what happened before an issue occurred
 - **Auditing**: Track action group executions and variable updates
+
+### Plugin Control Examples:
+
+**Listing Plugins:**
+- List all enabled plugins: `list_plugins()`
+- List all plugins including disabled: `list_plugins(include_disabled=True)`
+
+**Getting Plugin Information:**
+- Get specific plugin: `get_plugin_by_id("com.vtmikel.mcp_server")`
+- Check plugin status: `get_plugin_status("com.vtmikel.mcp_server")`
+
+**Plugin Management:**
+- Restart a plugin: `restart_plugin("com.vtmikel.mcp_server")`
+- Restart after configuration changes: `restart_plugin("com.vendor.plugin_name")`
+
+**Common Workflows:**
+1. **Find and restart a plugin:**
+   - `list_plugins()` → Find plugin bundle ID
+   - `restart_plugin("com.found.plugin")` → Restart it
+
+2. **Check plugin status before restart:**
+   - `get_plugin_status("com.example.plugin")` → Verify it's enabled
+   - `restart_plugin("com.example.plugin")` → Restart if enabled
+
+3. **Monitor plugin versions:**
+   - `list_plugins()` → Check all plugin versions
+   - Identify plugins that need updates
+
+**Performance Notes:**
+- Plugin list is cached for 60 minutes to avoid repeated file system scans
+- Cache refreshes happen silently in the background (DEBUG logging only)
+- Restarting a plugin automatically invalidates the cache
 
 ### Solving the "Lights That Are On" Problem:
 
