@@ -203,15 +203,15 @@ class TestImprovedHistoricalAnalysis(unittest.TestCase):
             }
         ]
         
-        with patch('mcp_server.common.influxdb.InfluxDBClient') as mock_client_class:
+        with patch('mcp_server.tools.historical_analysis.main.InfluxDBClient') as mock_client_class:
             mock_client = Mock()
             mock_client_class.return_value = mock_client
             mock_client.is_enabled.return_value = True
             mock_client.test_connection.return_value = True
             mock_client.execute_query.return_value = mock_influx_results
-            
+
             # Mock the query builder
-            with patch('mcp_server.common.influxdb.InfluxDBQueryBuilder') as mock_builder_class:
+            with patch('mcp_server.tools.historical_analysis.main.InfluxDBQueryBuilder') as mock_builder_class:
                 mock_builder = Mock()
                 mock_builder_class.return_value = mock_builder
                 mock_builder.build_device_history_query.return_value = "SELECT onState FROM device_changes WHERE name = 'Test Device'"
@@ -381,15 +381,15 @@ class TestInfluxDBQueryImprovements(unittest.TestCase):
             {"time": "2024-01-15T13:00:00Z", "onState": False}, # Same state
             {"time": "2024-01-15T14:00:00Z", "onState": True},  # State change
         ]
-        
-        with patch('mcp_server.common.influxdb.InfluxDBClient') as mock_client_class:
+
+        with patch('mcp_server.tools.historical_analysis.main.InfluxDBClient') as mock_client_class:
             mock_client = Mock()
             mock_client_class.return_value = mock_client
             mock_client.is_enabled.return_value = True
             mock_client.test_connection.return_value = True
             mock_client.execute_query.return_value = mock_data
-            
-            with patch('mcp_server.common.influxdb.InfluxDBQueryBuilder') as mock_builder_class:
+
+            with patch('mcp_server.tools.historical_analysis.main.InfluxDBQueryBuilder') as mock_builder_class:
                 mock_builder = Mock()
                 mock_builder_class.return_value = mock_builder
                 mock_builder.build_device_history_query.return_value = "SELECT onState FROM device_changes"
@@ -432,14 +432,14 @@ class TestRecommendationsImplementation(unittest.TestCase):
         
         handler = HistoricalAnalysisHandler(Mock())
         
-        with patch('mcp_server.common.influxdb.InfluxDBClient') as mock_client_class:
+        with patch('mcp_server.tools.historical_analysis.main.InfluxDBClient') as mock_client_class:
             mock_client = Mock()
             mock_client_class.return_value = mock_client
             mock_client.is_enabled.return_value = True
             mock_client.test_connection.return_value = True
             mock_client.execute_query.return_value = large_mock_data
-            
-            with patch('mcp_server.common.influxdb.InfluxDBQueryBuilder'):
+
+            with patch('mcp_server.tools.historical_analysis.main.InfluxDBQueryBuilder'):
                 start_time = time.time()
                 results = handler._get_historical_device_data("Test Device", "onState", 7)
                 end_time = time.time()
