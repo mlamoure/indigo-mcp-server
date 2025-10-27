@@ -1,6 +1,6 @@
 # MCP Server Core Dependencies (IWS Integration)
 lancedb>=0.25.2
-pyarrow>=21.0.0
+pyarrow>=14.0.0,<22.0.0
 
 # OpenAI Integration
 openai>=2.3.0

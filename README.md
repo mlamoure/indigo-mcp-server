@@ -16,11 +16,27 @@ Search, analyze, and control your Indigo devices using natural language:
 ## Requirements
 
 - **Indigo Domotics**: 2024.2 or later
-- **macOS**: 10.15 (Catalina) or later
+- **macOS**: 10.15 (Catalina) or later on compatible hardware (see CPU requirements below)
+- **CPU**: Intel Haswell (2013+) or Apple Silicon required
+    - **Compatible**: Mid-2013 MacBook Air/Pro and later, Late-2013 iMac and later, 2019 Mac Pro and later, all Apple Silicon Macs
+    - **Incompatible**: 2012-2013 Intel Macs (Ivy Bridge or older), 2013 Mac Pro "trash can" (MacPro6,1)
+    - Requires AVX2 instruction set support (check compatibility below)
 - **Claude Desktop**: Primary MCP client (ChatGPT support coming to Plus plan)
 - **OpenAI API Key**: Required for semantic search ([Get API key](https://platform.openai.com/api-keys))
     - Sends device metadata to OpenAI for embeddings (minimal cost)
     - Only device names, types, descriptions sent - no sensitive data
+
+### CPU Compatibility
+
+This plugin requires **AVX2 CPU instructions** (Intel Haswell or newer). The plugin will automatically check your CPU on startup and display a clear error if incompatible.
+
+**To check if your Mac supports AVX2:**
+```bash
+sysctl -n machdep.cpu.leaf7_features | grep AVX2
+```
+If this command returns "AVX2", your Mac is compatible.
+
+**Why AVX2 is required:** The plugin uses LanceDB for vector search, which requires AVX2 instructions for performance. There is no workaround for systems without AVX2 support.
 
 ## Installation
 
