@@ -55,96 +55,97 @@ class VectorStoreManager:
     def start(self) -> None:
         """Start the vector store manager."""
         if self._running:
-            self.logger.warning("Vector store manager is already running")
+            self.logger.debug("Vector store manager already running")
             return
-        
+
         try:
             self._is_initializing = True
-            
+
             # Initialize vector store
             self._initialize_vector_store()
-            
+
             # Perform initial update
             self.update_now()
-            
+
             # Start background updates if enabled
             if self.update_interval > 0:
                 self._start_background_updates()
-            
+
             self._running = True
             self._is_initializing = False
-            self.logger.info("Vector store manager started")
-            
+
         except Exception as e:
             self._is_initializing = False
-            self.logger.error(f"Failed to start vector store manager: {e}")
+            self.logger.error(f"\t❌ Vector store startup failed: {e}")
             raise
     
     def stop(self) -> None:
         """Stop the vector store manager."""
         if not self._running:
             return
-        
+
         try:
             self._running = False
-            
+
             # Stop background updates
             self._stop_background_updates()
-            
+
             # Close vector store
             if self.vector_store:
                 self.vector_store.close()
                 self.vector_store = None
-            
-            self.logger.info("Vector store manager stopped")
-            
+
         except Exception as e:
-            self.logger.error(f"Error stopping vector store manager: {e}")
+            self.logger.error(f"Error stopping vector store: {e}")
     
     def _initialize_vector_store(self) -> None:
         """Initialize the vector store."""
         try:
             # Ensure directory exists
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-            
+
             # Create vector store instance
+            self.logger.info("\t📊 Vector store: initializing...")
             self.vector_store = VectorStore(self.db_path, logger=self.logger)
-            
+            self.logger.info("\t📊 Vector store: database connected")
+
         except Exception as e:
-            self.logger.error(f"Failed to initialize vector store: {e}")
+            self.logger.error(f"\t❌ Vector store initialization failed: {e}")
             raise
     
     def update_now(self) -> None:
         """Perform an immediate vector store update with progress tracking."""
         if not self.vector_store:
-            self.logger.error("Vector store not initialized")
+            self.logger.error("\t❌ Vector store not initialized")
             return
-        
+
         try:
             update_start = time.time()
-            # Start synchronization
-            
+
             # Get all entity data
+            self.logger.info("\t📊 Vector store: synchronizing...")
             entities = self.data_provider.get_all_entities_for_vector_store()
-            
-            # Count total entities for progress estimation
-            total_entities = sum(len(entity_list) for entity_list in entities.values())
-            # Process entities
-            
-            # Update vector store with enhanced processing
+
+            # Count entities
+            device_count = len(entities["devices"])
+            variable_count = len(entities["variables"])
+            action_count = len(entities["actions"])
+            total_entities = device_count + variable_count + action_count
+
+            # Update vector store
             self.vector_store.update_embeddings(
                 devices=entities["devices"],
                 variables=entities["variables"],
                 actions=entities["actions"]
             )
-            
+
             self._last_update_time = time.time()
             elapsed = self._last_update_time - update_start
-            
-            self.logger.info(f"✅ Vector store synchronization completed in {elapsed:.2f}s")
-            
+
+            self.logger.info(f"\t📊 Vector store: synchronized {total_entities} entities ({device_count} devices, {variable_count} variables, {action_count} actions) in {elapsed:.1f}s")
+
         except Exception as e:
-            self.logger.error(f"❌ Vector store update failed: {e}")
+            self.logger.error(f"\t❌ Vector store update failed: {e}")
             raise
     
     def _start_background_updates(self) -> None:
@@ -166,15 +167,13 @@ class VectorStoreManager:
         """Stop background update thread."""
         if not self._update_thread:
             return
-        
+
         # Signal thread to stop
         self._stop_updates.set()
-        
+
         # Wait for thread to finish
         if self._update_thread.is_alive():
             self._update_thread.join(timeout=5.0)
-        
-        self.logger.info("Background updates stopped")
     
     def _background_update_loop(self) -> None:
         """Background update loop that runs in a separate thread."""

@@ -58,28 +58,20 @@ class GetDevicesByTypeHandler(BaseToolHandler):
 
             # Use the resolved device type
             device_type = resolved_device_type
-            
-            self.info_log(f"Retrieving all devices of type: {device_type}")
-            
+
             # Get all devices
             all_devices = self.data_provider.get_all_devices_unfiltered()
-            
+
             # Filter by device type using the new classifier
             filtered_devices = DeviceClassifier.filter_devices_by_type(all_devices, device_type)
-            
+
             # Sort by name for consistent output
             filtered_devices.sort(key=lambda d: d.get("name", "").lower())
-            
+
             # Log results
             device_count = len(filtered_devices)
-            self.info_log(f"Found {device_count} devices of type '{device_type}'")
-            
-            if device_count > 0:
-                # Log first few device names
-                names = [device.get("name", device.get("id", "unknown")) for device in filtered_devices[:5]]
-                more_text = f" (and {device_count - 5} more)" if device_count > 5 else ""
-                self.info_log(f"Devices: {', '.join(names)}{more_text}")
-            
+            self.info_log(f"💡 Found {device_count} '{device_type}' devices")
+
             return {
                 "device_type": device_type,
                 "count": device_count,

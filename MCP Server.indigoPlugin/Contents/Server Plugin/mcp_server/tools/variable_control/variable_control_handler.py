@@ -38,33 +38,25 @@ class VariableControlHandler(BaseToolHandler):
         Returns:
             Dictionary with operation results
         """
-        # Log incoming request
-        self.log_incoming_request("update", {"variable_id": variable_id, "value": value})
-
         try:
             # Validate variable_id
             if not isinstance(variable_id, int):
-                error_result = {"error": "variable_id must be an integer", "success": False}
-                self.log_tool_outcome("update", False, "Invalid variable_id type")
-                return error_result
+                self.info_log("❌ Invalid variable_id type")
+                return {"error": "variable_id must be an integer", "success": False}
 
-            # Get variable name for better logging
+            # Get variable name
             variable = self.data_provider.get_variable(variable_id)
             variable_name = variable.get('name', f'ID {variable_id}') if variable else f'ID {variable_id}'
-
-            self.debug_log(f"Attempting to update variable {variable_name} to value: {value}")
 
             # Perform the update
             result = self.data_provider.update_variable(variable_id, value)
 
             if "error" in result:
-                self.log_tool_outcome("update", False, f"Variable {variable_name}: {result['error']}")
+                self.info_log(f"❌ {variable_name}: {result['error']}")
             else:
-                variable_name = result.get('variable_name', variable_name)
-                previous = result.get('previous', 'unknown')
-                current = result.get('current', value)
-                details = f"Variable {variable_name}: {previous} -> {current}"
-                self.log_tool_outcome("update", True, details)
+                prev = result.get('previous', '?')
+                curr = result.get('current', value)
+                self.info_log(f"📝 {variable_name}: {prev} → {curr}")
 
             return result
 
@@ -88,39 +80,25 @@ class VariableControlHandler(BaseToolHandler):
         Returns:
             Dictionary with operation results
         """
-        # Log incoming request
-        self.log_incoming_request("create", {
-            "name": name,
-            "value": value,
-            "folder_id": folder_id
-        })
-
         try:
             # Validate name
             if not name or not isinstance(name, str):
-                error_result = {"error": "name is required and must be a string", "success": False}
-                self.log_tool_outcome("create", False, "Invalid or missing name")
-                return error_result
+                self.info_log("❌ Invalid or missing name")
+                return {"error": "name is required and must be a string", "success": False}
 
             # Validate folder_id
             if not isinstance(folder_id, int):
-                error_result = {"error": "folder_id must be an integer", "success": False}
-                self.log_tool_outcome("create", False, "Invalid folder_id type")
-                return error_result
-
-            self.debug_log(f"Attempting to create variable '{name}' with value '{value}' in folder {folder_id}")
+                self.info_log("❌ Invalid folder_id type")
+                return {"error": "folder_id must be an integer", "success": False}
 
             # Perform the creation
             result = self.data_provider.create_variable(name, value, folder_id)
 
             if "error" in result:
-                self.log_tool_outcome("create", False, f"Variable '{name}': {result['error']}")
+                self.info_log(f"❌ {name}: {result['error']}")
             else:
-                variable_id = result.get('variable_id', 'unknown')
-                variable_name = result.get('name', name)
-                variable_value = result.get('value', value)
-                details = f"Variable '{variable_name}' (ID: {variable_id}) created with value: {variable_value}"
-                self.log_tool_outcome("create", True, details)
+                var_id = result.get('variable_id', '?')
+                self.info_log(f"✅ Created variable '{name}' (ID: {var_id}) = '{value}'")
 
             return result
 

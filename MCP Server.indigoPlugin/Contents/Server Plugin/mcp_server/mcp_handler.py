@@ -45,18 +45,15 @@ class MCPHandler:
         """
         self.data_provider = data_provider
         self.logger = logger or logging.getLogger("Plugin")
-        
-        self.logger.debug(f"Initializing MCP Handler with protocol {self.PROTOCOL_VERSION}")
-        
+
         # Session management
         self._sessions = {}  # session_id -> {created, last_seen, client_info}
-        self.logger.debug("Session management initialized")
-        
+
         # Get database path from environment variable
         db_path = os.environ.get("DB_FILE")
         if not db_path:
             raise ValueError("DB_FILE environment variable must be set")
-        
+
         # Initialize vector store manager
         self.vector_store_manager = VectorStoreManager(
             data_provider=data_provider,
@@ -64,22 +61,21 @@ class MCPHandler:
             logger=self.logger,
             update_interval=300,  # 5 minutes
         )
-        
-        # Start vector store manager
-        self.logger.debug("Starting vector store manager...")
+
+        # Start vector store manager (it will log its own progress)
         self.vector_store_manager.start()
-        self.logger.debug("Vector store manager started successfully")
-        
+
         # Initialize handlers
         self._init_handlers()
-        
+
         # Register tools and resources
         self._tools = {}
         self._resources = {}
         self._register_tools()
         self._register_resources()
-        
-        self.logger.info(f"MCP handler ready ({len(self._tools)} tools, {len(self._resources)} resources)")
+
+        self.logger.info(f"\t🚀 MCP Server ready ({len(self._tools)} tools, {len(self._resources)} resources)")
+        self.logger.info(f"\t🌐 Endpoint: /message/com.vtmikel.mcp_server/mcp/")
         
     def _init_handlers(self):
         """Initialize all handler instances."""
@@ -134,88 +130,59 @@ class MCPHandler:
             self.vector_store_manager.stop()
     
     def handle_request(
-        self, 
-        method: str, 
-        headers: Dict[str, str], 
+        self,
+        method: str,
+        headers: Dict[str, str],
         body: str
     ) -> Dict[str, Any]:
         """
         Handle an MCP request from Indigo IWS.
-        
+
         Args:
             method: HTTP method (GET, POST, etc.)
             headers: Request headers
             body: Request body as string
-            
+
         Returns:
             Dict with status, headers, and content for IWS response
         """
-        # Log incoming request
-        self.logger.debug("-" * 40)
-        self.logger.debug(f"Incoming MCP Request: {method}")
-        self.logger.debug(f"Headers: {headers}")
-        self.logger.debug(f"Body length: {len(body) if body else 0} bytes")
-        
         # Normalize headers to lowercase
         headers = {k.lower(): v for k, v in headers.items()}
         accept = headers.get("accept", "")
         
-        # Log normalized headers
-        self.logger.debug(f"Normalized Accept header: '{accept}'")
-        self.logger.debug(f"Session ID in headers: {headers.get('mcp-session-id', 'None')}")
-        
-        # Only support POST; GET returns 405
-        if method == "GET":
-            self.logger.debug("GET request received - returning 405 Method Not Allowed")
-            return {
-                "status": 405,
-                "headers": {"Allow": "POST"},
-                "content": ""
-            }
-        
+        # Only support POST
         if method != "POST":
             return {
                 "status": 405,
                 "headers": {"Allow": "POST"},
                 "content": ""
             }
-        
+
         # Check Accept header - client must accept json or event-stream
         if "application/json" not in accept and "text/event-stream" not in accept:
-            self.logger.warning(f"Invalid Accept header: '{accept}' - returning 406 Not Acceptable")
-            self.logger.warning("Client must accept 'application/json' or 'text/event-stream'")
+            self.logger.debug(f"Invalid Accept header: '{accept}'")
             return {"status": 406, "content": "Not Acceptable"}
-        
+
         # Parse JSON body
         try:
             payload = json.loads(body) if body else None
-            if payload:
-                # Log parsed payload (truncate if too long)
-                payload_str = json.dumps(payload)
-                if len(payload_str) > 500:
-                    self.logger.debug(f"Parsed payload: {payload_str[:500]}...")
-                else:
-                    self.logger.debug(f"Parsed payload: {payload_str}")
         except Exception as e:
             self.logger.error(f"Failed to parse JSON body: {e}")
-            self.logger.debug(f"Raw body: {body[:200] if body else 'Empty'}")
             return self._json_response(
                 self._json_error(None, -32700, "Parse error"),
                 status=200
             )
-        
+
         # Handle empty or invalid payload
         if not payload:
-            self.logger.warning("Empty or null payload received")
             return self._json_response(
                 self._json_error(None, -32600, "Invalid Request"),
                 status=200
             )
-        
+
         # MCP 2025-06-18 spec removes support for JSON-RPC batching
-        # Reject batch requests with an error
         if isinstance(payload, list):
-            self.logger.warning("Batch requests not supported in MCP 2025-06-18")
+            self.logger.debug("Batch requests not supported")
             return self._json_response(
                 self._json_error(None, -32600, "Batch requests not supported"),
                 status=200
@@ -257,79 +224,68 @@ class MCPHandler:
             )
     
     def _dispatch_message(
-        self, 
-        msg: Dict[str, Any], 
+        self,
+        msg: Dict[str, Any],
         headers: Dict[str, str]
     ) -> Optional[Dict[str, Any]]:
         """
         Dispatch a single JSON-RPC message.
-        
+
         Args:
             msg: JSON-RPC message
             headers: Request headers
-            
+
         Returns:
             JSON-RPC response or None for notifications
         """
         # Validate JSON-RPC structure
         if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0" or "method" not in msg:
-            self.logger.warning(f"Invalid JSON-RPC message structure: {msg}")
+            self.logger.debug(f"Invalid JSON-RPC message structure")
             return self._json_error(msg.get("id"), -32600, "Invalid Request")
-        
+
         msg_id = msg.get("id")  # May be None for notifications
         method = msg["method"]
         params = msg.get("params") or {}
-        
-        self.logger.debug(f"Dispatching method: {method} (id: {msg_id})")
-        if params:
-            params_str = str(params)
-            if len(params_str) > 200:
-                self.logger.debug(f"Parameters: {params_str[:200]}...")
-            else:
-                self.logger.debug(f"Parameters: {params_str}")
+
+        # Log incoming request at INFO level (concise)
+        session_id = headers.get("mcp-session-id", "")
+        session_short = session_id[:8] if session_id else "none"
+
+        # Format method for logging
+        if method.startswith("notifications/"):
+            log_method = method.replace("notifications/", "notify:")
+        elif "/" in method:
+            log_method = method.replace("/", ":")
+        else:
+            log_method = method
+
+        self.logger.info(f"📨 {log_method} | session: {session_short}")
         
         # MCP 2025-06-18 requires MCP-Protocol-Version header for HTTP transport
-        # Make it optional for client compatibility, but warn when missing
         protocol_version_header = headers.get("mcp-protocol-version")
         if method != "initialize" and not method.startswith("notifications/") and self._sessions:
-            if not protocol_version_header:
-                self.logger.warning(f"MCP-Protocol-Version header missing for method: {method} (proceeding for client compatibility)")
-                # Continue processing instead of returning error
-            elif protocol_version_header != self.PROTOCOL_VERSION:
-                self.logger.warning(f"Invalid protocol version in header: {protocol_version_header}")
+            if protocol_version_header and protocol_version_header != self.PROTOCOL_VERSION:
+                self.logger.debug(f"Invalid protocol version: {protocol_version_header}")
                 return self._json_error(msg_id, -32600, f"Unsupported protocol version: {protocol_version_header}")
-        
+
         # Session validation (skip for initialize and notifications)
         session_id = headers.get("mcp-session-id")
         if method != "initialize" and not method.startswith("notifications/") and self._sessions:
-            if not session_id:
-                self.logger.warning(f"No session ID provided for method: {method}")
-                self.logger.debug(f"Active sessions: {list(self._sessions.keys())}")
-                return self._json_error(msg_id, -32600, "Missing or invalid Mcp-Session-Id")
-            elif session_id not in self._sessions:
-                self.logger.warning(f"Invalid session ID: {session_id}")
-                self.logger.debug(f"Active sessions: {list(self._sessions.keys())}")
+            if not session_id or session_id not in self._sessions:
+                self.logger.debug(f"Invalid session ID for {method}")
                 return self._json_error(msg_id, -32600, "Missing or invalid Mcp-Session-Id")
             # Update last seen
             self._sessions[session_id]["last_seen"] = time.time()
-            self.logger.debug(f"Session {session_id} validated and updated")
-        
+
         # Route to appropriate handler
         if method == "initialize":
-            self.logger.debug("Processing initialize request")
             return self._handle_initialize(msg_id, params)
         elif method == "ping":
-            self.logger.debug("Processing ping request")
             return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
         elif method == "notifications/cancelled":
-            # Best effort notification, no response
-            self.logger.debug("Processing cancelled notification")
             self._handle_cancelled(params)
             return None
         elif method == "notifications/initialized":
-            # Client signals it's ready for normal operations after successful initialization
-            self.logger.debug("Processing initialized notification - client ready for normal operations")
-            # This is a notification, no response needed
             return None
         
         # Tool methods
@@ -357,31 +313,22 @@ class MCPHandler:
         # Unknown method
         else:
             if method.startswith("notifications/"):
-                # Unknown notifications should be ignored gracefully (fire-and-forget)
-                self.logger.debug(f"Ignoring unknown notification: {method}")
+                # Unknown notifications ignored gracefully
                 return None
             else:
-                # Unknown regular methods return an error
-                self.logger.warning(f"Unknown method requested: {method}")
+                self.logger.debug(f"Unknown method: {method}")
                 return self._json_error(msg_id, -32601, "Method not found")
     
     def _handle_initialize(
-        self, 
-        msg_id: Any, 
+        self,
+        msg_id: Any,
         params: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle initialize request."""
         requested_version = str(params.get("protocolVersion") or "")
         client_info = params.get("clientInfo", {})
-        
-        self.logger.info("="*40)
-        self.logger.info("MCP INITIALIZATION REQUEST")
-        self.logger.info(f"Requested protocol version: {requested_version}")
-        self.logger.info(f"Our protocol version: {self.PROTOCOL_VERSION}")
-        self.logger.info(f"Client info: {client_info}")
-        self.logger.info(f"Request ID: {msg_id}")
-        self.logger.info("="*40)
-        
+        client_name = client_info.get("name", "Unknown")
+
         # Check if we support the requested version
         if requested_version == self.PROTOCOL_VERSION:
             # Create new session
@@ -391,7 +338,7 @@ class MCPHandler:
                 "last_seen": time.time(),
                 "client_info": client_info
             }
-            
+
             result = {
                 "jsonrpc": "2.0",
                 "id": msg_id,
@@ -409,21 +356,18 @@ class MCPHandler:
                     }
                 }
             }
-            
+
             # Add session ID for header
             result["_mcp_session_id"] = session_id
-            
-            self.logger.info("✅ Initialization successful - returning capabilities")
-            self.logger.info(f"Server capabilities: {list(result['result']['capabilities'].keys())}")
-            self.logger.info(f"Session {session_id} will be returned in Mcp-Session-Id header")
-            self.logger.info("="*40)
-            
+
+            self.logger.info(f"\t✅ Client initialized: {client_name} | session: {session_id[:8]}")
+
             return result
         else:
             # Unsupported version
-            self.logger.warning(f"MCP client rejected - unsupported protocol version {requested_version} (requires {self.PROTOCOL_VERSION})")
-            
-            error_response = {
+            self.logger.debug(f"Unsupported protocol version: {requested_version}")
+
+            return {
                 "jsonrpc": "2.0",
                 "id": msg_id,
                 "error": {
@@ -435,20 +379,12 @@ class MCPHandler:
                     }
                 }
             }
-            
-            self.logger.debug("Returning unsupported protocol version error")
-            return error_response
     
     def _handle_cancelled(self, params: Dict[str, Any]):
         """Handle cancellation notification."""
-        request_id = params.get("requestId")
-        reason = params.get("reason", "")
-        
-        # Log cancellation request
-        self.logger.info(f"Cancellation requested for {request_id}: {reason}")
-        
         # In a synchronous implementation, we can't really cancel ongoing work
-        # This would be used in an async implementation to stop long-running tasks
+        # This is for async implementations only
+        pass
     
     def _handle_tools_list(
         self, 

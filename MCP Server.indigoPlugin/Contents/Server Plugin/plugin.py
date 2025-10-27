@@ -93,15 +93,13 @@ class Plugin(indigo.PluginBase):
         all_required_connections_ok = True
 
         # Test OpenAI API key (required)
-        self.logger.info("Testing OpenAI API connection...")
         try:
-
             # Validate API key format
             if (
                 not self.openai_api_key
                 or self.openai_api_key == "xxxxx-xxxxx-xxxxx-xxxxx"
             ):
-                self.logger.error("OpenAI API key is not configured or is placeholder")
+                self.logger.error("\t❌ OpenAI API key not configured")
                 all_required_connections_ok = False
             else:
                 # Set API key temporarily for testing
@@ -114,32 +112,29 @@ class Plugin(indigo.PluginBase):
                         model="text-embedding-3-small", input="test", timeout=10.0
                     )
                     if response and response.data:
-                        self.logger.info("✅ OpenAI API connection successful")
+                        self.logger.info("\t✅ OpenAI API connected")
                     else:
-                        self.logger.error("❌ OpenAI API returned invalid response")
+                        self.logger.error("\t❌ OpenAI API returned invalid response")
                         all_required_connections_ok = False
                 except Exception as api_error:
-                    self.logger.error(f"❌ OpenAI API connection failed: {api_error}")
+                    self.logger.error(f"\t❌ OpenAI API failed: {api_error}")
                     all_required_connections_ok = False
 
         except ImportError:
-            self.logger.error("❌ OpenAI library not available")
+            self.logger.error("\t❌ OpenAI library not available")
             all_required_connections_ok = False
         except Exception as e:
-            self.logger.error(f"❌ OpenAI connection test failed: {e}")
+            self.logger.error(f"\t❌ OpenAI connection failed: {e}")
             all_required_connections_ok = False
 
         # Test InfluxDB connection (optional, only if enabled)
         if self.enable_influxdb:
-            self.logger.info("Testing InfluxDB connection...")
             try:
                 from influxdb import InfluxDBClient
 
                 # Validate InfluxDB configuration
                 if not self.influx_url or not self.influx_port:
-                    self.logger.warning(
-                        "⚠️ InfluxDB enabled but URL or port not configured"
-                    )
+                    self.logger.warning("\t⚠️ InfluxDB enabled but not configured")
                 else:
                     try:
                         port = int(self.influx_port)
@@ -159,48 +154,21 @@ class Plugin(indigo.PluginBase):
                         # Test connection with ping
                         result = client.ping()
                         if result:
-                            self.logger.info("✅ InfluxDB connection successful")
-
-                            # Test database access
-                            try:
-                                client.get_list_database()
-                                self.logger.info(
-                                    "✅ InfluxDB database access successful"
-                                )
-                            except Exception as db_error:
-                                self.logger.warning(
-                                    f"⚠️ InfluxDB database access failed: {db_error}"
-                                )
-
+                            self.logger.info("\t✅ InfluxDB connected (historical data available)")
                         else:
-                            self.logger.warning(
-                                "⚠️ InfluxDB ping failed - historical data analysis will be unavailable"
-                            )
+                            self.logger.warning("\t⚠️ InfluxDB ping failed")
 
                         client.close()
 
                     except ValueError as ve:
-                        self.logger.warning(
-                            f"⚠️ InfluxDB port configuration error: {ve}"
-                        )
+                        self.logger.warning(f"\t⚠️ InfluxDB port error: {ve}")
                     except Exception as influx_error:
-                        self.logger.warning(
-                            f"⚠️ InfluxDB connection failed: {influx_error}"
-                        )
-                        self.logger.warning(
-                            "Historical data analysis will be unavailable"
-                        )
+                        self.logger.warning(f"\t⚠️ InfluxDB connection failed: {influx_error}")
 
             except ImportError:
-                self.logger.warning(
-                    "⚠️ InfluxDB library not available - historical data analysis will be unavailable"
-                )
+                self.logger.warning("\t⚠️ InfluxDB library not available")
             except Exception as e:
-                self.logger.warning(f"⚠️ InfluxDB connection test failed: {e}")
-        else:
-            self.logger.info(
-                "InfluxDB disabled - historical data analysis will not be available"
-            )
+                self.logger.warning(f"\t⚠️ InfluxDB connection failed: {e}")
 
         return all_required_connections_ok
 
@@ -209,15 +177,12 @@ class Plugin(indigo.PluginBase):
         """
         Called after __init__ when the plugin is starting up.
         """
-        self.logger.info("MCP Server plugin starting up...")
+        self.logger.info("Starting plugin...")
 
         # Test connections before proceeding
         if not self.test_connections():
-            self.logger.error(
-                "Required service connections failed. Plugin startup aborted."
-            )
+            self.logger.error("\t❌ Required service connections failed - startup aborted")
             return
-
 
         # Set OpenAI API key in environment for the modules to use
         os.environ["OPENAI_API_KEY"] = self.openai_api_key
@@ -263,42 +228,36 @@ class Plugin(indigo.PluginBase):
         try:
             self.data_provider = IndigoDataProvider(logger=self.logger)
         except Exception as e:
-            self.logger.error(f"Failed to initialize data provider: {e}")
+            self.logger.error(f"\t❌ Data provider initialization failed: {e}")
             return
 
-        # Initialize MCP handler during startup instead of on first request
+        # Initialize MCP handler (includes vector store initialization)
         try:
-            self.logger.debug("Initializing MCP handler...")
             self.mcp_handler = MCPHandler(
                 data_provider=self.data_provider,
                 logger=self.logger
             )
-            self.logger.debug("MCP handler initialized successfully")
         except Exception as e:
-            self.logger.error(f"❌ Failed to initialize MCP handler: {e}")
-            # Set to None to indicate initialization failure
+            self.logger.error(f"\t❌ MCP handler initialization failed: {e}")
             self.mcp_handler = None
-            self.logger.error("MCP server will not be available until plugin is restarted")
+            self.logger.error("\t❌ MCP server unavailable - plugin restart required")
             return
 
     def shutdown(self) -> None:
         """
         Called when the plugin is being shut down.
         """
-        self.logger.info("MCP Server plugin shutting down...")
+        self.logger.info("Stopping plugin...")
 
         # Clean up MCP handler
         if self.mcp_handler:
             try:
-                self.logger.info("Stopping MCP handler...")
                 self.mcp_handler.stop()
-                self.logger.info("✅ MCP handler stopped successfully")
+                self.logger.info("\t✅ MCP handler stopped")
             except Exception as e:
-                self.logger.error(f"❌ Error stopping MCP handler: {e}")
+                self.logger.error(f"\t❌ Error stopping MCP handler: {e}")
             finally:
                 self.mcp_handler = None
-        else:
-            self.logger.debug("No MCP handler to clean up")
 
     ########################################
     # MCP Endpoint Handler for IWS
@@ -308,54 +267,23 @@ class Plugin(indigo.PluginBase):
         """
         Handle MCP requests through Indigo IWS.
         This method is called when the /message/<plugin_id>/mcp/ endpoint is accessed.
-        
+
         Args:
             action: Indigo action containing request details
             dev: Optional device reference
             callerWaitingForResult: Whether caller is waiting for result
-            
+
         Returns:
             Dict with status, headers, and content for IWS response
         """
-        # Log incoming request at plugin level
-        self.logger.debug("🌐 MCP ENDPOINT ACCESSED")
-        self.logger.debug(f"Caller waiting for result: {callerWaitingForResult}")
-        self.logger.debug(f"Device: {dev.name if dev else 'None'}")
-        
-        # Extract and log request details
+        # Extract request details
         method = (action.props.get("incoming_request_method") or "").upper()
         headers = dict(action.props.get("headers", {}))
         body = action.props.get("request_body") or ""
-        
-        self.logger.debug(f"Raw IWS Action Props Keys: {list(action.props.keys())}")
-        self.logger.debug(f"HTTP Method: {method}")
-        self.logger.debug(f"Headers Count: {len(headers)}")
-        self.logger.debug(f"Body Length: {len(body)}")
-        
-        # Log authentication headers specifically
-        auth_header = headers.get('Authorization') or headers.get('authorization')
-        if auth_header:
-            # Only log first and last few characters for security
-            if auth_header.startswith('Bearer '):
-                token = auth_header[7:]  # Remove 'Bearer '
-                masked_token = f"{token[:8]}...{token[-4:]}"
-                self.logger.debug(f"🔑 Bearer token present: {masked_token}")
-            else:
-                self.logger.debug(f"🔑 Authorization header: {auth_header[:10]}...")
-        else:
-            self.logger.warning("⚠️  No Authorization header found")
-        
-        # Log other important headers
-        accept = headers.get('Accept') or headers.get('accept')
-        content_type = headers.get('Content-Type') or headers.get('content-type')
-        session_id = headers.get('Mcp-Session-Id') or headers.get('mcp-session-id')
-        
-        self.logger.debug(f"Accept header: '{accept}'")
-        self.logger.debug(f"Content-Type header: '{content_type}'")
-        self.logger.debug(f"Mcp-Session-Id header: '{session_id}'")
+
         # Validate MCP handler is available
         if not self.mcp_handler:
-            self.logger.error("❌ MCP handler not initialized - plugin startup may have failed")
+            self.logger.error("❌ MCP handler not initialized")
             return {
                 "status": 503,  # Service Unavailable
                 "headers": {"Content-Type": "application/json"},
@@ -363,35 +291,14 @@ class Plugin(indigo.PluginBase):
                     "error": "MCP server unavailable - plugin initialization failed"
                 })
             }
-        
-        self.logger.debug("✅ Using pre-initialized MCP handler")
-        
-        # Delegate to MCP handler
-        self.logger.debug("🚀 Delegating to MCP handler...")
+
+        # Delegate to MCP handler (it will handle logging)
         try:
             response = self.mcp_handler.handle_request(method, headers, body)
-            
-            # Log response details
-            status = response.get('status', 'unknown')
-            response_headers = response.get('headers', {})
-            content_length = len(response.get('content', ''))
-            
-            self.logger.debug(f"📝 Response status: {status}")
-            self.logger.debug(f"Response headers: {response_headers}")
-            self.logger.debug(f"Response content length: {content_length}")
-            
-            if status == 200:
-                self.logger.debug("✅ MCP request processed successfully")
-            elif status == 202:
-                # 202 is used for notifications - also a success
-                self.logger.debug("✅ MCP notification processed successfully")
-            else:
-                self.logger.warning(f"⚠️  MCP request returned non-success status: {status}")
-            
             return response
-            
+
         except Exception as e:
-            self.logger.exception(f"❌ MCP endpoint error: {e}")
+            self.logger.error(f"❌ MCP endpoint error: {e}")
             return {
                 "status": 500,
                 "content": json.dumps({"error": str(e)})
@@ -556,7 +463,7 @@ class Plugin(indigo.PluginBase):
             self.logger.info(f"MCP Server device started: {device.name}")
             # Store reference to device
             self.mcp_server_device = device
-            
+
             # Update device states to show server is available via IWS
             device.updateStateOnServer(key="serverStatus", value="Running")
             device.updateStateOnServer(key="serverName", value=device.name)
@@ -571,7 +478,7 @@ class Plugin(indigo.PluginBase):
             self.logger.info(f"MCP Server device stopped: {device.name}")
             # Update device state
             device.updateStateOnServer(key="serverStatus", value="Stopped")
-            
+
             # Clear device reference
             if self.mcp_server_device and self.mcp_server_device.id == device.id:
                 self.mcp_server_device = None

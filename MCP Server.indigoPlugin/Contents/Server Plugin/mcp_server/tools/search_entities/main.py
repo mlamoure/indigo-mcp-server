@@ -57,72 +57,52 @@ class SearchEntitiesHandler(BaseToolHandler):
             Dictionary with formatted search results
         """
         try:
-            # Log search request 
-            self.info_log(f"🔍 Received request - query: '{query}', device_types: {device_types}, entity_types: {entity_types}, state_filter: {state_filter}")
-            
+            # Concise query logging
+            query_short = query[:50] + "..." if len(query) > 50 else query
+            self.info_log(f"Searching: '{query_short}'")
+
             # Parse query to determine search parameters
             search_params = self.query_parser.parse(query, device_types, entity_types)
-            self.debug_log(f"Search parameters: {search_params}")
-            
+
             # Expand query with LLM for better semantic matching
-            self.info_log("⬆️ Augmenting search results with suggested terms from OpenAI")
+            self.info_log("\t⬆️ Expanding with AI")
             expanded_query = self.query_parser.expand_query(query, enable_llm=True)
-            
-            # Show expansion terms if different from original
-            if expanded_query != query and len(expanded_query.strip()) > 0:
-                # Extract additional terms (words not in original query)
-                original_words = set(query.lower().split())
-                expanded_words = expanded_query.lower().split()
-                additional_terms = [word for word in expanded_words if word not in original_words]
-                
-                if additional_terms:
-                    # Show up to 6 additional terms
-                    terms_to_show = additional_terms[:6]
-                    more_text = f" (and {len(additional_terms) - 6} more)" if len(additional_terms) > 6 else ""
-                    self.info_log(f"⬆️ Additional search terms: {', '.join(terms_to_show)}{more_text}")
-            
-            # Start vector search
-            self.info_log("🔦 Vector Store Search starting...")
+
+            # Perform vector search
             raw_results, search_metadata = self.vector_store.search(
                 query=expanded_query,
                 entity_types=search_params["entity_types"],
                 top_k=search_params["top_k"],
                 similarity_threshold=search_params["threshold"]
             )
-            
+
             # Apply device type filtering if specified
             if device_types is not None and "devices" in search_params["entity_types"]:
                 raw_results = self._filter_devices_by_type(raw_results, device_types)
-            
+
             # Group results by entity type
             grouped_results = self._group_results_by_type(raw_results)
-            
-            # Log vector search completion with counts
+
+            # Apply state filtering if specified
+            if state_filter is not None and grouped_results.get("devices"):
+                filtered_devices = StateFilter.filter_by_state(grouped_results["devices"], state_filter)
+                grouped_results["devices"] = filtered_devices
+
+            # Log results summary
             device_count = len(grouped_results.get("devices", []))
             variable_count = len(grouped_results.get("variables", []))
             action_count = len(grouped_results.get("actions", []))
-            self.info_log(f"🔦 Vector Store Search Completed: Returned {device_count} Devices, {variable_count} Variables, {action_count} Action Groups")
-            
-            # Apply state filtering if specified
-            if state_filter is not None and grouped_results.get("devices"):
-                self.debug_log(f"Applying state filter: {state_filter}")
-                filtered_devices = StateFilter.filter_by_state(grouped_results["devices"], state_filter)
-                grouped_results["devices"] = filtered_devices
-                self.info_log(f"State filtering: {len(filtered_devices)} devices match conditions")
-            
-            # Log final result counts
-            self._log_search_results(grouped_results)
-            
+            self.info_log(f"\t✅ Found: {device_count} devices, {variable_count} variables, {action_count} actions")
+
             # Format results
             formatted_results = self.result_formatter.format_search_results(
-                grouped_results, 
-                query, 
+                grouped_results,
+                query,
                 minimal_fields=search_params["minimal_fields"],
                 search_metadata=search_metadata,
                 state_detected=search_params.get("state_detected", False)
             )
-            
-            self.log_tool_outcome("search", True, count=formatted_results['total_count'])
+
             return formatted_results
             
         except Exception as e:
@@ -188,20 +168,3 @@ class SearchEntitiesHandler(BaseToolHandler):
         
         return filtered_results
     
-    def _log_search_results(self, grouped_results: Dict[str, List[Dict[str, Any]]]) -> None:
-        """
-        Log search result counts by entity type.
-        
-        Args:
-            grouped_results: Results grouped by entity type
-        """
-        for entity_type, entities in grouped_results.items():
-            count = len(entities)
-            if count > 0:
-                # Get entity names for logging (up to 3 for brevity)
-                names = [entity.get("name", entity.get("id", "unknown")) for entity in entities]
-                names_for_log = names[:3]
-                more_text = f" (and {count - 3} more)" if count > 3 else ""
-                details = f"{', '.join(names_for_log)}{more_text}"
-                
-                self.log_tool_outcome(f"search_{entity_type}", True, details, count)

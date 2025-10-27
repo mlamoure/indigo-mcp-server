@@ -36,30 +36,12 @@ class BaseToolHandler:
     
     def debug_log(self, message: str) -> None:
         """
-        Log a debug message with caller information.
-        
+        Log a debug message with standardized format.
+
         Args:
             message: The message to log
         """
-        # Get caller information
-        frame = inspect.currentframe()
-        try:
-            # Go up the stack to find the actual caller
-            caller_frame = frame.f_back
-            if caller_frame:
-                filename = caller_frame.f_code.co_filename
-                line_number = caller_frame.f_lineno
-                function_name = caller_frame.f_code.co_name
-                
-                # Extract just the file name from the full path
-                file_name = filename.split('/')[-1]
-                
-                caller_info = f"{file_name}:{line_number} in {function_name}()"
-                self.logger.debug(f"[{self.tool_name}] {caller_info}: {message}")
-            else:
-                self.logger.debug(f"[{self.tool_name}]: {message}")
-        finally:
-            del frame
+        self.logger.debug(f"[{self.tool_name}]: {message}")
     
     def warning_log(self, message: str) -> None:
         """
@@ -154,18 +136,14 @@ class BaseToolHandler:
     
     def log_incoming_request(self, operation: str, params: dict = None) -> None:
         """
-        Log an incoming tool request with parameters.
-        
+        Log an incoming tool request (concise).
+
         Args:
             operation: The operation being performed
-            params: Optional parameters for the request
+            params: Optional parameters for the request (not logged for brevity)
         """
-        if params:
-            # Format params for logging, handling different types
-            formatted_params = self._format_params_for_logging(params)
-            self.info_log(f"Received {operation} request with params: {formatted_params}")
-        else:
-            self.info_log(f"Received {operation} request")
+        # Concise logging - parameters will be shown in outcome if needed
+        pass
     
     def log_tool_outcome(self, operation: str, success: bool, details: str = "", count: int = None, query_info: dict = None) -> None:
         """
@@ -204,37 +182,6 @@ class BaseToolHandler:
             self.info_log(message)
         else:
             self.error_log(message)
-    
-    def _format_params_for_logging(self, params: dict) -> str:
-        """
-        Format parameters for concise logging.
-        
-        Args:
-            params: Parameters to format
-            
-        Returns:
-            Formatted string representation
-        """
-        if not params:
-            return "{}"
-        
-        # Handle common parameter patterns
-        formatted_items = []
-        for key, value in params.items():
-            if isinstance(value, dict):
-                # For complex dicts, show just the keys
-                formatted_items.append(f"{key}={{...}}")
-            elif isinstance(value, list):
-                # For lists, show count
-                formatted_items.append(f"{key}=[{len(value)} items]")
-            elif isinstance(value, str) and len(value) > 50:
-                # Truncate long strings
-                formatted_items.append(f"{key}='{value[:47]}...'")
-            else:
-                # Show full value for simple types
-                formatted_items.append(f"{key}={repr(value)}")
-        
-        return "{" + ", ".join(formatted_items) + "}"
     
     def _get_operation_emoji(self, operation: str) -> str:
         """
