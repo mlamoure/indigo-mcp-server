@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 """
 Simple test script to verify debug logging is working on production MCP server
+
+This is a manual integration test script - run with: python tests/test_debug_logging.py
+NOT designed for pytest execution.
 """
 
 import requests
 import json
 import sys
+import pytest
+
+# Skip all functions in this module when running pytest
+# This is a manual integration test, not a unit test
+pytestmark = pytest.mark.skip(reason="Manual integration test - run with: python tests/test_debug_logging.py")
 
 def test_initialize_with_logging():
     """Test initialize request to trigger debug logging"""
