@@ -11,6 +11,7 @@ except ImportError:
 import json
 import logging
 import os
+import socket
 
 import openai
 
@@ -172,6 +173,93 @@ class Plugin(indigo.PluginBase):
 
         return all_required_connections_ok
 
+    def _get_mcp_client_urls(self) -> list:
+        """
+        Detect and return all available URLs for MCP client connections.
+
+        Returns a list of dicts with 'label', 'url', and 'config' keys for each access method:
+        - localhost URL (always available)
+        - hostname-based URL (if detectable)
+        - IP address-based URLs (all non-localhost IPs)
+        - Indigo Reflector URL (if configured)
+
+        :return: List of URL dicts [{"label": "...", "url": "...", "config": {...}}, ...]
+        """
+        urls = []
+        indigo_port = 8176  # Default Indigo web server port
+        path = "/message/com.vtmikel.mcp_server/mcp/"
+
+        # Helper function to generate Claude Desktop config for a given URL
+        def make_config(url):
+            return {
+                "mcpServers": {
+                    "indigo": {
+                        "command": "npx",
+                        "args": [
+                            "mcp-remote",
+                            url
+                        ]
+                    }
+                }
+            }
+
+        # Always add localhost URL
+        localhost_url = f"http://localhost:{indigo_port}{path}"
+        urls.append({
+            "label": "Local",
+            "url": localhost_url,
+            "config": make_config(localhost_url)
+        })
+
+        try:
+            # Get hostname and add hostname-based URL
+            hostname = socket.gethostname()
+            if hostname and hostname != "localhost":
+                hostname_url = f"http://{hostname}:{indigo_port}{path}"
+                urls.append({
+                    "label": "Network (hostname)",
+                    "url": hostname_url,
+                    "config": make_config(hostname_url)
+                })
+
+            # Get all non-localhost IP addresses
+            try:
+                addr_info = socket.getaddrinfo(hostname, None, socket.AF_INET)
+                seen_ips = set()
+                for info in addr_info:
+                    ip = info[4][0]
+                    # Skip localhost IPs and duplicates
+                    if not ip.startswith('127.') and ip not in seen_ips:
+                        seen_ips.add(ip)
+                        ip_url = f"http://{ip}:{indigo_port}{path}"
+                        urls.append({
+                            "label": "Network (IP)",
+                            "url": ip_url,
+                            "config": make_config(ip_url)
+                        })
+            except Exception as e:
+                self.logger.debug(f"Could not detect network IPs: {e}")
+
+        except Exception as e:
+            self.logger.debug(f"Could not detect hostname: {e}")
+
+        # Try to get Indigo Reflector URL if configured
+        try:
+            reflector_url = indigo.server.getReflectorURL()
+            if reflector_url:
+                # Remove trailing slash if present
+                reflector_base = reflector_url.rstrip('/')
+                reflector_full_url = f"{reflector_base}{path}"
+                urls.append({
+                    "label": "Remote (Reflector)",
+                    "url": reflector_full_url,
+                    "config": make_config(reflector_full_url)
+                })
+        except Exception as e:
+            self.logger.debug(f"Could not detect Indigo Reflector URL: {e}")
+
+        return urls
+
     ########################################
     def startup(self) -> None:
         """
@@ -237,6 +325,13 @@ class Plugin(indigo.PluginBase):
                 data_provider=self.data_provider,
                 logger=self.logger
             )
+
+            # Log MCP client connection information
+            self.logger.info("🌐 MCP Client Connection Information:")
+            urls = self._get_mcp_client_urls()
+            for url_info in urls:
+                self.logger.info(f"   {url_info['label']}: {url_info['url']}")
+
         except Exception as e:
             self.logger.error(f"\t❌ MCP handler initialization failed: {e}")
             self.mcp_handler = None
@@ -310,35 +405,34 @@ class Plugin(indigo.PluginBase):
 
     def show_mcp_client_info_menu(self) -> None:
         """Menu action to show Claude Desktop MCP client connection information."""
-        # With IWS integration, the MCP endpoint is always available
-        # Get the Indigo server host and port from preferences or defaults
-        host = self.pluginPrefs.get("indigo_host", "localhost")
-        port = self.pluginPrefs.get("indigo_port", "8176")  # Default Indigo IWS port
-        
-        claude_config = {
-            "mcpServers": {
-                "indigo": {
-                    "command": "npx",
-                    "args": [
-                        "mcp-remote",
-                        f"http://{host}:{port}/message/com.vtmikel.mcp_server/mcp/"
-                    ]
-                }
-            }
-        }
-        
-        config_json = json.dumps(claude_config, indent=2)
-        
+        # Get all available connection URLs
+        urls = self._get_mcp_client_urls()
+
         config_lines = [
-            "Claude Desktop MCP Client Connection Information:",
+            "🌐 Claude Desktop MCP Client Connection Information:",
             "",
-            "Add the following configuration to your claude_desktop_config.json file:",
-            "",
-            config_json,
-            "",
-            "Note: Replace host and port with your Indigo server's address if accessing remotely."
+            "Add one of the following configurations to your claude_desktop_config.json file.",
+            "Choose the connection method that best fits your needs:",
+            ""
         ]
-        
+
+        # Display each connection option
+        for url_info in urls:
+            config_json = json.dumps(url_info["config"], indent=2)
+            config_lines.extend([
+                f"📍 {url_info['label']}: {url_info['url']}",
+                config_json,
+                ""
+            ])
+
+        config_lines.extend([
+            "💡 Connection Guide:",
+            "  • Local: Use when Claude Code runs on the same machine as Indigo",
+            "  • Network (hostname): Use for local network access with hostname",
+            "  • Network (IP): Use for local network access with IP address",
+            "  • Remote (Reflector): Use for remote access through Indigo Reflector",
+        ])
+
         self.logger.info("\n".join(config_lines))
 
     def test_connections_button(self, values_dict: indigo.Dict) -> indigo.Dict:
