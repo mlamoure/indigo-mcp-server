@@ -26,13 +26,7 @@ npx mcp-remote http://[indigo_host]:[indigo_port]/message/com.vtmikel.mcp_server
                 <TriggerLabel>Server Status</TriggerLabel>
                 <ControlPageLabel>Status</ControlPageLabel>
             </State>
-            
-            <State id="serverName">
-                <ValueType>String</ValueType>
-                <TriggerLabel>Server Name</TriggerLabel>
-                <ControlPageLabel>Name</ControlPageLabel>
-            </State>
-            
+
             <State id="accessMode">
                 <ValueType>String</ValueType>
                 <TriggerLabel>Access Mode</TriggerLabel>

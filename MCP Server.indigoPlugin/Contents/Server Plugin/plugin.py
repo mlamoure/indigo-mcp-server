@@ -560,7 +560,6 @@ class Plugin(indigo.PluginBase):
 
             # Update device states to show server is available via IWS
             device.updateStateOnServer(key="serverStatus", value="Running")
-            device.updateStateOnServer(key="serverName", value=device.name)
             device.updateStateOnServer(key="accessMode", value="IWS")
             device.updateStateOnServer(key="lastActivity", value=str(indigo.server.getTime()))
 
@@ -619,9 +618,7 @@ class Plugin(indigo.PluginBase):
                 )
                 self._restart_mcp_server_from_device(newDev)
 
-            # Update device name if it changed
-            if origDev.name != newDev.name:
-                newDev.updateStateOnServer(key="serverName", value=newDev.name)
+            # Device name changes are handled automatically by Indigo
 
     def validateDeviceConfigUi(
         self, valuesDict: indigo.Dict, typeId: str, devId: int
