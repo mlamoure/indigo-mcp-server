@@ -36,19 +36,19 @@ class TestBaseToolHandler:
         mock_logger.info.assert_called_once_with("[test_tool]: test message")
     
     def test_debug_log(self):
-        """Test debug logging with caller information."""
+        """Test debug logging with standardized format."""
         mock_logger = Mock(spec=logging.Logger)
         handler = BaseToolHandler("test_tool", mock_logger)
-        
+
         handler.debug_log("debug message")
-        
-        # Should be called with format: [tool_name] filename:line in function(): message
+
+        # Should be called with format: [tool_name]: message
         assert mock_logger.debug.called
         call_args = mock_logger.debug.call_args[0][0]
         assert "[test_tool]" in call_args
         assert "debug message" in call_args
-        assert ".py:" in call_args  # Should contain filename and line
-        assert "in test_debug_log():" in call_args  # Should contain function name
+        # Verify the exact expected format
+        assert call_args == "[test_tool]: debug message"
     
     def test_warning_log(self):
         """Test standardized warning logging."""

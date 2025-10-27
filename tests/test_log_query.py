@@ -260,9 +260,12 @@ class TestLogQueryHandler:
 
         # Assert
         assert result["success"] is True
-        handler.logger.info.assert_called()
-        # Check that logging was called for both the attempt and success
-        assert handler.logger.info.call_count >= 2
+        handler.logger.info.assert_called_once()
+        # Verify the log message includes operation success and entry count
+        log_message = handler.logger.info.call_args[0][0]
+        assert "query" in log_message.lower()
+        assert "completed successfully" in log_message
+        assert str(len(mock_log_entries)) in log_message
 
     def test_logging_error(self, handler):
         """Test that errors are logged."""

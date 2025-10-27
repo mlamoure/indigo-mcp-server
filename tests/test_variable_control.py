@@ -279,15 +279,18 @@ class TestVariableControlHandler:
             "previous": "old_value",
             "current": "test_value"
         })
-        
+
         # Act
         result = handler.update(variable_id, new_value)
-        
+
         # Assert
         assert "error" not in result
-        handler.logger.info.assert_called()
-        # Check that logging was called for both the attempt and success
-        assert handler.logger.info.call_count >= 2
+        handler.logger.info.assert_called_once()
+        # Verify the log message includes variable ID and value change
+        log_message = handler.logger.info.call_args[0][0]
+        assert "54321" in log_message  # Variable ID
+        assert "→" in log_message  # Arrow indicating change
+        assert "test_value" in log_message  # New value
     
     def test_logging_error(self, handler):
         """Test that errors are logged."""
@@ -304,7 +307,12 @@ class TestVariableControlHandler:
 
         # Assert
         assert "error" in result
-        handler.logger.error.assert_called_once()
+        # variable_control uses info_log for errors too (with ❌ emoji)
+        handler.logger.info.assert_called_once()
+        # Verify the log message includes the error with emoji
+        log_message = handler.logger.info.call_args[0][0]
+        assert "❌" in log_message
+        assert error_message in log_message
 
 
 class TestVariableCreationHandler:
@@ -586,8 +594,13 @@ class TestVariableCreationHandler:
 
         # Assert
         assert "error" not in result
-        handler.logger.info.assert_called()
-        assert handler.logger.info.call_count >= 2
+        handler.logger.info.assert_called_once()
+        # Verify the log message includes operation success with emoji
+        log_message = handler.logger.info.call_args[0][0]
+        assert "✅" in log_message  # Success emoji
+        assert "Created variable" in log_message
+        assert name in log_message
+        assert str(expected_id) in log_message
 
     def test_create_variable_logging_error(self, handler):
         """Test that errors during variable creation are logged."""
@@ -603,4 +616,9 @@ class TestVariableCreationHandler:
 
         # Assert
         assert "error" in result
-        handler.logger.error.assert_called_once()
+        # variable_control uses info_log for errors too (with ❌ emoji)
+        handler.logger.info.assert_called_once()
+        # Verify the log message includes the error with emoji
+        log_message = handler.logger.info.call_args[0][0]
+        assert "❌" in log_message
+        assert error_message in log_message

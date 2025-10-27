@@ -214,57 +214,72 @@ class TestActionControlHandler:
         """Test that immediate execution is logged correctly."""
         # Arrange
         action_group_id = 67890
+        handler.data_provider.get_action_group = Mock(return_value={
+            "id": action_group_id,
+            "name": "Test Action Group"
+        })
         handler.data_provider.execute_action_group = Mock(return_value={
             "success": True,
             "job_id": None
         })
-        
+
         # Act
         result = handler.execute(action_group_id)
-        
+
         # Assert
         assert result["success"] is True
         handler.logger.info.assert_called()
-        # Check that logging was called for both the attempt and success
+        # Check that logging includes the action name with play emoji (no delay string)
         log_calls = [call.args[0] for call in handler.logger.info.call_args_list]
-        assert any("(immediate)" in call for call in log_calls)
+        assert any("▶️ Test Action Group" in call and "(delay:" not in call for call in log_calls)
     
     def test_logging_delayed_execution(self, handler):
         """Test that delayed execution is logged correctly."""
         # Arrange
         action_group_id = 67890
         delay = 10
+        handler.data_provider.get_action_group = Mock(return_value={
+            "id": action_group_id,
+            "name": "Test Action Group"
+        })
         handler.data_provider.execute_action_group = Mock(return_value={
             "success": True,
             "job_id": None
         })
-        
+
         # Act
         result = handler.execute(action_group_id, delay)
-        
+
         # Assert
         assert result["success"] is True
         handler.logger.info.assert_called()
-        # Check that logging mentions the delay
+        # Check that logging mentions the delay with current format
         log_calls = [call.args[0] for call in handler.logger.info.call_args_list]
-        assert any(f"(delayed {delay}s)" in call for call in log_calls)
+        assert any(f"▶️ Test Action Group (delay: {delay}s)" in call for call in log_calls)
     
     def test_logging_error(self, handler):
         """Test that errors are logged."""
         # Arrange
         action_group_id = 67890
         error_message = "Action group not found"
+        handler.data_provider.get_action_group = Mock(return_value={
+            "id": action_group_id,
+            "name": "Test Action Group"
+        })
         handler.data_provider.execute_action_group = Mock(return_value={
             "error": error_message,
             "success": False
         })
-        
+
         # Act
         result = handler.execute(action_group_id)
-        
+
         # Assert
         assert result["success"] is False
-        handler.logger.error.assert_called_once()
+        handler.logger.info.assert_called()
+        # Check that logging includes error emoji and error message
+        log_calls = [call.args[0] for call in handler.logger.info.call_args_list]
+        assert any(f"❌ Test Action Group: {error_message}" in call for call in log_calls)
     
     def test_logging_exception(self, handler):
         """Test that exceptions are logged."""
