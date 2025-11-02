@@ -445,57 +445,25 @@ class Plugin(indigo.PluginBase):
             "",
             "⚠️  AUTHENTICATION REQUIRED: All configurations require a Bearer token with an Indigo API key.",
             "",
-            "📚 How to obtain API keys:",
-            "  • Local/LAN access: Create a secrets.json file with local secrets",
+            "📚 In all cases, you will need an API Key. For this, you have two choices:",
+            "  • Indigo Reflector API Key: Obtained from your Reflector settings",
+            "  • Local Secret: Created in secrets.json file",
             "    Location: /Library/Application Support/Perceptive Automation/Indigo [VERSION]/Preferences/secrets.json",
             "    Details: https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets",
             "    Note: Restart Indigo Web Server after creating/modifying this file",
-            "  • Remote access: Use your Indigo Reflector API key",
             "",
             "=" * 80,
             "",
-            "🔧 SCENARIO 1: HTTP on Local/LAN (Recommended for local access)",
-            "   • Protocol: http://",
-            "   • Security: Safe on localhost/LAN (traffic never leaves local network)",
-            "   • Requires: --allow-http flag + Bearer token with local secret",
+            "🔧 SCENARIO 1: HTTPS via Reflector (Most Common, Enables remote access outside your home)",
+            "   • Use when: Accessing Indigo from outside your local network",
+            "   • Security: Encrypted connection with valid SSL certificate",
             ""
         ]
 
-        # Find localhost URL for Scenario 1
-        localhost_url = next((u for u in urls if u['label'] == 'Local'), None)
-        if localhost_url:
-            scenario1_config = {
-                "mcpServers": {
-                    "indigo": {
-                        "command": "npx",
-                        "args": [
-                            "-y",
-                            "mcp-remote",
-                            localhost_url['url'],
-                            "--allow-http",
-                            "--header",
-                            "Authorization:Bearer YOUR_LOCAL_SECRET_KEY"
-                        ]
-                    }
-                }
-            }
-            config_lines.append(json.dumps(scenario1_config, indent=2))
-            config_lines.extend(["", ""])
-
-        config_lines.extend([
-            "=" * 80,
-            "",
-            "🔧 SCENARIO 2: HTTPS via Reflector (Remote access)",
-            "   • Protocol: https://",
-            "   • Security: Encrypted remote access with valid SSL certificate",
-            "   • Requires: Bearer token with Reflector API key",
-            ""
-        ])
-
-        # Find reflector URL for Scenario 2
+        # Find reflector URL for Scenario 1
         reflector_url = next((u for u in urls if u['label'] == 'Remote (Reflector)'), None)
         if reflector_url:
-            scenario2_config = {
+            scenario1_config = {
                 "mcpServers": {
                     "indigo": {
                         "command": "npx",
@@ -509,7 +477,8 @@ class Plugin(indigo.PluginBase):
                     }
                 }
             }
-            config_lines.append(json.dumps(scenario2_config, indent=2))
+            config_lines.append(json.dumps(scenario1_config, indent=2))
+            config_lines.extend(["", "Setup:", "  1. Configure Indigo Reflector in Web Server Settings", "  2. Use your Reflector API key", "  3. Replace YOUR_REFLECTOR_API_KEY with your Reflector API key", ""])
         else:
             config_lines.extend([
                 "⚠️  Reflector not configured. Configure at Indigo > Web Server Settings > Reflector",
@@ -520,20 +489,16 @@ class Plugin(indigo.PluginBase):
         config_lines.extend([
             "=" * 80,
             "",
-            "🔧 SCENARIO 3: HTTPS on LAN with Self-Signed Certificate (Advanced)",
-            "   • Protocol: https://",
-            "   • Security: Requires disabling certificate validation (NODE_TLS_REJECT_UNAUTHORIZED=0)",
-            "   • Requires: Bearer token with local secret",
-            "   • Use case: When HTTPS is required on local network (less common)",
+            "🔧 SCENARIO 2: HTTPS on LAN with Self-Signed Certificate",
             ""
         ])
 
-        # Find IP or hostname URL for Scenario 3
+        # Find IP or hostname URL for Scenario 2
         network_url = next((u for u in urls if u['label'] in ['Network (IP)', 'Network (hostname)']), None)
         if network_url:
             # Convert HTTP URL to HTTPS for this scenario
             https_url = network_url['url'].replace('http://', 'https://')
-            scenario3_config = {
+            scenario2_config = {
                 "mcpServers": {
                     "indigo": {
                         "command": "npx",
@@ -550,16 +515,50 @@ class Plugin(indigo.PluginBase):
                     }
                 }
             }
+            config_lines.append(json.dumps(scenario2_config, indent=2))
+            config_lines.extend(["", "Setup:", "  1. Create a local secret (see documentation link above)", "  2. Replace YOUR_LOCAL_SECRET_KEY with your generated local secret", "  3. NODE_TLS_REJECT_UNAUTHORIZED=0 disables certificate validation (required)", ""])
+        config_lines.extend(["", ""])
+
+        config_lines.extend([
+            "=" * 80,
+            "",
+            "🔧 SCENARIO 3: HTTP on Local/LAN",
+            "   • Use when: HTTPS is disabled on your Indigo Web Server",
+            ""
+        ])
+
+        # Find localhost URL for Scenario 3
+        localhost_url = next((u for u in urls if u['label'] == 'Local'), None)
+        if localhost_url:
+            scenario3_config = {
+                "mcpServers": {
+                    "indigo": {
+                        "command": "npx",
+                        "args": [
+                            "-y",
+                            "mcp-remote",
+                            localhost_url['url'],
+                            "--allow-http",
+                            "--header",
+                            "Authorization:Bearer YOUR_LOCAL_SECRET_KEY"
+                        ]
+                    }
+                }
+            }
             config_lines.append(json.dumps(scenario3_config, indent=2))
+            config_lines.extend(["", "Setup:", "  1. Create a local secret (see documentation link above)", "  2. Replace YOUR_LOCAL_SECRET_KEY with your generated local secret", "  3. Replace localhost with your server IP/hostname for LAN access", ""])
         config_lines.extend(["", ""])
 
         config_lines.extend([
             "=" * 80,
             "",
             "💡 Quick Start Guide:",
-            "   1. Choose a scenario that matches your use case",
-            "   2. Generate an API key (local secret or Reflector key)",
-            "   3. Replace YOUR_LOCAL_SECRET_KEY or YOUR_REFLECTOR_API_KEY with your actual key",
+            "   1. Choose a scenario:",
+            "      • Scenario 1: Remote access (most common)",
+            "      • Scenario 2: Local network with HTTPS",
+            "      • Scenario 3: Local network with HTTP",
+            "   2. Generate an API key (Reflector key or local secret)",
+            "   3. Replace YOUR_REFLECTOR_API_KEY or YOUR_LOCAL_SECRET_KEY with your actual key",
             "   4. Save to: ~/Library/Application Support/Claude/claude_desktop_config.json",
             "   5. Restart Claude Desktop",
             "",
