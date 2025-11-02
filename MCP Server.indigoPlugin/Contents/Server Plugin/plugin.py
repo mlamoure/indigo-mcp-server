@@ -13,7 +13,6 @@ import logging
 import os
 import platform
 import socket
-import subprocess
 
 import openai
 
@@ -177,62 +176,30 @@ class Plugin(indigo.PluginBase):
 
     def check_cpu_compatibility(self) -> bool:
         """
-        Check if the CPU supports AVX2 instructions required by LanceDB.
+        Check and log CPU architecture information.
 
-        LanceDB requires Intel Haswell (2013+) or Apple Silicon processors.
+        Note: LanceDB requires Intel Haswell (2013+) or Apple Silicon processors with AVX2 support.
+        However, this check is informational only - the plugin will attempt to start regardless.
 
         Returns:
-            True if CPU is compatible, False otherwise
+            Always returns True to allow plugin to start
         """
         machine = platform.machine()
 
         # Apple Silicon Macs are always compatible
         if machine == 'arm64':
-            self.logger.debug("✅ Apple Silicon detected - CPU compatible")
+            self.logger.debug("✅ Apple Silicon detected (M1/M2/M3/M4)")
             return True
 
-        # Check x86_64 Macs for AVX2 support
+        # Log info for Intel Macs
         if machine == 'x86_64':
-            try:
-                result = subprocess.run(
-                    ['sysctl', '-n', 'machdep.cpu.leaf7_features'],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
+            self.logger.info("Intel Mac detected - LanceDB requires AVX2 CPU support (Intel Haswell 2013+ or newer)")
+            self.logger.info("If the plugin fails to start, your CPU may not support AVX2 instructions")
+            return True
 
-                if result.returncode == 0 and 'AVX2' in result.stdout:
-                    self.logger.debug("✅ AVX2 support detected - CPU compatible")
-                    return True
-                else:
-                    self.logger.error("❌ CPU Compatibility Error: AVX2 instruction set not supported")
-                    self.logger.error("")
-                    self.logger.error("   This plugin requires a CPU with AVX2 support (Intel Haswell or newer, 2013+)")
-                    self.logger.error("")
-                    self.logger.error("   Incompatible Systems:")
-                    self.logger.error("   • 2012-2013 Intel Macs (Ivy Bridge or older)")
-                    self.logger.error("   • 2013 Mac Pro (MacPro6,1 'trash can')")
-                    self.logger.error("")
-                    self.logger.error("   Compatible Systems:")
-                    self.logger.error("   • Mid-2013 MacBook Air/Pro and later (Haswell+)")
-                    self.logger.error("   • Late-2013 iMac and later")
-                    self.logger.error("   • 2019 Mac Pro and later")
-                    self.logger.error("   • All Apple Silicon Macs (M1/M2/M3/M4)")
-                    self.logger.error("")
-                    self.logger.error("   For more information, see: https://github.com/mlamoure/indigo-mcp-server#system-requirements")
-                    return False
-
-            except subprocess.TimeoutExpired:
-                self.logger.warning("⚠️ CPU compatibility check timed out - assuming compatible")
-                return True
-            except Exception as e:
-                self.logger.warning(f"⚠️ Could not check CPU compatibility: {e}")
-                self.logger.warning("   Assuming CPU is compatible. If plugin fails, check system requirements.")
-                return True
-
-        # Unknown architecture - assume compatible with warning
+        # Unknown architecture - log warning but continue
         self.logger.warning(f"⚠️ Unknown CPU architecture: {machine}")
-        self.logger.warning("   Assuming CPU is compatible. If plugin fails, check system requirements.")
+        self.logger.warning("   Plugin will attempt to start. If it fails, check system requirements.")
         return True
 
     def _get_mcp_client_urls(self) -> list:
@@ -334,11 +301,8 @@ class Plugin(indigo.PluginBase):
             self.logger.error("\t❌ Required service connections failed - startup aborted")
             return
 
-        # Check CPU compatibility before loading LanceDB
-        if not self.check_cpu_compatibility():
-            self.logger.error("\t❌ CPU compatibility check failed - startup aborted")
-            self.logger.error("\t   Plugin cannot initialize without AVX2 CPU support")
-            return
+        # Log CPU architecture information
+        self.check_cpu_compatibility()
 
         # Set OpenAI API key in environment for the modules to use
         os.environ["OPENAI_API_KEY"] = self.openai_api_key
