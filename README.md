@@ -52,10 +52,11 @@ The MCP Server Indigo device is what creates the actual MCP Server.
 
 **How to obtain API keys:**
 
-- **Local/LAN access**: Create a `secrets.json` file with [local secrets](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets)
-  - Location: `/Library/Application Support/Perceptive Automation/Indigo [VERSION]/Preferences/secrets.json`
-  - See documentation link above for JSON format details
-  - Note: Restart Indigo Web Server after creating/modifying this file
+- **Local/LAN access**: Create a `secrets.json` file
+  with [local secrets](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets)
+    - Location: `/Library/Application Support/Perceptive Automation/Indigo [VERSION]/Preferences/secrets.json`
+    - See documentation link above for JSON format details
+    - Note: Restart Indigo Web Server after creating/modifying this file
 - **Remote access**: Use your Indigo Reflector API key from your Reflector settings
 
 ### Claude Desktop / MCP Client Configuration
@@ -66,7 +67,8 @@ For Claude Desktop -- Add one of the following configurations to
 In all cases, you will need an API Key. For this, you have two choices:
 
 - **Indigo Reflector API Key**: Obtained from your Reflector settings
-- **Local Secret**: Created in `secrets.json` file (see [documentation](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets))
+- **Local Secret**: Created in `secrets.json` file (
+  see [documentation](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets))
 
 #### Scenario 1: HTTPS via Reflector (Most Common, Enables remote access outside your home)
 
@@ -109,7 +111,7 @@ In all cases, you will need an API Key. For this, you have two choices:
       "args": [
         "-y",
         "mcp-remote",
-        "https://192.168.1.100:8176/message/com.vtmikel.mcp_server/mcp/",
+        "https://your-local-hostname-or-ip:8176/message/com.vtmikel.mcp_server/mcp/",
         "--header",
         "Authorization:Bearer YOUR_LOCAL_SECRET_KEY"
       ],
@@ -123,10 +125,11 @@ In all cases, you will need an API Key. For this, you have two choices:
 
 **Setup:**
 
-1. Create a local secret (see [local secrets documentation](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets))
-   - Create/edit: `/Library/Application Support/Perceptive Automation/Indigo [VERSION]/Preferences/secrets.json`
-   - Restart Indigo Web Server after modifying
-2. Replace `192.168.1.100` with your Indigo server IP/hostname
+1. Create a local secret (
+   see [local secrets documentation](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets))
+    - Create/edit: `/Library/Application Support/Perceptive Automation/Indigo [VERSION]/Preferences/secrets.json`
+    - Restart Indigo Web Server after modifying
+2. Replace `your-local-hostname-or-ip` with your Indigo server IP/hostname
 3. Replace `YOUR_LOCAL_SECRET_KEY` with your generated local secret
 4. `NODE_TLS_REJECT_UNAUTHORIZED=0` disables certificate validation (required for self-signed certs)
 5. Replace port 8176 if you are not using the default Indigo Web Server port
@@ -143,7 +146,7 @@ If you have HTTPS disabled on your Indigo Web Server.
       "args": [
         "-y",
         "mcp-remote",
-        "http://localhost:8176/message/com.vtmikel.mcp_server/mcp/",
+        "http://your-local-hostname-or-ip:8176/message/com.vtmikel.mcp_server/mcp/",
         "--allow-http",
         "--header",
         "Authorization:Bearer YOUR_LOCAL_SECRET_KEY"
@@ -155,11 +158,12 @@ If you have HTTPS disabled on your Indigo Web Server.
 
 **Setup:**
 
-1. Create a local secret (see [local secrets documentation](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets))
-   - Create/edit: `/Library/Application Support/Perceptive Automation/Indigo [VERSION]/Preferences/secrets.json`
-   - Restart Indigo Web Server after modifying
+1. Create a local secret (
+   see [local secrets documentation](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets))
+    - Create/edit: `/Library/Application Support/Perceptive Automation/Indigo [VERSION]/Preferences/secrets.json`
+    - Restart Indigo Web Server after modifying
 2. Replace `YOUR_LOCAL_SECRET_KEY` with your generated local secret
-3. Replace `localhost` with your server IP/hostname for LAN access
+3. Replace `your-local-hostname-or-ip` with your server IP/hostname for LAN access
 4. Replace port 8176 if you are not using the default Indigo Web Server port
 
 ## Available Tools
