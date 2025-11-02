@@ -548,23 +548,6 @@ class Plugin(indigo.PluginBase):
             config_lines.extend(["", "Setup:", "  1. Create a local secret (see documentation link above)", "  2. Replace YOUR_LOCAL_SECRET_KEY with your generated local secret", "  3. Replace your-local-hostname-or-ip with your server IP/hostname for LAN access", "  4. Replace port 8176 if you are not using the default Indigo Web Server port", ""])
         config_lines.extend(["", ""])
 
-        config_lines.extend([
-            "=" * 80,
-            "",
-            "💡 Quick Start Guide:",
-            "   1. Choose a scenario:",
-            "      • Scenario 1: Remote access (most common)",
-            "      • Scenario 2: Local network with HTTPS",
-            "      • Scenario 3: Local network with HTTP",
-            "   2. Generate an API key (Reflector key or local secret)",
-            "   3. Replace YOUR_REFLECTOR_API_KEY or YOUR_LOCAL_SECRET_KEY with your actual key",
-            "   4. Save to: ~/Library/Application Support/Claude/claude_desktop_config.json",
-            "   5. Restart Claude Desktop",
-            "",
-            "📖 For more information, see the plugin README.md file",
-            ""
-        ])
-
         self.logger.info("\n".join(config_lines))
 
     def test_connections_button(self, values_dict: indigo.Dict) -> indigo.Dict:
