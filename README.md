@@ -51,47 +51,27 @@ The MCP Server Indigo device is what creates the actual MCP Server.
 ⚠️ **IMPORTANT**: All MCP connections require authentication using an Indigo API key as a Bearer token.
 
 **How to obtain API keys:**
-- **Local/LAN access**: Create a [local secret](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets) at Indigo > Web Server Settings > Local Secrets
+
+- **Local/LAN access**: Create a `secrets.json` file with [local secrets](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets)
+  - Location: `/Library/Application Support/Perceptive Automation/Indigo [VERSION]/Preferences/secrets.json`
+  - See documentation link above for JSON format details
+  - Note: Restart Indigo Web Server after creating/modifying this file
 - **Remote access**: Use your Indigo Reflector API key from your Reflector settings
 
-### Claude Desktop Configuration
+### Claude Desktop / MCP Client Configuration
 
-Add one of the following configurations to `~/Library/Application Support/Claude/claude_desktop_config.json` based on your use case:
+For Claude Desktop -- Add one of the following configurations to
+`~/Library/Application Support/Claude/claude_desktop_config.json` based on your use case:
 
-#### Scenario 1: HTTP on Local/LAN (Recommended for Local Access)
+In all cases, you will need an API Key. For this, you have two choices:
 
-**Use when:**
-- Running Claude Desktop on the same machine as Indigo
-- Accessing from your local network
-- Security: HTTP is safe on localhost/LAN (traffic never leaves local network)
+- **Indigo Reflector API Key**: Obtained from your Reflector settings
+- **Local Secret**: Created in `secrets.json` file (see [documentation](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets))
 
-```json
-{
-  "mcpServers": {
-    "indigo": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-remote",
-        "http://localhost:8176/message/com.vtmikel.mcp_server/mcp/",
-        "--allow-http",
-        "--header",
-        "Authorization:Bearer YOUR_LOCAL_SECRET_KEY"
-      ]
-    }
-  }
-}
-```
-
-**Setup:**
-1. Create a local secret in Indigo Web Server Settings
-2. Replace `YOUR_LOCAL_SECRET_KEY` with your generated local secret
-3. Replace `localhost` with your server IP/hostname for LAN access
-4. Port 8176 is the default Indigo Web Server port
-
-#### Scenario 2: HTTPS via Reflector (Remote Access)
+#### Scenario 1: HTTPS via Reflector (Most Common, Enables remote access outside your home)
 
 **Use when:**
+
 - Accessing Indigo from outside your local network
 - Security: Encrypted connection with valid SSL certificate
 
@@ -113,17 +93,13 @@ Add one of the following configurations to `~/Library/Application Support/Claude
 ```
 
 **Setup:**
+
 1. Configure Indigo Reflector in Web Server Settings
 2. Use your Reflector API key
 3. Replace `your-reflector-url.indigodomo.net` with your actual Reflector URL
 4. Replace `YOUR_REFLECTOR_API_KEY` with your Reflector API key
 
-#### Scenario 3: HTTPS on LAN with Self-Signed Certificate (Advanced)
-
-**Use when:**
-- HTTPS is required on local network
-- Using Indigo's self-signed SSL certificate
-- Note: Less common, most users should use Scenario 1
+#### Scenario 2: HTTPS on LAN with Self-Signed Certificate
 
 ```json
 {
@@ -146,10 +122,45 @@ Add one of the following configurations to `~/Library/Application Support/Claude
 ```
 
 **Setup:**
-1. Create a local secret in Indigo Web Server Settings
+
+1. Create a local secret (see [local secrets documentation](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets))
+   - Create/edit: `/Library/Application Support/Perceptive Automation/Indigo [VERSION]/Preferences/secrets.json`
+   - Restart Indigo Web Server after modifying
 2. Replace `192.168.1.100` with your Indigo server IP/hostname
 3. Replace `YOUR_LOCAL_SECRET_KEY` with your generated local secret
 4. `NODE_TLS_REJECT_UNAUTHORIZED=0` disables certificate validation (required for self-signed certs)
+5. Replace port 8176 if you are not using the default Indigo Web Server port
+
+#### Scenario 3: HTTP on Local/LAN
+
+If you have HTTPS disabled on your Indigo Web Server.
+
+```json
+{
+  "mcpServers": {
+    "indigo": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "http://localhost:8176/message/com.vtmikel.mcp_server/mcp/",
+        "--allow-http",
+        "--header",
+        "Authorization:Bearer YOUR_LOCAL_SECRET_KEY"
+      ]
+    }
+  }
+}
+```
+
+**Setup:**
+
+1. Create a local secret (see [local secrets documentation](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets))
+   - Create/edit: `/Library/Application Support/Perceptive Automation/Indigo [VERSION]/Preferences/secrets.json`
+   - Restart Indigo Web Server after modifying
+2. Replace `YOUR_LOCAL_SECRET_KEY` with your generated local secret
+3. Replace `localhost` with your server IP/hostname for LAN access
+4. Replace port 8176 if you are not using the default Indigo Web Server port
 
 ## Available Tools
 
@@ -196,9 +207,11 @@ Add one of the following configurations to `~/Library/Application Support/Claude
 
 ### Data Sent to OpenAI
 
-When you first install the plugin and when devices are added or modified, the following device information is sent to OpenAI to create semantic search capabilities:
+When you first install the plugin and when devices are added or modified, the following device information is sent to
+OpenAI to create semantic search capabilities:
 
 **For Devices:**
+
 - Device name
 - Device description (Notes field)
 - Device model
@@ -206,20 +219,24 @@ When you first install the plugin and when devices are added or modified, the fo
 - Device address
 
 **For Variables:**
+
 - Variable name
 - Variable description
 
 **For Action Groups:**
+
 - Action group name
 - Action group description
 
 **What is NOT sent:**
+
 - Device states or current values
 - URLs, passwords, or authentication credentials
 - IP addresses or network configuration
 - Historical data or usage patterns
 
-This data is used only to generate embeddings (mathematical representations) that enable natural language search. The embeddings are stored locally on your Indigo server.
+This data is used only to generate embeddings (mathematical representations) that enable natural language search. The
+embeddings are stored locally on your Indigo server.
 
 ### Network Security
 
