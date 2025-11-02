@@ -516,7 +516,7 @@ class Plugin(indigo.PluginBase):
                 }
             }
             config_lines.append(json.dumps(scenario2_config, indent=2))
-            config_lines.extend(["", "Setup:", "  1. Create a local secret (see documentation link above)", "  2. Replace YOUR_LOCAL_SECRET_KEY with your generated local secret", "  3. NODE_TLS_REJECT_UNAUTHORIZED=0 disables certificate validation (required)", ""])
+            config_lines.extend(["", "Setup:", "  1. Create a local secret (see documentation link above)", "  2. Replace your-local-hostname-or-ip with your Indigo server IP/hostname", "  3. Replace YOUR_LOCAL_SECRET_KEY with your generated local secret", "  4. NODE_TLS_REJECT_UNAUTHORIZED=0 disables certificate validation (required)", "  5. Replace port 8176 if you are not using the default Indigo Web Server port", ""])
         config_lines.extend(["", ""])
 
         config_lines.extend([
@@ -527,9 +527,8 @@ class Plugin(indigo.PluginBase):
             ""
         ])
 
-        # Find localhost URL for Scenario 3
-        localhost_url = next((u for u in urls if u['label'] == 'Local'), None)
-        if localhost_url:
+        # Find IP or hostname URL for Scenario 3 (use same network_url as Scenario 2)
+        if network_url:
             scenario3_config = {
                 "mcpServers": {
                     "indigo": {
@@ -537,7 +536,7 @@ class Plugin(indigo.PluginBase):
                         "args": [
                             "-y",
                             "mcp-remote",
-                            localhost_url['url'],
+                            network_url['url'],
                             "--allow-http",
                             "--header",
                             "Authorization:Bearer YOUR_LOCAL_SECRET_KEY"
@@ -546,7 +545,7 @@ class Plugin(indigo.PluginBase):
                 }
             }
             config_lines.append(json.dumps(scenario3_config, indent=2))
-            config_lines.extend(["", "Setup:", "  1. Create a local secret (see documentation link above)", "  2. Replace YOUR_LOCAL_SECRET_KEY with your generated local secret", "  3. Replace localhost with your server IP/hostname for LAN access", ""])
+            config_lines.extend(["", "Setup:", "  1. Create a local secret (see documentation link above)", "  2. Replace YOUR_LOCAL_SECRET_KEY with your generated local secret", "  3. Replace your-local-hostname-or-ip with your server IP/hostname for LAN access", "  4. Replace port 8176 if you are not using the default Indigo Web Server port", ""])
         config_lines.extend(["", ""])
 
         config_lines.extend([
