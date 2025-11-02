@@ -479,26 +479,126 @@ class Plugin(indigo.PluginBase):
         config_lines = [
             "🌐 Claude Desktop MCP Client Connection Information:",
             "",
-            "Add one of the following configurations to your claude_desktop_config.json file.",
-            "Choose the connection method that best fits your needs:",
+            "⚠️  AUTHENTICATION REQUIRED: All configurations require a Bearer token with an Indigo API key.",
+            "",
+            "📚 How to obtain API keys:",
+            "  • Local/LAN access: Create a local secret at Indigo > Web Server Settings > Local Secrets",
+            "    https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets",
+            "  • Remote access: Use your Indigo Reflector API key",
+            "",
+            "=" * 80,
+            "",
+            "🔧 SCENARIO 1: HTTP on Local/LAN (Recommended for local access)",
+            "   • Protocol: http://",
+            "   • Security: Safe on localhost/LAN (traffic never leaves local network)",
+            "   • Requires: --allow-http flag + Bearer token with local secret",
             ""
         ]
 
-        # Display each connection option
-        for url_info in urls:
-            config_json = json.dumps(url_info["config"], indent=2)
-            config_lines.extend([
-                f"📍 {url_info['label']}: {url_info['url']}",
-                config_json,
-                ""
-            ])
+        # Find localhost URL for Scenario 1
+        localhost_url = next((u for u in urls if u['label'] == 'Local'), None)
+        if localhost_url:
+            scenario1_config = {
+                "mcpServers": {
+                    "indigo": {
+                        "command": "npx",
+                        "args": [
+                            "-y",
+                            "mcp-remote",
+                            localhost_url['url'],
+                            "--allow-http",
+                            "--header",
+                            "Authorization:Bearer YOUR_LOCAL_SECRET_KEY"
+                        ]
+                    }
+                }
+            }
+            config_lines.append(json.dumps(scenario1_config, indent=2))
+            config_lines.extend(["", ""])
 
         config_lines.extend([
-            "💡 Connection Guide:",
-            "  • Local: Use when Claude Code runs on the same machine as Indigo",
-            "  • Network (hostname): Use for local network access with hostname",
-            "  • Network (IP): Use for local network access with IP address",
-            "  • Remote (Reflector): Use for remote access through Indigo Reflector",
+            "=" * 80,
+            "",
+            "🔧 SCENARIO 2: HTTPS via Reflector (Remote access)",
+            "   • Protocol: https://",
+            "   • Security: Encrypted remote access with valid SSL certificate",
+            "   • Requires: Bearer token with Reflector API key",
+            ""
+        ])
+
+        # Find reflector URL for Scenario 2
+        reflector_url = next((u for u in urls if u['label'] == 'Remote (Reflector)'), None)
+        if reflector_url:
+            scenario2_config = {
+                "mcpServers": {
+                    "indigo": {
+                        "command": "npx",
+                        "args": [
+                            "-y",
+                            "mcp-remote",
+                            reflector_url['url'],
+                            "--header",
+                            "Authorization:Bearer YOUR_REFLECTOR_API_KEY"
+                        ]
+                    }
+                }
+            }
+            config_lines.append(json.dumps(scenario2_config, indent=2))
+        else:
+            config_lines.extend([
+                "⚠️  Reflector not configured. Configure at Indigo > Web Server Settings > Reflector",
+                "   Example URL: https://your-reflector-url.indigodomo.net/message/com.vtmikel.mcp_server/mcp/"
+            ])
+        config_lines.extend(["", ""])
+
+        config_lines.extend([
+            "=" * 80,
+            "",
+            "🔧 SCENARIO 3: HTTPS on LAN with Self-Signed Certificate (Advanced)",
+            "   • Protocol: https://",
+            "   • Security: Requires disabling certificate validation (NODE_TLS_REJECT_UNAUTHORIZED=0)",
+            "   • Requires: Bearer token with local secret",
+            "   • Use case: When HTTPS is required on local network (less common)",
+            ""
+        ])
+
+        # Find IP or hostname URL for Scenario 3
+        network_url = next((u for u in urls if u['label'] in ['Network (IP)', 'Network (hostname)']), None)
+        if network_url:
+            # Convert HTTP URL to HTTPS for this scenario
+            https_url = network_url['url'].replace('http://', 'https://')
+            scenario3_config = {
+                "mcpServers": {
+                    "indigo": {
+                        "command": "npx",
+                        "args": [
+                            "-y",
+                            "mcp-remote",
+                            https_url,
+                            "--header",
+                            "Authorization:Bearer YOUR_LOCAL_SECRET_KEY"
+                        ],
+                        "env": {
+                            "NODE_TLS_REJECT_UNAUTHORIZED": "0"
+                        }
+                    }
+                }
+            }
+            config_lines.append(json.dumps(scenario3_config, indent=2))
+        config_lines.extend(["", ""])
+
+        config_lines.extend([
+            "=" * 80,
+            "",
+            "💡 Quick Start Guide:",
+            "   1. Choose a scenario that matches your use case",
+            "   2. Generate an API key (local secret or Reflector key)",
+            "   3. Replace YOUR_LOCAL_SECRET_KEY or YOUR_REFLECTOR_API_KEY with your actual key",
+            "   4. Save to: ~/Library/Application Support/Claude/claude_desktop_config.json",
+            "   5. Restart Claude Desktop",
+            "",
+            "📖 For more information, see the plugin README.md file",
+            ""
         ])
 
         self.logger.info("\n".join(config_lines))

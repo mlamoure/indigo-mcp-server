@@ -55,15 +55,27 @@ If this command returns "AVX2", your Mac is compatible.
 
 The MCP Server Indigo device is what creates the actual MCP Server.
 
-- **Server Access**: Local Only or Remote Access
+- **Server Access**: Configured via MCP Server device in Indigo
 - **Single Server**: Plugin enforces one MCP Server device per installation
 
-A note on security: Do not expose the MCP Server to internet. It was not designed for this purpose. In the future I may
-implement the required security features, but will likely require collaboration with the Indigo devs.
+### Authentication & Security
+
+⚠️ **IMPORTANT**: All MCP connections require authentication using an Indigo API key as a Bearer token.
+
+**How to obtain API keys:**
+- **Local/LAN access**: Create a [local secret](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets) at Indigo > Web Server Settings > Local Secrets
+- **Remote access**: Use your Indigo Reflector API key from your Reflector settings
 
 ### Claude Desktop Configuration
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Add one of the following configurations to `~/Library/Application Support/Claude/claude_desktop_config.json` based on your use case:
+
+#### Scenario 1: HTTP on Local/LAN (Recommended for Local Access)
+
+**Use when:**
+- Running Claude Desktop on the same machine as Indigo
+- Accessing from your local network
+- Security: HTTP is safe on localhost/LAN (traffic never leaves local network)
 
 ```json
 {
@@ -71,15 +83,85 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
     "indigo": {
       "command": "npx",
       "args": [
+        "-y",
         "mcp-remote",
-        "http://localhost:8080/message/com.vtmikel.mcp_server/mcp/"
+        "http://localhost:8176/message/com.vtmikel.mcp_server/mcp/",
+        "--allow-http",
+        "--header",
+        "Authorization:Bearer YOUR_LOCAL_SECRET_KEY"
       ]
     }
   }
 }
 ```
 
-Replace `localhost` with your server IP for remote access, and `8080` with your configured port.
+**Setup:**
+1. Create a local secret in Indigo Web Server Settings
+2. Replace `YOUR_LOCAL_SECRET_KEY` with your generated local secret
+3. Replace `localhost` with your server IP/hostname for LAN access
+4. Port 8176 is the default Indigo Web Server port
+
+#### Scenario 2: HTTPS via Reflector (Remote Access)
+
+**Use when:**
+- Accessing Indigo from outside your local network
+- Security: Encrypted connection with valid SSL certificate
+
+```json
+{
+  "mcpServers": {
+    "indigo": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://your-reflector-url.indigodomo.net/message/com.vtmikel.mcp_server/mcp/",
+        "--header",
+        "Authorization:Bearer YOUR_REFLECTOR_API_KEY"
+      ]
+    }
+  }
+}
+```
+
+**Setup:**
+1. Configure Indigo Reflector in Web Server Settings
+2. Use your Reflector API key
+3. Replace `your-reflector-url.indigodomo.net` with your actual Reflector URL
+4. Replace `YOUR_REFLECTOR_API_KEY` with your Reflector API key
+
+#### Scenario 3: HTTPS on LAN with Self-Signed Certificate (Advanced)
+
+**Use when:**
+- HTTPS is required on local network
+- Using Indigo's self-signed SSL certificate
+- Note: Less common, most users should use Scenario 1
+
+```json
+{
+  "mcpServers": {
+    "indigo": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://192.168.1.100:8176/message/com.vtmikel.mcp_server/mcp/",
+        "--header",
+        "Authorization:Bearer YOUR_LOCAL_SECRET_KEY"
+      ],
+      "env": {
+        "NODE_TLS_REJECT_UNAUTHORIZED": "0"
+      }
+    }
+  }
+}
+```
+
+**Setup:**
+1. Create a local secret in Indigo Web Server Settings
+2. Replace `192.168.1.100` with your Indigo server IP/hostname
+3. Replace `YOUR_LOCAL_SECRET_KEY` with your generated local secret
+4. `NODE_TLS_REJECT_UNAUTHORIZED=0` disables certificate validation (required for self-signed certs)
 
 ## Available Tools
 
@@ -153,8 +235,10 @@ This data is used only to generate embeddings (mathematical representations) tha
 
 ### Network Security
 
-- **Local Server**: Binds to localhost by default (configurable via MCP Server device)
-- **No Internet Exposure**: Never expose the HTTP server to internet - it lacks authentication
+- **Authentication Required**: All MCP connections require Bearer token authentication with Indigo API keys
+- **Local Access**: HTTP on localhost/LAN is secure (traffic never leaves local network)
+- **Remote Access**: Use Indigo Reflector for secure remote access with HTTPS and valid SSL certificates
+- **Self-Signed Certificates**: If using HTTPS on LAN, set `NODE_TLS_REJECT_UNAUTHORIZED=0` (see Scenario 3 above)
 
 ## Support
 
