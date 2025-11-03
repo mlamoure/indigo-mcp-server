@@ -21,6 +21,10 @@ Search, analyze, and control your Indigo devices using natural language:
     - Note: LanceDB (used for vector search) requires AVX2 CPU instructions
     - Most Intel Macs from 2013 onwards support AVX2
     - All Apple Silicon Macs are fully supported
+- **Node.js**: Required for MCP client connection ([Download](https://nodejs.org/))
+    - Provides `npx` command used by Claude Desktop configuration
+    - Install via Homebrew: `brew install node`
+    - Or download from [nodejs.org](https://nodejs.org/)
 - **Claude Desktop**: Primary MCP client (ChatGPT support coming to Plus plan)
 - **OpenAI API Key**: Required for semantic search ([Get API key](https://platform.openai.com/api-keys))
     - Sends device metadata to OpenAI for embeddings (minimal cost)
@@ -28,11 +32,15 @@ Search, analyze, and control your Indigo devices using natural language:
 
 ## Installation
 
-1. **Install Plugin**: Add MCP Server plugin to Indigo via Plugin Manager
-2. **Configure Plugin**: Enter OpenAI API key in plugin preferences
-3. **Create MCP Server Device**: Add new "MCP Server" device in Indigo
-4. **Wait for Indexing**: Plugin will index your Indigo database (takes time on first run)
-5. **Configure Claude Desktop**: Add configuration to `claude_desktop_config.json`
+1. **Install Node.js**: If not already installed, install Node.js for `npx` command
+   - Via Homebrew: `brew install node`
+   - Or download from [nodejs.org](https://nodejs.org/)
+   - Verify installation: `npx --version`
+2. **Install Plugin**: Add MCP Server plugin to Indigo via Plugin Manager
+3. **Configure Plugin**: Enter OpenAI API key in plugin preferences
+4. **Create MCP Server Device**: Add new "MCP Server" device in Indigo
+5. **Wait for Indexing**: Plugin will index your Indigo database (takes time on first run)
+6. **Configure Claude Desktop**: Add configuration to `claude_desktop_config.json`
 
 ## Optional Features
 
