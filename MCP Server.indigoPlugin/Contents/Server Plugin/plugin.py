@@ -729,9 +729,9 @@ class Plugin(indigo.PluginBase):
 
             if old_access_mode != new_access_mode:
                 self.logger.info(
-                    f"Access mode changed from {old_access_mode} to {new_access_mode}, restarting server"
+                    f"Access mode changed from {old_access_mode} to {new_access_mode}"
                 )
-                self._restart_mcp_server_from_device(newDev)
+                # No server restart needed - MCP runs via Indigo Web Server
 
             # Device name changes are handled automatically by Indigo
 
@@ -875,17 +875,9 @@ class Plugin(indigo.PluginBase):
                 return
 
             self.logger.info(
-                "✅ Configuration updated successfully. Restarting MCP server with new settings..."
+                "✅ Configuration updated successfully. Changes will take effect on next MCP request."
             )
-            
-            # Restart MCP server automatically with new configuration
-            try:
-                mcp_device = self._get_mcp_server_device()
-                if mcp_device:
-                    self._restart_mcp_server_from_device(mcp_device)
-                    self.logger.info("✅ MCP server restarted successfully with new configuration.")
-                else:
-                    self.logger.info("No MCP Server Indigo Device Found. Create a MCP Server via the New Device Button.")
-            except Exception as e:
-                self.logger.error(f"Failed to restart MCP server automatically: {e}")
-                self.logger.info("Please restart the MCP server device manually.")
+
+            # No server restart needed - MCP runs via Indigo Web Server
+            # Configuration changes (environment variables) are already applied above
+            # and will be picked up by handlers on next request
