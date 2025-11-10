@@ -552,7 +552,7 @@ class MCPHandler:
         """Register all available tools."""
         # Search entities tool
         self._tools["search_entities"] = {
-            "description": "Search for Indigo entities using natural language",
+            "description": "Search for Indigo entities using natural language with pagination support",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -573,6 +573,19 @@ class MCPHandler:
                     "state_filter": {
                         "type": "object",
                         "description": "Optional state conditions to filter results"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return (default: 50)",
+                        "default": 50,
+                        "minimum": 1,
+                        "maximum": 500
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "description": "Number of results to skip (default: 0)",
+                        "default": 0,
+                        "minimum": 0
                     }
                 },
                 "required": ["query"]
@@ -980,13 +993,26 @@ class MCPHandler:
         
         # List tools
         self._tools["list_devices"] = {
-            "description": "List all devices with optional state filtering",
+            "description": "List all devices with optional state filtering and pagination support",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "state_filter": {
                         "type": "object",
                         "description": "Optional state conditions to filter devices"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of devices to return (default: 50)",
+                        "default": 50,
+                        "minimum": 1,
+                        "maximum": 500
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "description": "Number of devices to skip (default: 0)",
+                        "default": 0,
+                        "minimum": 0
                     }
                 }
             },
@@ -994,19 +1020,47 @@ class MCPHandler:
         }
         
         self._tools["list_variables"] = {
-            "description": "List all variables with id, name, and folder (when not in root)",
+            "description": "List all variables with id, name, and folder (when not in root), with pagination support",
             "inputSchema": {
                 "type": "object",
-                "properties": {}
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of variables to return (default: 50)",
+                        "default": 50,
+                        "minimum": 1,
+                        "maximum": 500
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "description": "Number of variables to skip (default: 0)",
+                        "default": 0,
+                        "minimum": 0
+                    }
+                }
             },
             "function": self._tool_list_variables
         }
         
         self._tools["list_action_groups"] = {
-            "description": "List all action groups",
+            "description": "List all action groups with pagination support",
             "inputSchema": {
                 "type": "object",
-                "properties": {}
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of action groups to return (default: 50)",
+                        "default": 50,
+                        "minimum": 1,
+                        "maximum": 500
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "description": "Number of action groups to skip (default: 0)",
+                        "default": 0,
+                        "minimum": 0
+                    }
+                }
             },
             "function": self._tool_list_action_groups
         }
@@ -1023,7 +1077,7 @@ class MCPHandler:
 
         # State-based queries
         self._tools["get_devices_by_state"] = {
-            "description": "Get devices by state conditions",
+            "description": "Get devices by state conditions with pagination support",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1035,6 +1089,19 @@ class MCPHandler:
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "Optional device types to filter. Valid types: dimmer, relay, sensor, multiio, speedcontrol, sprinkler, thermostat, device. Common aliases supported: light→dimmer, switch→relay, motion→sensor, fan→speedcontrol, etc."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of devices to return (default: 50)",
+                        "default": 50,
+                        "minimum": 1,
+                        "maximum": 500
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "description": "Number of devices to skip (default: 0)",
+                        "default": 0,
+                        "minimum": 0
                     }
                 },
                 "required": ["state_conditions"]
@@ -1210,13 +1277,15 @@ class MCPHandler:
     
     # Tool implementation methods
     def _tool_search_entities(
-        self, 
+        self,
         query: str,
         device_types: List[str] = None,
         entity_types: List[str] = None,
-        state_filter: Dict = None
+        state_filter: Dict = None,
+        limit: int = 50,
+        offset: int = 0
     ) -> str:
-        """Search entities tool implementation."""
+        """Search entities tool implementation with pagination."""
         try:
             # Validate device types
             if device_types:
@@ -1239,7 +1308,7 @@ class MCPHandler:
 
                 # Use resolved types for the search
                 device_types = resolved_types
-            
+
             # Validate entity types
             if entity_types:
                 invalid_entity_types = [
@@ -1251,19 +1320,25 @@ class MCPHandler:
                         "error": f"Invalid entity types: {invalid_entity_types}",
                         "query": query
                     })
-            
+
             self.logger.info(
                 f"[search_entities]: query: '{query}', "
                 f"device_types: {device_types}, "
                 f"entity_types: {entity_types}, "
-                f"state_filter: {state_filter}"
+                f"state_filter: {state_filter}, "
+                f"limit: {limit}, offset: {offset}"
             )
-            
+
             results = self.search_handler.search(
-                query, device_types, entity_types, state_filter
+                query=query,
+                device_types=device_types,
+                entity_types=entity_types,
+                state_filter=state_filter,
+                limit=limit,
+                offset=offset
             )
             return safe_json_dumps(results)
-            
+
         except Exception as e:
             self.logger.error(f"[search_entities]: Error - {e}")
             return safe_json_dumps({"error": str(e), "query": query})
@@ -1472,29 +1547,38 @@ class MCPHandler:
             self.logger.error(f"Historical analysis error: {e}")
             return safe_json_dumps({"error": str(e)})
     
-    def _tool_list_devices(self, state_filter: Dict = None) -> str:
-        """List devices tool implementation."""
+    def _tool_list_devices(
+        self,
+        state_filter: Dict = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> str:
+        """List devices tool implementation with pagination."""
         try:
-            devices = self.list_handlers.list_all_devices(state_filter)
-            return safe_json_dumps(devices)
+            result = self.list_handlers.list_all_devices(
+                state_filter=state_filter,
+                limit=limit,
+                offset=offset
+            )
+            return safe_json_dumps(result)
         except Exception as e:
             self.logger.error(f"List devices error: {e}")
             return safe_json_dumps({"error": str(e)})
     
-    def _tool_list_variables(self) -> str:
-        """List variables tool implementation."""
+    def _tool_list_variables(self, limit: int = 50, offset: int = 0) -> str:
+        """List variables tool implementation with pagination."""
         try:
-            variables = self.list_handlers.list_all_variables()
-            return safe_json_dumps(variables)
+            result = self.list_handlers.list_all_variables(limit=limit, offset=offset)
+            return safe_json_dumps(result)
         except Exception as e:
             self.logger.error(f"List variables error: {e}")
             return safe_json_dumps({"error": str(e)})
     
-    def _tool_list_action_groups(self) -> str:
-        """List action groups tool implementation."""
+    def _tool_list_action_groups(self, limit: int = 50, offset: int = 0) -> str:
+        """List action groups tool implementation with pagination."""
         try:
-            actions = self.list_handlers.list_all_action_groups()
-            return safe_json_dumps(actions)
+            result = self.list_handlers.list_all_action_groups(limit=limit, offset=offset)
+            return safe_json_dumps(result)
         except Exception as e:
             self.logger.error(f"List action groups error: {e}")
             return safe_json_dumps({"error": str(e)})
@@ -1509,11 +1593,13 @@ class MCPHandler:
             return safe_json_dumps({"error": str(e)})
 
     def _tool_get_devices_by_state(
-        self, 
-        state_conditions: Dict, 
-        device_types: List[str] = None
+        self,
+        state_conditions: Dict,
+        device_types: List[str] = None,
+        limit: int = 50,
+        offset: int = 0
     ) -> str:
-        """Get devices by state tool implementation."""
+        """Get devices by state tool implementation with pagination."""
         try:
             # Validate device types if provided
             if device_types:
@@ -1535,11 +1621,14 @@ class MCPHandler:
 
                 # Use resolved types for the query
                 device_types = resolved_types
-            
-            devices = self.list_handlers.get_devices_by_state(
-                state_conditions, device_types
+
+            result = self.list_handlers.get_devices_by_state(
+                state_conditions=state_conditions,
+                device_types=device_types,
+                limit=limit,
+                offset=offset
             )
-            return safe_json_dumps(devices)
+            return safe_json_dumps(result)
         except Exception as e:
             self.logger.error(f"Get devices by state error: {e}")
             return safe_json_dumps({"error": str(e)})

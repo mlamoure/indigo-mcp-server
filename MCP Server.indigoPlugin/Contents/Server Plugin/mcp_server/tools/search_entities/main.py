@@ -38,23 +38,27 @@ class SearchEntitiesHandler(BaseToolHandler):
         self.result_formatter = ResultFormatter()
     
     def search(
-        self, 
+        self,
         query: str,
         device_types: Optional[List[str]] = None,
         entity_types: Optional[List[str]] = None,
-        state_filter: Optional[Dict[str, Any]] = None
+        state_filter: Optional[Dict[str, Any]] = None,
+        limit: Optional[int] = None,
+        offset: int = 0
     ) -> Dict[str, Any]:
         """
-        Search for Indigo entities using natural language with optional filtering.
-        
+        Search for Indigo entities using natural language with optional filtering and pagination.
+
         Args:
             query: Natural language search query
             device_types: Optional list of device types to filter by
             entity_types: Optional list of entity types to search
             state_filter: Optional state conditions to apply after semantic search
-            
+            limit: Maximum number of total results to return (default: no limit)
+            offset: Number of results to skip (default: 0)
+
         Returns:
-            Dictionary with formatted search results
+            Dictionary with formatted search results including pagination info
         """
         try:
             # Concise query logging
@@ -88,20 +92,47 @@ class SearchEntitiesHandler(BaseToolHandler):
                 filtered_devices = StateFilter.filter_by_state(grouped_results["devices"], state_filter)
                 grouped_results["devices"] = filtered_devices
 
-            # Log results summary
+            # Calculate total counts before pagination
             device_count = len(grouped_results.get("devices", []))
             variable_count = len(grouped_results.get("variables", []))
             action_count = len(grouped_results.get("actions", []))
-            self.info_log(f"\t✅ Found: {device_count} devices, {variable_count} variables, {action_count} actions")
+            total_count = device_count + variable_count + action_count
+
+            # Apply pagination across all result types
+            paginated_results = grouped_results
+            has_more = False
+            if limit is not None or offset > 0:
+                paginated_results, has_more = self._apply_pagination(
+                    grouped_results, limit, offset, total_count
+                )
+
+            # Log results summary
+            paginated_device_count = len(paginated_results.get("devices", []))
+            paginated_variable_count = len(paginated_results.get("variables", []))
+            paginated_action_count = len(paginated_results.get("actions", []))
+            self.info_log(
+                f"\t✅ Found: {device_count} devices, {variable_count} variables, {action_count} actions"
+                + (f" (showing {paginated_device_count + paginated_variable_count + paginated_action_count})" if limit else "")
+            )
 
             # Format results
             formatted_results = self.result_formatter.format_search_results(
-                grouped_results,
+                paginated_results,
                 query,
                 minimal_fields=search_params["minimal_fields"],
                 search_metadata=search_metadata,
                 state_detected=search_params.get("state_detected", False)
             )
+
+            # Add pagination info to results
+            if limit is not None or offset > 0:
+                formatted_results["pagination"] = {
+                    "offset": offset,
+                    "limit": limit,
+                    "total_count": total_count,
+                    "returned_count": paginated_device_count + paginated_variable_count + paginated_action_count,
+                    "has_more": has_more
+                }
 
             return formatted_results
             
@@ -141,14 +172,61 @@ class SearchEntitiesHandler(BaseToolHandler):
         
         return grouped
     
+    def _apply_pagination(
+        self,
+        grouped_results: Dict[str, List[Dict[str, Any]]],
+        limit: Optional[int],
+        offset: int,
+        total_count: int
+    ) -> tuple[Dict[str, List[Dict[str, Any]]], bool]:
+        """
+        Apply pagination across all entity types.
+
+        Args:
+            grouped_results: Results grouped by entity type
+            limit: Maximum number of results to return
+            offset: Number of results to skip
+            total_count: Total number of results before pagination
+
+        Returns:
+            Tuple of (paginated_results, has_more)
+        """
+        # Flatten results while maintaining order
+        flat_results = []
+        for entity_type in ["devices", "variables", "actions"]:
+            for entity in grouped_results.get(entity_type, []):
+                flat_results.append((entity_type, entity))
+
+        # Apply offset
+        if offset > 0:
+            flat_results = flat_results[offset:]
+
+        # Apply limit
+        if limit is not None and limit > 0:
+            flat_results = flat_results[:limit]
+
+        # Calculate has_more
+        has_more = (offset + len(flat_results)) < total_count
+
+        # Re-group results
+        paginated = {
+            "devices": [],
+            "variables": [],
+            "actions": []
+        }
+        for entity_type, entity in flat_results:
+            paginated[entity_type].append(entity)
+
+        return paginated, has_more
+
     def _filter_devices_by_type(self, raw_results: List[Dict[str, Any]], device_types: List[str]) -> List[Dict[str, Any]]:
         """
         Filter device results by device type.
-        
+
         Args:
             raw_results: Raw search results from vector store
             device_types: List of device types to filter by
-            
+
         Returns:
             Filtered results containing only devices matching the specified types
         """
