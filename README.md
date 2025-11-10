@@ -174,16 +174,39 @@ If you have HTTPS disabled on your Indigo Web Server.
 3. Replace `your-local-hostname-or-ip` with your server IP/hostname for LAN access
 4. Replace port 8176 if you are not using the default Indigo Web Server port
 
+## Pagination Support
+
+**Important:** To handle large Indigo installations, list and search tools support pagination:
+
+- **Default Limit**: 50 results per request
+- **Maximum Limit**: 500 results per request
+- **Parameters**: Add `limit` and `offset` to paginate through results
+- **Response Metadata**: Returns `total_count`, `offset`, `has_more` for navigation
+
+**Example:**
+```python
+# Get first 50 devices
+list_devices(limit=50, offset=0)
+
+# Get next 50 devices
+list_devices(limit=50, offset=50)
+
+# Search with pagination
+search_entities("bedroom lights", limit=20)
+```
+
+**Tools with Pagination:** `search_entities`, `list_devices`, `list_variables`, `list_action_groups`, `get_devices_by_state`
+
 ## Available Tools
 
 ### Search and Query
 
-- **search_entities**: Natural language search across devices, variables, action groups
-- **list_devices**: Get all devices with optional state filtering
-- **list_variables**: Get all variables with current values
-- **list_action_groups**: Get all action groups/scenes
+- **search_entities**: Natural language search across devices, variables, action groups (pagination supported)
+- **list_devices**: Get all devices with optional state filtering (pagination supported)
+- **list_variables**: Get all variables with current values (pagination supported)
+- **list_action_groups**: Get all action groups/scenes (pagination supported)
 - **list_variable_folders**: Get all variable folders with IDs
-- **get_devices_by_state**: Find devices by state conditions
+- **get_devices_by_state**: Find devices by state conditions (pagination supported)
 - **get_devices_by_type**: Get devices by type (dimmer, relay, sensor, etc.)
 - **get_device_by_id**: Get specific device by exact ID
 - **get_variable_by_id**: Get specific variable by exact ID
