@@ -189,10 +189,28 @@ If you have HTTPS disabled on your Indigo Web Server.
 - **get_variable_by_id**: Get specific variable by exact ID
 - **get_action_group_by_id**: Get specific action group by exact ID
 
-### Control
+### Device Control
 
 - **device_turn_on/off**: Control device power state
 - **device_set_brightness**: Set dimmer brightness (0-100 or 0-1)
+
+### RGB Device Control
+
+- **device_set_rgb_color**: Set RGB color using 0-255 values
+- **device_set_rgb_percent**: Set RGB color using 0-100 percentages
+- **device_set_hex_color**: Set RGB color using hex codes (#FF8000)
+- **device_set_named_color**: Set RGB color using color names (954 XKCD colors + aliases)
+- **device_set_white_levels**: Control white channels for RGBW devices
+
+### Thermostat Control
+
+- **thermostat_set_heat_setpoint**: Set heating temperature target
+- **thermostat_set_cool_setpoint**: Set cooling temperature target
+- **thermostat_set_hvac_mode**: Change HVAC operating mode (heat, cool, auto, off, program modes)
+- **thermostat_set_fan_mode**: Control fan operation (auto, alwaysOn)
+
+### Variable and Action Control
+
 - **variable_create**: Create new variable with optional value and folder
 - **variable_update**: Update variable values
 - **action_execute_group**: Execute action groups/scenes

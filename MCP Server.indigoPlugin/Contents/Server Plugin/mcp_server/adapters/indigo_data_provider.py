@@ -520,3 +520,313 @@ class IndigoDataProvider(DataProvider):
             self.logger.error(f"Error getting variable folders: {e}")
 
         return folders
+
+    def set_device_color_levels(
+        self,
+        device_id: int,
+        red_level: Optional[float] = None,
+        green_level: Optional[float] = None,
+        blue_level: Optional[float] = None,
+        white_level: Optional[float] = None,
+        white_level2: Optional[float] = None,
+        white_temperature: Optional[int] = None,
+        delay: int = 0
+    ) -> Dict[str, Any]:
+        """
+        Set color levels for an RGB/RGBW device.
+
+        Args:
+            device_id: The device ID
+            red_level: Red level (0-100), optional
+            green_level: Green level (0-100), optional
+            blue_level: Blue level (0-100), optional
+            white_level: White level (0-100), optional
+            white_level2: Second white level (0-100), optional (for dual white devices)
+            white_temperature: White temperature in Kelvin (1200-15000), optional
+            delay: Delay in seconds before applying (default: 0)
+
+        Returns:
+            Dictionary with operation results
+        """
+        try:
+            if device_id not in indigo.devices:
+                return {"error": f"Device {device_id} not found"}
+
+            device = indigo.devices[device_id]
+
+            # Check if device supports color control
+            if not hasattr(device, 'supportsRGB') or not device.supportsRGB:
+                return {"error": f"Device {device_id} does not support RGB color control"}
+
+            # Build kwargs for setColorLevels
+            kwargs = {}
+            if red_level is not None:
+                kwargs['redLevel'] = red_level
+            if green_level is not None:
+                kwargs['greenLevel'] = green_level
+            if blue_level is not None:
+                kwargs['blueLevel'] = blue_level
+            if white_level is not None:
+                kwargs['whiteLevel'] = white_level
+            if white_level2 is not None:
+                kwargs['whiteLevel2'] = white_level2
+            if white_temperature is not None:
+                kwargs['whiteTemperature'] = white_temperature
+            if delay > 0:
+                kwargs['delay'] = delay
+
+            # Get previous color state
+            previous_state = {
+                "red": device.redLevel if hasattr(device, 'redLevel') else None,
+                "green": device.greenLevel if hasattr(device, 'greenLevel') else None,
+                "blue": device.blueLevel if hasattr(device, 'blueLevel') else None,
+                "white": device.whiteLevel if hasattr(device, 'whiteLevel') else None,
+            }
+
+            # Set color levels
+            indigo.dimmer.setColorLevels(device_id, **kwargs)
+
+            # Wait 1 second for device state to update
+            time.sleep(1)
+
+            # Get fresh device object
+            device_after = indigo.devices[device_id]
+            current_state = {
+                "red": device_after.redLevel if hasattr(device_after, 'redLevel') else None,
+                "green": device_after.greenLevel if hasattr(device_after, 'greenLevel') else None,
+                "blue": device_after.blueLevel if hasattr(device_after, 'blueLevel') else None,
+                "white": device_after.whiteLevel if hasattr(device_after, 'whiteLevel') else None,
+            }
+
+            return {
+                "success": True,
+                "previous": previous_state,
+                "current": current_state,
+                "device_name": device_after.name
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error setting color levels for device {device_id}: {e}")
+            return {"error": str(e)}
+
+    def set_thermostat_heat_setpoint(self, device_id: int, value: float) -> Dict[str, Any]:
+        """
+        Set heating setpoint for a thermostat device.
+
+        Args:
+            device_id: The device ID
+            value: Temperature setpoint value
+
+        Returns:
+            Dictionary with operation results
+        """
+        try:
+            if device_id not in indigo.devices:
+                return {"error": f"Device {device_id} not found"}
+
+            device = indigo.devices[device_id]
+
+            # Check if device is a thermostat
+            if device.deviceTypeId != indigo.kDeviceTypeId.Thermostat:
+                return {"error": f"Device {device_id} is not a thermostat"}
+
+            # Check if device supports heat setpoint
+            if not device.pluginProps.get("SupportsHeatSetpoint", False):
+                return {"error": f"Device {device_id} does not support heat setpoint"}
+
+            # Get previous setpoint
+            previous_setpoint = device.heatSetpoint if hasattr(device, 'heatSetpoint') else None
+
+            # Set heat setpoint
+            indigo.thermostat.setHeatSetpoint(device_id, value=value)
+
+            # Wait 1 second for device state to update
+            time.sleep(1)
+
+            # Get fresh device object
+            device_after = indigo.devices[device_id]
+            current_setpoint = device_after.heatSetpoint if hasattr(device_after, 'heatSetpoint') else None
+
+            return {
+                "success": True,
+                "previous": previous_setpoint,
+                "current": current_setpoint,
+                "device_name": device_after.name
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error setting heat setpoint for device {device_id}: {e}")
+            return {"error": str(e)}
+
+    def set_thermostat_cool_setpoint(self, device_id: int, value: float) -> Dict[str, Any]:
+        """
+        Set cooling setpoint for a thermostat device.
+
+        Args:
+            device_id: The device ID
+            value: Temperature setpoint value
+
+        Returns:
+            Dictionary with operation results
+        """
+        try:
+            if device_id not in indigo.devices:
+                return {"error": f"Device {device_id} not found"}
+
+            device = indigo.devices[device_id]
+
+            # Check if device is a thermostat
+            if device.deviceTypeId != indigo.kDeviceTypeId.Thermostat:
+                return {"error": f"Device {device_id} is not a thermostat"}
+
+            # Check if device supports cool setpoint
+            if not device.pluginProps.get("SupportsCoolSetpoint", False):
+                return {"error": f"Device {device_id} does not support cool setpoint"}
+
+            # Get previous setpoint
+            previous_setpoint = device.coolSetpoint if hasattr(device, 'coolSetpoint') else None
+
+            # Set cool setpoint
+            indigo.thermostat.setCoolSetpoint(device_id, value=value)
+
+            # Wait 1 second for device state to update
+            time.sleep(1)
+
+            # Get fresh device object
+            device_after = indigo.devices[device_id]
+            current_setpoint = device_after.coolSetpoint if hasattr(device_after, 'coolSetpoint') else None
+
+            return {
+                "success": True,
+                "previous": previous_setpoint,
+                "current": current_setpoint,
+                "device_name": device_after.name
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error setting cool setpoint for device {device_id}: {e}")
+            return {"error": str(e)}
+
+    def set_thermostat_hvac_mode(self, device_id: int, mode: str) -> Dict[str, Any]:
+        """
+        Set HVAC operating mode for a thermostat device.
+
+        Args:
+            device_id: The device ID
+            mode: HVAC mode (heat, cool, auto, off, heatCool, programHeat, programCool, programAuto)
+
+        Returns:
+            Dictionary with operation results
+        """
+        try:
+            if device_id not in indigo.devices:
+                return {"error": f"Device {device_id} not found"}
+
+            device = indigo.devices[device_id]
+
+            # Check if device is a thermostat
+            if device.deviceTypeId != indigo.kDeviceTypeId.Thermostat:
+                return {"error": f"Device {device_id} is not a thermostat"}
+
+            # Check if device supports HVAC mode
+            if not device.pluginProps.get("SupportsHvacOperationMode", False):
+                return {"error": f"Device {device_id} does not support HVAC mode control"}
+
+            # Get previous mode
+            previous_mode = device.hvacMode if hasattr(device, 'hvacMode') else None
+
+            # Map mode string to indigo.kHvacMode enum
+            mode_map = {
+                "heat": indigo.kHvacMode.Heat,
+                "cool": indigo.kHvacMode.Cool,
+                "auto": indigo.kHvacMode.HeatCool,
+                "off": indigo.kHvacMode.Off,
+                "heatcool": indigo.kHvacMode.HeatCool,
+                "programheat": indigo.kHvacMode.ProgramHeat,
+                "programcool": indigo.kHvacMode.ProgramCool,
+                "programauto": indigo.kHvacMode.ProgramAuto,
+            }
+
+            mode_lower = mode.lower()
+            if mode_lower not in mode_map:
+                return {"error": f"Invalid HVAC mode: {mode}. Valid modes: {', '.join(mode_map.keys())}"}
+
+            # Set HVAC mode
+            indigo.thermostat.setHvacMode(device_id, value=mode_map[mode_lower])
+
+            # Wait 1 second for device state to update
+            time.sleep(1)
+
+            # Get fresh device object
+            device_after = indigo.devices[device_id]
+            current_mode = device_after.hvacMode if hasattr(device_after, 'hvacMode') else None
+
+            return {
+                "success": True,
+                "previous": str(previous_mode) if previous_mode else None,
+                "current": str(current_mode) if current_mode else None,
+                "device_name": device_after.name
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error setting HVAC mode for device {device_id}: {e}")
+            return {"error": str(e)}
+
+    def set_thermostat_fan_mode(self, device_id: int, mode: str) -> Dict[str, Any]:
+        """
+        Set fan operating mode for a thermostat device.
+
+        Args:
+            device_id: The device ID
+            mode: Fan mode (auto, alwaysOn)
+
+        Returns:
+            Dictionary with operation results
+        """
+        try:
+            if device_id not in indigo.devices:
+                return {"error": f"Device {device_id} not found"}
+
+            device = indigo.devices[device_id]
+
+            # Check if device is a thermostat
+            if device.deviceTypeId != indigo.kDeviceTypeId.Thermostat:
+                return {"error": f"Device {device_id} is not a thermostat"}
+
+            # Check if device supports fan mode
+            if not device.pluginProps.get("SupportsHvacFanMode", False):
+                return {"error": f"Device {device_id} does not support fan mode control"}
+
+            # Get previous mode
+            previous_mode = device.fanMode if hasattr(device, 'fanMode') else None
+
+            # Map mode string to indigo.kFanMode enum
+            mode_map = {
+                "auto": indigo.kFanMode.Auto,
+                "alwayson": indigo.kFanMode.AlwaysOn,
+            }
+
+            mode_lower = mode.lower()
+            if mode_lower not in mode_map:
+                return {"error": f"Invalid fan mode: {mode}. Valid modes: {', '.join(mode_map.keys())}"}
+
+            # Set fan mode
+            indigo.thermostat.setFanMode(device_id, value=mode_map[mode_lower])
+
+            # Wait 1 second for device state to update
+            time.sleep(1)
+
+            # Get fresh device object
+            device_after = indigo.devices[device_id]
+            current_mode = device_after.fanMode if hasattr(device_after, 'fanMode') else None
+
+            return {
+                "success": True,
+                "previous": str(previous_mode) if previous_mode else None,
+                "current": str(current_mode) if current_mode else None,
+                "device_name": device_after.name
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error setting fan mode for device {device_id}: {e}")
+            return {"error": str(e)}

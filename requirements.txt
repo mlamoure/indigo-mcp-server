@@ -18,6 +18,7 @@ pandas>=2.3.3
 numpy>=2.3.3
 pyyaml>=6.0
 dicttoxml>=1.7.16
+matplotlib>=3.5.0
 
 # HTTP Client only (no server needed with IWS)
 requests>=2.32.4

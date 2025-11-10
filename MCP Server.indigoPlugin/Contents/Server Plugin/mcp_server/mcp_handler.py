@@ -21,7 +21,9 @@ from .tools.get_devices_by_type import GetDevicesByTypeHandler
 from .tools.historical_analysis import HistoricalAnalysisHandler
 from .tools.log_query import LogQueryHandler
 from .tools.plugin_control import PluginControlHandler
+from .tools.rgb_control import RGBControlHandler
 from .tools.search_entities import SearchEntitiesHandler
+from .tools.thermostat_control import ThermostatControlHandler
 from .tools.variable_control import VariableControlHandler
 
 
@@ -108,7 +110,15 @@ class MCPHandler:
             logger=self.logger
         )
         self.action_control_handler = ActionControlHandler(
-            data_provider=self.data_provider, 
+            data_provider=self.data_provider,
+            logger=self.logger
+        )
+        self.rgb_control_handler = RGBControlHandler(
+            data_provider=self.data_provider,
+            logger=self.logger
+        )
+        self.thermostat_control_handler = ThermostatControlHandler(
+            data_provider=self.data_provider,
             logger=self.logger
         )
         self.historical_analysis_handler = HistoricalAnalysisHandler(
@@ -635,7 +645,250 @@ class MCPHandler:
             },
             "function": self._tool_device_set_brightness
         }
-        
+
+        # RGB device control
+        self._tools["device_set_rgb_color"] = {
+            "description": "Set RGB color using 0-255 values",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "integer",
+                        "description": "The ID of the RGB device"
+                    },
+                    "red": {
+                        "type": "integer",
+                        "description": "Red value (0-255)",
+                        "minimum": 0,
+                        "maximum": 255
+                    },
+                    "green": {
+                        "type": "integer",
+                        "description": "Green value (0-255)",
+                        "minimum": 0,
+                        "maximum": 255
+                    },
+                    "blue": {
+                        "type": "integer",
+                        "description": "Blue value (0-255)",
+                        "minimum": 0,
+                        "maximum": 255
+                    },
+                    "delay": {
+                        "type": "integer",
+                        "description": "Optional delay in seconds (default: 0)",
+                        "minimum": 0
+                    }
+                },
+                "required": ["device_id", "red", "green", "blue"]
+            },
+            "function": self._tool_device_set_rgb_color
+        }
+
+        self._tools["device_set_rgb_percent"] = {
+            "description": "Set RGB color using 0-100 percentage values",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "integer",
+                        "description": "The ID of the RGB device"
+                    },
+                    "red_percent": {
+                        "type": "number",
+                        "description": "Red percentage (0-100)",
+                        "minimum": 0,
+                        "maximum": 100
+                    },
+                    "green_percent": {
+                        "type": "number",
+                        "description": "Green percentage (0-100)",
+                        "minimum": 0,
+                        "maximum": 100
+                    },
+                    "blue_percent": {
+                        "type": "number",
+                        "description": "Blue percentage (0-100)",
+                        "minimum": 0,
+                        "maximum": 100
+                    },
+                    "delay": {
+                        "type": "integer",
+                        "description": "Optional delay in seconds (default: 0)",
+                        "minimum": 0
+                    }
+                },
+                "required": ["device_id", "red_percent", "green_percent", "blue_percent"]
+            },
+            "function": self._tool_device_set_rgb_percent
+        }
+
+        self._tools["device_set_hex_color"] = {
+            "description": "Set RGB color using hex color code",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "integer",
+                        "description": "The ID of the RGB device"
+                    },
+                    "hex_color": {
+                        "type": "string",
+                        "description": "Hex color code (e.g., '#FF8000' or 'FF8000')",
+                        "pattern": "^#?[0-9A-Fa-f]{6}$"
+                    },
+                    "delay": {
+                        "type": "integer",
+                        "description": "Optional delay in seconds (default: 0)",
+                        "minimum": 0
+                    }
+                },
+                "required": ["device_id", "hex_color"]
+            },
+            "function": self._tool_device_set_hex_color
+        }
+
+        self._tools["device_set_named_color"] = {
+            "description": "Set RGB color using named color (954 XKCD colors + aliases)",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "integer",
+                        "description": "The ID of the RGB device"
+                    },
+                    "color_name": {
+                        "type": "string",
+                        "description": "Color name (e.g., 'sky blue', 'warm white', 'burnt orange')"
+                    },
+                    "delay": {
+                        "type": "integer",
+                        "description": "Optional delay in seconds (default: 0)",
+                        "minimum": 0
+                    }
+                },
+                "required": ["device_id", "color_name"]
+            },
+            "function": self._tool_device_set_named_color
+        }
+
+        self._tools["device_set_white_levels"] = {
+            "description": "Set white channel levels for RGBW devices",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "integer",
+                        "description": "The ID of the RGBW device"
+                    },
+                    "white_level": {
+                        "type": "number",
+                        "description": "White channel level (0-100), optional",
+                        "minimum": 0,
+                        "maximum": 100
+                    },
+                    "white_level2": {
+                        "type": "number",
+                        "description": "Second white channel level (0-100), optional",
+                        "minimum": 0,
+                        "maximum": 100
+                    },
+                    "white_temperature": {
+                        "type": "integer",
+                        "description": "White temperature in Kelvin (1200-15000), optional",
+                        "minimum": 1200,
+                        "maximum": 15000
+                    },
+                    "delay": {
+                        "type": "integer",
+                        "description": "Optional delay in seconds (default: 0)",
+                        "minimum": 0
+                    }
+                },
+                "required": ["device_id"]
+            },
+            "function": self._tool_device_set_white_levels
+        }
+
+        # Thermostat control
+        self._tools["thermostat_set_heat_setpoint"] = {
+            "description": "Set heat setpoint for a thermostat device",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "integer",
+                        "description": "The ID of the thermostat device"
+                    },
+                    "temperature": {
+                        "type": "number",
+                        "description": "Temperature setpoint value (typically Fahrenheit)"
+                    }
+                },
+                "required": ["device_id", "temperature"]
+            },
+            "function": self._tool_thermostat_set_heat_setpoint
+        }
+
+        self._tools["thermostat_set_cool_setpoint"] = {
+            "description": "Set cool setpoint for a thermostat device",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "integer",
+                        "description": "The ID of the thermostat device"
+                    },
+                    "temperature": {
+                        "type": "number",
+                        "description": "Temperature setpoint value (typically Fahrenheit)"
+                    }
+                },
+                "required": ["device_id", "temperature"]
+            },
+            "function": self._tool_thermostat_set_cool_setpoint
+        }
+
+        self._tools["thermostat_set_hvac_mode"] = {
+            "description": "Set HVAC operating mode for a thermostat device",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "integer",
+                        "description": "The ID of the thermostat device"
+                    },
+                    "mode": {
+                        "type": "string",
+                        "description": "HVAC mode",
+                        "enum": ["heat", "cool", "auto", "off", "heatcool", "programheat", "programcool", "programauto"]
+                    }
+                },
+                "required": ["device_id", "mode"]
+            },
+            "function": self._tool_thermostat_set_hvac_mode
+        }
+
+        self._tools["thermostat_set_fan_mode"] = {
+            "description": "Set fan operating mode for a thermostat device",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "integer",
+                        "description": "The ID of the thermostat device"
+                    },
+                    "mode": {
+                        "type": "string",
+                        "description": "Fan mode",
+                        "enum": ["auto", "alwayson"]
+                    }
+                },
+                "required": ["device_id", "mode"]
+            },
+            "function": self._tool_thermostat_set_fan_mode
+        }
+
         # Variable control
         self._tools["variable_update"] = {
             "description": "Update a variable's value",
@@ -1050,7 +1303,123 @@ class MCPHandler:
         except Exception as e:
             self.logger.error(f"Device set brightness error: {e}")
             return safe_json_dumps({"error": str(e)})
-    
+
+    def _tool_device_set_rgb_color(
+        self,
+        device_id: int,
+        red: int,
+        green: int,
+        blue: int,
+        delay: int = 0
+    ) -> str:
+        """Set RGB color using 0-255 values tool implementation."""
+        try:
+            result = self.rgb_control_handler.set_rgb_color(device_id, red, green, blue, delay)
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"RGB color set error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
+    def _tool_device_set_rgb_percent(
+        self,
+        device_id: int,
+        red_percent: float,
+        green_percent: float,
+        blue_percent: float,
+        delay: int = 0
+    ) -> str:
+        """Set RGB color using 0-100 percentages tool implementation."""
+        try:
+            result = self.rgb_control_handler.set_rgb_percent(
+                device_id, red_percent, green_percent, blue_percent, delay
+            )
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"RGB percent set error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
+    def _tool_device_set_hex_color(
+        self,
+        device_id: int,
+        hex_color: str,
+        delay: int = 0
+    ) -> str:
+        """Set RGB color using hex code tool implementation."""
+        try:
+            result = self.rgb_control_handler.set_hex_color(device_id, hex_color, delay)
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"Hex color set error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
+    def _tool_device_set_named_color(
+        self,
+        device_id: int,
+        color_name: str,
+        delay: int = 0
+    ) -> str:
+        """Set RGB color using named color tool implementation."""
+        try:
+            result = self.rgb_control_handler.set_named_color(device_id, color_name, delay)
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"Named color set error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
+    def _tool_device_set_white_levels(
+        self,
+        device_id: int,
+        white_level: Optional[float] = None,
+        white_level2: Optional[float] = None,
+        white_temperature: Optional[int] = None,
+        delay: int = 0
+    ) -> str:
+        """Set white channel levels tool implementation."""
+        try:
+            result = self.rgb_control_handler.set_white_levels(
+                device_id, white_level, white_level2, white_temperature, delay
+            )
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"White levels set error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
+    def _tool_thermostat_set_heat_setpoint(self, device_id: int, temperature: float) -> str:
+        """Set thermostat heat setpoint tool implementation."""
+        try:
+            result = self.thermostat_control_handler.set_heat_setpoint(device_id, temperature)
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"Thermostat heat setpoint error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
+    def _tool_thermostat_set_cool_setpoint(self, device_id: int, temperature: float) -> str:
+        """Set thermostat cool setpoint tool implementation."""
+        try:
+            result = self.thermostat_control_handler.set_cool_setpoint(device_id, temperature)
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"Thermostat cool setpoint error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
+    def _tool_thermostat_set_hvac_mode(self, device_id: int, mode: str) -> str:
+        """Set thermostat HVAC mode tool implementation."""
+        try:
+            result = self.thermostat_control_handler.set_hvac_mode(device_id, mode)
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"Thermostat HVAC mode error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
+    def _tool_thermostat_set_fan_mode(self, device_id: int, mode: str) -> str:
+        """Set thermostat fan mode tool implementation."""
+        try:
+            result = self.thermostat_control_handler.set_fan_mode(device_id, mode)
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"Thermostat fan mode error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
     def _tool_variable_update(self, variable_id: int, value: str) -> str:
         """Update variable tool implementation."""
         try:

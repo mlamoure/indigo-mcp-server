@@ -7,13 +7,17 @@ from .get_devices_by_type import GetDevicesByTypeHandler
 from .device_control import DeviceControlHandler
 from .variable_control import VariableControlHandler
 from .action_control import ActionControlHandler
+from .rgb_control import RGBControlHandler
+from .thermostat_control import ThermostatControlHandler
 
 __all__ = [
-    'SearchEntitiesHandler', 
-    'QueryParser', 
+    'SearchEntitiesHandler',
+    'QueryParser',
     'ResultFormatter',
     'GetDevicesByTypeHandler',
     'DeviceControlHandler',
     'VariableControlHandler',
-    'ActionControlHandler'
+    'ActionControlHandler',
+    'RGBControlHandler',
+    'ThermostatControlHandler'
 ]
