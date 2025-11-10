@@ -63,13 +63,26 @@ def get_tool_schemas(tool_functions):
 
     # Get devices by type
     tools["get_devices_by_type"] = {
-        "description": "Get all devices of a specific type",
+        "description": "Get devices of a specific type with pagination support",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "device_type": {
                     "type": "string",
                     "description": "Device type. Valid types: dimmer, relay, sensor, multiio, speedcontrol, sprinkler, thermostat, device. Aliases supported: light→dimmer, switch→relay, motion→sensor, fan→speedcontrol, etc."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of devices to return (default: 50)",
+                    "default": 50,
+                    "minimum": 1,
+                    "maximum": 500
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Number of devices to skip (default: 0)",
+                    "default": 0,
+                    "minimum": 0
                 }
             },
             "required": ["device_type"]

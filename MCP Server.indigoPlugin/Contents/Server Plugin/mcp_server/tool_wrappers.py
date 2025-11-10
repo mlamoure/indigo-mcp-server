@@ -131,10 +131,10 @@ class ToolWrappers:
             self.logger.error(f"[search_entities]: Error - {e}")
             return safe_json_dumps({"error": str(e), "query": query})
 
-    def tool_get_devices_by_type(self, device_type: str) -> str:
-        """Get devices by type tool implementation."""
+    def tool_get_devices_by_type(self, device_type: str, limit: int = 50, offset: int = 0) -> str:
+        """Get devices by type tool implementation with pagination."""
         try:
-            result = self.get_devices_by_type_handler.get_devices(device_type)
+            result = self.get_devices_by_type_handler.get_devices(device_type, limit=limit, offset=offset)
             return safe_json_dumps(result)
         except Exception as e:
             self.logger.error(f"Get devices by type error: {e}")

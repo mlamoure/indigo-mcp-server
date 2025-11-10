@@ -327,7 +327,7 @@ class TestRefactoredMCPHandler:
 
         paginated_tools = [
             "search_entities", "list_devices", "list_variables",
-            "list_action_groups", "get_devices_by_state"
+            "list_action_groups", "get_devices_by_state", "get_devices_by_type"
         ]
 
         for tool_name in paginated_tools:
@@ -335,7 +335,7 @@ class TestRefactoredMCPHandler:
             properties = tool["inputSchema"]["properties"]
 
             if tool_name in ["search_entities", "list_devices", "list_variables",
-                            "list_action_groups", "get_devices_by_state"]:
+                            "list_action_groups", "get_devices_by_state", "get_devices_by_type"]:
                 assert "limit" in properties, f"{tool_name} missing limit parameter"
                 assert "offset" in properties, f"{tool_name} missing offset parameter"
 

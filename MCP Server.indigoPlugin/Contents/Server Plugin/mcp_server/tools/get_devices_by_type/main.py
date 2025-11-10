@@ -28,15 +28,17 @@ class GetDevicesByTypeHandler(BaseToolHandler):
         super().__init__(tool_name="get_devices_by_type", logger=logger)
         self.data_provider = data_provider
     
-    def get_devices(self, device_type: str) -> Dict[str, Any]:
+    def get_devices(self, device_type: str, limit: int = 50, offset: int = 0) -> Dict[str, Any]:
         """
-        Get all devices of a specific type.
-        
+        Get devices of a specific type with pagination support.
+
         Args:
             device_type: The device type to filter by (dimmer, relay, sensor, etc.)
-            
+            limit: Maximum number of devices to return (default: 50)
+            offset: Number of devices to skip (default: 0)
+
         Returns:
-            Dictionary with list of devices and metadata
+            Dictionary with list of devices and pagination metadata
         """
         try:
             # Resolve device type using alias system
@@ -68,16 +70,25 @@ class GetDevicesByTypeHandler(BaseToolHandler):
             # Sort by name for consistent output
             filtered_devices.sort(key=lambda d: d.get("name", "").lower())
 
+            # Calculate pagination
+            total_count = len(filtered_devices)
+            start_idx = offset
+            end_idx = offset + limit
+            paginated_devices = filtered_devices[start_idx:end_idx]
+            has_more = end_idx < total_count
+
             # Log results
-            device_count = len(filtered_devices)
-            self.info_log(f"💡 Found {device_count} '{device_type}' devices")
+            self.info_log(f"💡 Found {total_count} '{device_type}' devices (returning {len(paginated_devices)} from offset {offset})")
 
             return {
                 "device_type": device_type,
-                "count": device_count,
-                "devices": filtered_devices,
+                "devices": paginated_devices,
+                "count": len(paginated_devices),
+                "total_count": total_count,
+                "offset": offset,
+                "has_more": has_more,
                 "success": True
             }
-            
+
         except Exception as e:
             return self.handle_exception(e, f"retrieving devices of type '{device_type}'")
