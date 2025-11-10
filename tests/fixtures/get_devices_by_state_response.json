@@ -1,0 +1,12 @@
+{
+  "devices": [],
+  "count": 0,
+  "total_count": 0,
+  "offset": 0,
+  "has_more": false,
+  "state_conditions": {
+    "onState": true
+  },
+  "device_types": null,
+  "summary": "Found 0 devices matching state conditions (showing 0 starting from 0)"
+}

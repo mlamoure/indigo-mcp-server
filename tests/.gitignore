@@ -1,0 +1,11 @@
+# Test output files
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# Test fixtures that may contain sensitive data
+fixtures/*_production.json
