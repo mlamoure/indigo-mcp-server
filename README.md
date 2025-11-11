@@ -13,7 +13,7 @@ Search, analyze, and control your Indigo devices using natural language:
 - "What devices are currently on?"
 - "Execute the bedtime scene"
 
-## Requirements
+## Server Requirements
 
 - **Indigo Domotics**: 2024.2 or later
 - **macOS**: 10.15 (Catalina) or later
@@ -21,11 +21,6 @@ Search, analyze, and control your Indigo devices using natural language:
     - Note: LanceDB (used for vector search) requires AVX2 CPU instructions
     - Most Intel Macs from 2013 onwards support AVX2
     - All Apple Silicon Macs are fully supported
-- **Node.js**: Required for MCP client connection ([Download](https://nodejs.org/))
-    - Provides `npx` command used by Claude Desktop configuration
-    - Install via Homebrew: `brew install node`
-    - Or download from [nodejs.org](https://nodejs.org/)
-- **Claude Desktop**: Primary MCP client (ChatGPT support coming to Plus plan)
 - **OpenAI API Key**: Required for semantic search ([Get API key](https://platform.openai.com/api-keys))
     - Sends device metadata to OpenAI for embeddings (minimal cost)
     - Only device names, types, descriptions sent - no sensitive data
@@ -68,6 +63,12 @@ The MCP Server Indigo device is what creates the actual MCP Server.
 - **Remote access**: Use your Indigo Reflector API key from your Reflector settings
 
 ### Claude Desktop / MCP Client Configuration
+
+Requirements:
+- **Node.js**: Required for MCP client connection ([Download](https://nodejs.org/))
+    - Provides `npx` command used by Claude Desktop configuration
+    - Install via Homebrew: `brew install node`
+    - Or download from [nodejs.org](https://nodejs.org/)
 
 For Claude Desktop -- Add one of the following configurations to
 `~/Library/Application Support/Claude/claude_desktop_config.json` based on your use case:
