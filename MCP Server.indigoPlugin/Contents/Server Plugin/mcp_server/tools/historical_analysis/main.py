@@ -258,19 +258,37 @@ class HistoricalAnalysisHandler(BaseToolHandler):
             if not client.is_enabled() or not client.test_connection():
                 return []
             
-            # Build and execute query
+            # Build and execute query - try top-level property first
             query = query_builder.build_device_history_query(
                 device_name=device_name,
                 device_property=device_property,
                 time_range_days=time_range_days
             )
-            
+
             results = client.execute_query(query)
+            actual_property = device_property
+
+            # If no results and property doesn't already start with "state.", try nested state.property format
+            if not results and not device_property.startswith("state."):
+                nested_property = f"state.{device_property}"
+                self.debug_log(f"No results for top-level property '{device_property}', trying nested format: {nested_property}")
+
+                query = query_builder.build_device_history_query(
+                    device_name=device_name,
+                    device_property=nested_property,
+                    time_range_days=time_range_days
+                )
+
+                results = client.execute_query(query)
+                if results:
+                    actual_property = nested_property
+                    self.debug_log(f"✓ Found data using nested property format: {nested_property}")
+
             if not results:
-                self.debug_log(f"InfluxDB query returned no results for {device_name}.{device_property}")
+                self.debug_log(f"InfluxDB query returned no results for {device_name}.{device_property} (tried both top-level and nested formats)")
                 return []
-            
-            self.debug_log(f"InfluxDB returned {len(results)} raw records for {device_name}.{device_property}")
+
+            self.debug_log(f"InfluxDB returned {len(results)} raw records for {device_name}.{actual_property}")
             
             # Convert to formatted state change messages
             formatted_results = []
@@ -283,7 +301,7 @@ class HistoricalAnalysisHandler(BaseToolHandler):
                     continue
                 
                 timestamp_local = self._convert_to_local_timezone(record_time_str)
-                field_value = data_record.get(device_property)
+                field_value = data_record.get(actual_property)
                 
                 if saved_state is None:
                     from_timestamp = timestamp_local
@@ -299,10 +317,10 @@ class HistoricalAnalysisHandler(BaseToolHandler):
                     to_str = timestamp_local.strftime("%Y-%m-%d %H:%M:%S %Z")
                     
                     # Format the state value with context
-                    state_str = self._format_state_value(saved_state, device_property)
-                    
+                    state_str = self._format_state_value(saved_state, actual_property)
+
                     message = (
-                        f"{device_name}.{device_property} was {state_str} for {duration_str}, "
+                        f"{device_name}.{actual_property} was {state_str} for {duration_str}, "
                         f"from {from_str} to {to_str}"
                     )
                     formatted_results.append(message)
@@ -323,10 +341,10 @@ class HistoricalAnalysisHandler(BaseToolHandler):
                 to_str = to_timestamp.strftime("%Y-%m-%d %H:%M:%S %Z")
                 
                 # Format the state value with context
-                final_state = self._format_state_value(saved_state, device_property)
-                
+                final_state = self._format_state_value(saved_state, actual_property)
+
                 message = (
-                    f"{device_name}.{device_property} is currently {final_state} (for {duration_str}), "
+                    f"{device_name}.{actual_property} is currently {final_state} (for {duration_str}), "
                     f"since {from_str}"
                 )
                 formatted_results.append(message)
