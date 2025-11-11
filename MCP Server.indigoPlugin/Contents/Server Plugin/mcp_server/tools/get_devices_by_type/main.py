@@ -77,8 +77,8 @@ class GetDevicesByTypeHandler(BaseToolHandler):
             paginated_devices = filtered_devices[start_idx:end_idx]
             has_more = end_idx < total_count
 
-            # Log results
-            self.info_log(f"💡 Found {total_count} '{device_type}' devices (returning {len(paginated_devices)} from offset {offset})")
+            # Log results in standardized format
+            self.info_log(f"✅ get_devices_by_type({device_type}): {len(paginated_devices)}/{total_count} devices (offset={offset})")
 
             return {
                 "device_type": device_type,

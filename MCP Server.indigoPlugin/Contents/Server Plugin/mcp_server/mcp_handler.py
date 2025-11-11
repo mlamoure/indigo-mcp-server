@@ -277,9 +277,27 @@ class MCPHandler:
         method = msg["method"]
         params = msg.get("params") or {}
 
+        # Extract client IP from headers (check common proxy headers first)
+        client_ip = (
+            headers.get("x-forwarded-for", "").split(",")[0].strip() or
+            headers.get("x-real-ip", "") or
+            headers.get("remote-addr", "") or
+            "unknown"
+        )
+
         # Log incoming request at INFO level (concise)
         session_id = headers.get("mcp-session-id", "")
         session_short = session_id[:8] if session_id else "none"
+
+        # Get client info from session if available
+        client_label = client_ip
+        if session_id and session_id in self._sessions:
+            session_data = self._sessions[session_id]
+            # Try to use client name if available
+            client_info = session_data.get("client_info", {})
+            client_name = client_info.get("name", "")
+            if client_name:
+                client_label = f"{client_name}@{client_ip}"
 
         # Format method for logging
         if method.startswith("notifications/"):
@@ -289,7 +307,12 @@ class MCPHandler:
         else:
             log_method = method
 
-        self.logger.info(f"📨 {log_method} | session: {session_short}")
+        # Only log significant MCP operations at INFO, move protocol to DEBUG
+        significant_methods = ["tools/call", "resources/read"]
+        if any(method.startswith(sm) for sm in significant_methods):
+            self.logger.info(f"📨 {log_method} | {client_label} | session: {session_short}")
+        else:
+            self.logger.debug(f"📨 {log_method} | {client_label} | session: {session_short}")
         
         # MCP 2025-06-18 requires MCP-Protocol-Version header for HTTP transport
         protocol_version_header = headers.get("mcp-protocol-version")
@@ -309,7 +332,7 @@ class MCPHandler:
 
         # Route to appropriate handler
         if method == "initialize":
-            return self._handle_initialize(msg_id, params)
+            return self._handle_initialize(msg_id, params, client_ip)
         elif method == "ping":
             return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
         elif method == "notifications/cancelled":
@@ -352,7 +375,8 @@ class MCPHandler:
     def _handle_initialize(
         self,
         msg_id: Any,
-        params: Dict[str, Any]
+        params: Dict[str, Any],
+        client_ip: str = "unknown"
     ) -> Dict[str, Any]:
         """Handle initialize request."""
         requested_version = str(params.get("protocolVersion") or "")
@@ -366,8 +390,12 @@ class MCPHandler:
             self._sessions[session_id] = {
                 "created": time.time(),
                 "last_seen": time.time(),
-                "client_info": client_info
+                "client_info": client_info,
+                "client_ip": client_ip
             }
+
+            # Log new session creation with client details
+            self.logger.info(f"🔌 New session: {client_name}@{client_ip} | session: {session_id[:8]}")
 
             result = {
                 "jsonrpc": "2.0",

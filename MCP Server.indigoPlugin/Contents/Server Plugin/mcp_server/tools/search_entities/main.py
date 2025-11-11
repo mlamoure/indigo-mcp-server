@@ -61,15 +61,15 @@ class SearchEntitiesHandler(BaseToolHandler):
             Dictionary with formatted search results including pagination info
         """
         try:
-            # Concise query logging
+            # DEBUG level query logging
             query_short = query[:50] + "..." if len(query) > 50 else query
-            self.info_log(f"Searching: '{query_short}'")
+            self.debug_log(f"Searching: '{query_short}'")
 
             # Parse query to determine search parameters
             search_params = self.query_parser.parse(query, device_types, entity_types)
 
             # Expand query with LLM for better semantic matching
-            self.info_log("\t⬆️ Expanding with AI")
+            self.debug_log("Expanding query with AI")
             expanded_query = self.query_parser.expand_query(query, enable_llm=True)
 
             # Perform vector search
@@ -106,14 +106,16 @@ class SearchEntitiesHandler(BaseToolHandler):
                     grouped_results, limit, offset, total_count
                 )
 
-            # Log results summary
+            # Single line consolidated result summary
             paginated_device_count = len(paginated_results.get("devices", []))
             paginated_variable_count = len(paginated_results.get("variables", []))
             paginated_action_count = len(paginated_results.get("actions", []))
-            self.info_log(
-                f"\t✅ Found: {device_count} devices, {variable_count} variables, {action_count} actions"
-                + (f" (showing {paginated_device_count + paginated_variable_count + paginated_action_count})" if limit else "")
-            )
+
+            returned_count = paginated_device_count + paginated_variable_count + paginated_action_count
+            if limit:
+                self.info_log(f"✅ search_entities(\"{query_short}\"): {returned_count}/{total_count} results ({paginated_device_count} devices, {paginated_variable_count} vars, {paginated_action_count} actions)")
+            else:
+                self.info_log(f"✅ search_entities(\"{query_short}\"): {device_count} devices, {variable_count} vars, {action_count} actions")
 
             # Format results
             formatted_results = self.result_formatter.format_search_results(
