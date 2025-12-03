@@ -34,7 +34,7 @@ class MCPHandler:
     """Handles MCP protocol requests through Indigo IWS."""
     
     # MCP Protocol version we support
-    PROTOCOL_VERSION = "2025-06-18"
+    PROTOCOL_VERSION = "2025-11-25"
     
     def __init__(
         self,
@@ -482,7 +482,7 @@ class MCPHandler:
         try:
             # Call the tool function
             result = self._tools[tool_name]["function"](**tool_args)
-            
+
             return {
                 "jsonrpc": "2.0",
                 "id": msg_id,
@@ -495,11 +495,33 @@ class MCPHandler:
                     ]
                 }
             }
+        except (TypeError, ValueError) as e:
+            # MCP 2025-11-25: Input validation errors return as Tool Execution Errors
+            # This enables model self-correction by returning error as tool result
+            self.logger.warning(f"Tool {tool_name} validation error: {e}")
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": safe_json_dumps({
+                                "error": str(e),
+                                "tool": tool_name,
+                                "success": False
+                            })
+                        }
+                    ],
+                    "isError": True
+                }
+            }
         except Exception as e:
-            self.logger.error(f"Tool {tool_name} error: {e}")
+            # Internal errors still return as JSON-RPC errors
+            self.logger.error(f"Tool {tool_name} internal error: {e}")
             return self._json_error(
-                msg_id, 
-                -32603, 
+                msg_id,
+                -32603,
                 f"Tool execution failed: {str(e)}"
             )
     
