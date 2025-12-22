@@ -428,6 +428,7 @@ class Plugin(indigo.PluginBase):
             self.logger.error(f"❌ MCP endpoint error: {e}")
             return {
                 "status": 500,
+                "headers": {"Content-Type": "application/json"},
                 "content": json.dumps({"error": str(e)})
             }
 

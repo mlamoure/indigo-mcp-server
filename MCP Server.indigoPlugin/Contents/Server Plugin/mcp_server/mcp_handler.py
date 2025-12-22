@@ -188,10 +188,14 @@ class MCPHandler:
                 "content": ""
             }
 
-        # Check Accept header - client must accept json or event-stream
-        if "application/json" not in accept and "text/event-stream" not in accept:
+        # Check Accept header - client must accept json, event-stream, or */* (wildcard)
+        if "application/json" not in accept and "text/event-stream" not in accept and "*/*" not in accept:
             self.logger.debug(f"Invalid Accept header: '{accept}'")
-            return {"status": 406, "content": "Not Acceptable"}
+            return {
+                "status": 406,
+                "headers": {"Content-Type": "text/plain"},
+                "content": "Not Acceptable"
+            }
 
         # Parse JSON body
         try:
