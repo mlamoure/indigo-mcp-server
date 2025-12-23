@@ -175,6 +175,69 @@ If you have HTTPS disabled on your Indigo Web Server.
 3. Replace `your-local-hostname-or-ip` with your server IP/hostname for LAN access
 4. Replace port 8176 if you are not using the default Indigo Web Server port
 
+> **Note**: For VS Code, Cursor, or Claude Code CLI, see the "VS Code / Cursor / Claude Code Configuration" section below for direct HTTP configuration.
+
+### VS Code / Cursor / Claude Code Configuration
+
+These clients support **direct HTTP transport** which is simpler and more reliable than the `mcp-remote` proxy.
+
+#### Scenario 1: Local Access (Same Machine as Indigo)
+
+Add to your MCP settings file:
+- **VS Code**: `.vscode/mcp.json` or VS Code settings
+- **Cursor**: Cursor MCP settings
+- **Claude Code**: `~/.claude.json` or project `.mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "indigo": {
+      "type": "http",
+      "url": "http://localhost:8176/message/com.vtmikel.mcp_server/mcp/",
+      "headers": {
+        "Authorization": "Bearer YOUR_LOCAL_SECRET_KEY"
+      }
+    }
+  }
+}
+```
+
+#### Scenario 2: LAN Access (Different Machine on Same Network)
+
+```json
+{
+  "mcpServers": {
+    "indigo": {
+      "type": "http",
+      "url": "http://YOUR_INDIGO_IP:8176/message/com.vtmikel.mcp_server/mcp/",
+      "headers": {
+        "Authorization": "Bearer YOUR_LOCAL_SECRET_KEY"
+      }
+    }
+  }
+}
+```
+
+Replace `YOUR_INDIGO_IP` with your Indigo server's LAN IP address (e.g., `192.168.1.100`).
+
+#### Scenario 3: Remote HTTPS via Indigo Reflector
+
+```json
+{
+  "mcpServers": {
+    "indigo": {
+      "type": "http",
+      "url": "https://your-reflector-id.indigodomo.net/message/com.vtmikel.mcp_server/mcp/",
+      "headers": {
+        "Authorization": "Bearer YOUR_REFLECTOR_API_KEY"
+      }
+    }
+  }
+}
+```
+
+> **Why direct HTTP?** The `mcp-remote` proxy used by Claude Desktop requests OAuth endpoints that Indigo doesn't implement. Direct HTTP transport avoids this issue entirely.
+
 ## Pagination Support
 
 **Important:** To handle large Indigo installations, list and search tools support pagination:
