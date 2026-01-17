@@ -1,45 +1,39 @@
 # MCP Server Core Dependencies (IWS Integration)
-lancedb>=0.25.2
+lancedb>=0.25.2,<0.27.0
 pyarrow>=14.0.0,<22.0.0
 
 # OpenAI Integration
-openai>=2.3.0
-tiktoken>=0.11.0
+openai>=2.15.0
+tiktoken>=0.12.0
 
-# LangGraph and LangSmith
-langgraph>=0.6.10
-langgraph-checkpoint>=2.1.2
-langgraph-prebuilt>=0.6.4
-langgraph-sdk>=0.2.0
-langsmith>=0.4.35
+# LangSmith Tracing
+langsmith>=0.4.35,<0.6.0
 
-# Data Processing
+# Data Processing (required by lancedb/langsmith)
 pandas>=2.3.3
 numpy>=2.3.3
 pyyaml>=6.0
-dicttoxml>=1.7.16
-matplotlib>=3.5.0
 
-# HTTP Client only (no server needed with IWS)
+# Structured Output & Validation
+pydantic>=2.12.5
+
+# Color Support (XKCD color library)
+matplotlib>=3.5.0,<4.0.0
+
+# HTTP Client (required by langsmith)
 requests>=2.32.4
 requests-toolbelt>=1.0.0
 
 # Security
 certifi>=2025.8.3
 
-# Configuration Management
-python-dotenv>=1.1.1
-pydantic>=2.12.2
-pydantic-settings>=2.11.0
-
-# InfluxDB Integration
-influxdb==5.3.2
-influxdb-client>=1.49.0
-
 # Template Engine
-jinja2>=3.1.0
+jinja2>=3.1.5
 
-# Utility Dependencies
+# InfluxDB Integration (Legacy 1.x)
+influxdb==5.3.2
+
+# Utility Dependencies (transitive, kept explicit for reproducibility)
 attrs>=25.3.0
 charset-normalizer>=3.4.2
 frozenlist>=1.7.0
