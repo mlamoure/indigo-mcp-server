@@ -32,9 +32,10 @@ from .tools.variable_control import VariableControlHandler
 
 class MCPHandler:
     """Handles MCP protocol requests through Indigo IWS."""
-    
-    # MCP Protocol version we support
-    PROTOCOL_VERSION = "2025-11-25"
+
+    # MCP Protocol versions we support (newest first)
+    SUPPORTED_PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18")
+    LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]
     
     def __init__(
         self,
@@ -318,10 +319,10 @@ class MCPHandler:
         else:
             self.logger.debug(f"📨 {log_method} | {client_label} | session: {session_short}")
         
-        # MCP 2025-06-18 requires MCP-Protocol-Version header for HTTP transport
+        # MCP protocol requires MCP-Protocol-Version header for HTTP transport
         protocol_version_header = headers.get("mcp-protocol-version")
         if method != "initialize" and not method.startswith("notifications/") and self._sessions:
-            if protocol_version_header and protocol_version_header != self.PROTOCOL_VERSION:
+            if protocol_version_header and protocol_version_header not in self.SUPPORTED_PROTOCOL_VERSIONS:
                 self.logger.debug(f"Invalid protocol version: {protocol_version_header}")
                 return self._json_error(msg_id, -32600, f"Unsupported protocol version: {protocol_version_header}")
 
@@ -388,24 +389,25 @@ class MCPHandler:
         client_name = client_info.get("name", "Unknown")
 
         # Check if we support the requested version
-        if requested_version == self.PROTOCOL_VERSION:
+        if requested_version in self.SUPPORTED_PROTOCOL_VERSIONS:
             # Create new session
             session_id = secrets.token_urlsafe(24)
             self._sessions[session_id] = {
                 "created": time.time(),
                 "last_seen": time.time(),
                 "client_info": client_info,
-                "client_ip": client_ip
+                "client_ip": client_ip,
+                "protocol_version": requested_version  # Track negotiated version per session
             }
 
             # Log new session creation with client details
-            self.logger.info(f"🔌 New session: {client_name}@{client_ip} | session: {session_id[:8]}")
+            self.logger.info(f"🔌 New session: {client_name}@{client_ip} | session: {session_id[:8]} | protocol: {requested_version}")
 
             result = {
                 "jsonrpc": "2.0",
                 "id": msg_id,
                 "result": {
-                    "protocolVersion": self.PROTOCOL_VERSION,
+                    "protocolVersion": requested_version,  # Echo back client's requested version
                     "capabilities": {
                         "logging": {},
                         "prompts": {"listChanged": True},
@@ -436,7 +438,7 @@ class MCPHandler:
                     "code": -32602,
                     "message": "Unsupported protocol version",
                     "data": {
-                        "supported": [self.PROTOCOL_VERSION],
+                        "supported": list(self.SUPPORTED_PROTOCOL_VERSIONS),
                         "requested": requested_version
                     }
                 }
