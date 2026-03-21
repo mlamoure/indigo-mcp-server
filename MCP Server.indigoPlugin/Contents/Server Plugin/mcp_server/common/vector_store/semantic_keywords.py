@@ -39,7 +39,7 @@ def _calculate_optimal_batch_size(entity_count: int, estimated_tokens_per_entity
     Returns:
         Optimal batch size for LLM processing
     """
-    # GPT-4o-mini context window: 400,000 tokens
+    # GPT-5.4-mini context window: 400,000 tokens
     # Reserve space for response (typical response: ~10 keywords per device * ~2 tokens = ~20 tokens per device)
     max_context_tokens = 400000
     response_reserve = entity_count * 25  # Conservative estimate
@@ -575,15 +575,17 @@ def _generate_llm_keywords_batch(entities: List[Dict[str, Any]], entity_type: st
         device_descriptions = []
         entity_ids = []
         cache_keys = []
-        
+        cached_results = {}
+
         for entity in entities:
             entity_id = str(entity.get("id", ""))
             if not entity_id:
                 continue
-                
+
             # Check cache first
             cache_key = _create_entity_cache_key(entity)
             if cache_key in _llm_keyword_cache:
+                cached_results[entity_id] = _llm_keyword_cache[cache_key]
                 continue
             
             name = entity.get("name", "")
@@ -600,8 +602,9 @@ def _generate_llm_keywords_batch(entities: List[Dict[str, Any]], entity_type: st
             cache_keys.append(cache_key)
         
         if not device_descriptions:
-            pass  # All cached
-            return {}
+            if cached_results:
+                logger.debug(f"All {len(cached_results)} entities served from LLM keyword cache")
+            return cached_results
         
         logger.debug(f"🚀 Batch processing {len(device_descriptions)} devices for LLM keywords")
         
@@ -633,9 +636,13 @@ Return the results as a structured JSON response with device numbers (1-based) a
         # Process structured response directly
         logger.debug(f"✅ Received structured response of type: {type(response).__name__}")
         keywords_map = _process_structured_response(response, entity_ids, cache_keys, entities)
-        
-        logger.debug(f"✅ Batch processed {len(keywords_map)} devices, generated {sum(len(kw) for kw in keywords_map.values())} total keywords")
-        
+
+        # Merge cached results with newly generated results
+        keywords_map.update(cached_results)
+
+        cache_note = f" ({len(cached_results)} from cache)" if cached_results else ""
+        logger.debug(f"✅ Batch processed {len(keywords_map)} devices{cache_note}, generated {sum(len(kw) for kw in keywords_map.values())} total keywords")
+
         return keywords_map
         
     except Exception as e:

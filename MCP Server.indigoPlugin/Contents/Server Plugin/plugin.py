@@ -49,8 +49,8 @@ class Plugin(indigo.PluginBase):
 
         # Plugin configuration
         self.openai_api_key = plugin_prefs.get("openai_api_key", "")
-        self.large_model = plugin_prefs.get("large_model", "gpt-5")
-        self.small_model = plugin_prefs.get("small_model", "gpt-5-mini")
+        self.large_model = plugin_prefs.get("large_model", "gpt-5.4")
+        self.small_model = plugin_prefs.get("small_model", "gpt-5.4-mini")
 
         # LangSmith configuration
         self.enable_langsmith = plugin_prefs.get("enable_langsmith", False)

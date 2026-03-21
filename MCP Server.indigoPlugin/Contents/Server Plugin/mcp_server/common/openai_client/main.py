@@ -15,13 +15,13 @@ logger = logging.getLogger("Plugin")
 DEFAULT_SYSTEM_PROMPT = (
     "You are an automation assistant supporting a home automation system called Indigo."
 )
-DEFAULT_MODEL = os.environ.get("LARGE_MODEL", "gpt-5")
-SMALL_MODEL = os.environ.get("SMALL_MODEL", "gpt-5-mini")
+DEFAULT_MODEL = os.environ.get("LARGE_MODEL", "gpt-5.4")
+SMALL_MODEL = os.environ.get("SMALL_MODEL", "gpt-5.4-mini")
 
 # hard-coded model limits and defaults
 MODEL_TOKEN_LIMITS = {
-    "gpt-5": 400000,  # GPT-5: 272k input + 128k output = 400k total context
-    "gpt-5-mini": 400000,  # GPT-5-mini: Same 400k context as GPT-5
+    "gpt-5.4": 1000000,  # GPT-5.4: 1M total context
+    "gpt-5.4-mini": 400000,  # GPT-5.4-mini: 400k total context
 }
 DEFAULT_RESPONSE_TOKEN_RESERVE = int(
     os.environ.get("OPENAI_RESPONSE_TOKEN_RESERVE", 2000)
