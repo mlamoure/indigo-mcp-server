@@ -40,17 +40,20 @@ class MCPHandler:
     def __init__(
         self,
         data_provider: DataProvider,
-        logger: Optional[logging.Logger] = None
+        logger: Optional[logging.Logger] = None,
+        subscription_handler: "Optional[SubscriptionHandler]" = None,
     ):
         """
         Initialize the MCP handler.
-        
+
         Args:
             data_provider: Data provider for accessing entity data
             logger: Optional logger instance
+            subscription_handler: Optional event subscription handler (when webhooks enabled)
         """
         self.data_provider = data_provider
         self.logger = logger or logging.getLogger("Plugin")
+        self.subscription_handler = subscription_handler
 
         # Session management
         self._sessions = {}  # session_id -> {created, last_seen, client_info}
@@ -152,6 +155,7 @@ class MCPHandler:
             log_query_handler=self.log_query_handler,
             plugin_control_handler=self.plugin_control_handler,
             data_provider=self.data_provider,
+            subscription_handler=self.subscription_handler,
             logger=self.logger
         )
     
@@ -660,6 +664,12 @@ class MCPHandler:
             "restart_plugin": self.tool_wrappers.tool_restart_plugin,
             "get_plugin_status": self.tool_wrappers.tool_get_plugin_status,
         }
+
+        # Event subscription tools (only when webhooks are enabled)
+        if self.subscription_handler:
+            tool_functions["create_event_subscription"] = self.tool_wrappers.tool_create_event_subscription
+            tool_functions["list_event_subscriptions"] = self.tool_wrappers.tool_list_event_subscriptions
+            tool_functions["delete_event_subscription"] = self.tool_wrappers.tool_delete_event_subscription
 
         # Get tool schemas from registry
         self._tools = get_tool_schemas(tool_functions)
