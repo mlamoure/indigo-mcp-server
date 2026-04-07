@@ -715,4 +715,96 @@ def get_tool_schemas(tool_functions):
         "function": tool_functions["get_plugin_status"]
     }
 
+    # ------------------------------------------------------------------
+    # Event subscription tools (conditionally included)
+    # ------------------------------------------------------------------
+
+    if "create_event_subscription" in tool_functions:
+        tools["create_event_subscription"] = {
+            "description": "Create a webhook subscription for Indigo entity state changes. When the specified conditions are met on the target entity, a structured JSON event is POSTed to the webhook URL. Supports all device state keys including third-party plugin states.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "webhook_url": {
+                        "type": "string",
+                        "description": "HTTP(S) endpoint URL to POST events to"
+                    },
+                    "auth": {
+                        "type": "object",
+                        "description": "Authentication config for outbound webhooks",
+                        "properties": {
+                            "mode": {
+                                "type": "string",
+                                "enum": ["none", "bearer", "hmac"],
+                                "description": "Auth mode: none, bearer (token in Authorization header), or hmac (HMAC-SHA256 signature)",
+                                "default": "none"
+                            },
+                            "token": {
+                                "type": "string",
+                                "description": "Bearer token or HMAC shared secret"
+                            },
+                            "verify_ssl": {
+                                "type": "boolean",
+                                "description": "Verify SSL certificates (set false for self-signed certs)",
+                                "default": True
+                            }
+                        }
+                    },
+                    "entity_type": {
+                        "type": "string",
+                        "enum": ["device", "variable"],
+                        "description": "Type of entity to watch"
+                    },
+                    "entity_id": {
+                        "type": "integer",
+                        "description": "Specific entity ID to watch, or omit for all entities of the given type"
+                    },
+                    "conditions": {
+                        "type": "object",
+                        "description": "State conditions that trigger the webhook. Uses StateFilter operators: simple equality ({\"onState\": true}), or complex ({\"brightness\": {\"gt\": 50}, \"temperature\": {\"lt\": 32}}). Operators: eq, ne, gt, gte, lt, lte, contains, regex. Webhook fires on transition INTO matching state."
+                    },
+                    "duration_seconds": {
+                        "type": "integer",
+                        "description": "Optional dwell time: condition must remain matched for this many seconds before firing. If condition reverts before expiry, webhook is cancelled.",
+                        "minimum": 1
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Human-readable label for this subscription"
+                    }
+                },
+                "required": ["webhook_url", "entity_type", "conditions"]
+            },
+            "function": tool_functions["create_event_subscription"]
+        }
+
+        tools["list_event_subscriptions"] = {
+            "description": "List all active event webhook subscriptions with delivery health stats, or get a single subscription by ID.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "subscription_id": {
+                        "type": "string",
+                        "description": "Optional: get a specific subscription by ID"
+                    }
+                }
+            },
+            "function": tool_functions["list_event_subscriptions"]
+        }
+
+        tools["delete_event_subscription"] = {
+            "description": "Delete an event webhook subscription by ID. Cancels any pending dwell timers for the subscription.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "subscription_id": {
+                        "type": "string",
+                        "description": "ID of the subscription to delete"
+                    }
+                },
+                "required": ["subscription_id"]
+            },
+            "function": tool_functions["delete_event_subscription"]
+        }
+
     return tools

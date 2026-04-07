@@ -29,6 +29,7 @@ class ToolWrappers:
         log_query_handler,
         plugin_control_handler,
         data_provider,
+        subscription_handler=None,
         logger: Optional[logging.Logger] = None
     ):
         """
@@ -61,6 +62,7 @@ class ToolWrappers:
         self.log_query_handler = log_query_handler
         self.plugin_control_handler = plugin_control_handler
         self.data_provider = data_provider
+        self.subscription_handler = subscription_handler
         self.logger = logger or logging.getLogger(__name__)
 
     # Tool wrapper methods
@@ -510,6 +512,38 @@ class ToolWrappers:
             return safe_json_dumps(result)
         except Exception as e:
             self.logger.error(f"Get plugin status error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
+    # Event subscription wrapper methods
+    def tool_create_event_subscription(self, **kwargs) -> str:
+        """Create event subscription tool implementation."""
+        try:
+            result = self.subscription_handler.create_subscription(**kwargs)
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"Create event subscription error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
+    def tool_list_event_subscriptions(self, subscription_id: str = None) -> str:
+        """List event subscriptions tool implementation."""
+        try:
+            result = self.subscription_handler.list_subscriptions(
+                subscription_id=subscription_id
+            )
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"List event subscriptions error: {e}")
+            return safe_json_dumps({"error": str(e)})
+
+    def tool_delete_event_subscription(self, subscription_id: str) -> str:
+        """Delete event subscription tool implementation."""
+        try:
+            result = self.subscription_handler.delete_subscription(
+                subscription_id=subscription_id
+            )
+            return safe_json_dumps(result)
+        except Exception as e:
+            self.logger.error(f"Delete event subscription error: {e}")
             return safe_json_dumps({"error": str(e)})
 
     # Resource wrapper methods

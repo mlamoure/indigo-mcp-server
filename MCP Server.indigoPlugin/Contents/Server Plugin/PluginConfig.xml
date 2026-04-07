@@ -89,6 +89,15 @@
 
     <Field id="separator4" type="separator"/>
 
+    <!-- Event Webhooks -->
+    <Field type="checkbox" id="enable_webhooks" defaultValue="false">
+        <Label>Enable Event Webhooks:</Label>
+        <Description>Allow MCP clients to create event subscriptions with webhook callbacks.
+            When disabled, subscription tools are hidden from MCP clients.</Description>
+    </Field>
+
+    <Field id="separator_webhooks" type="separator"/>
+
     <!-- Debug Settings -->
 
     <Field id="log_level" type="menu" defaultValue="20">

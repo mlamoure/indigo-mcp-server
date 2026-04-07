@@ -71,10 +71,17 @@ class Plugin(indigo.PluginBase):
         # Security configuration
         self.access_mode = plugin_prefs.get("access_mode", "local_only")
 
+        # Webhook configuration
+        self.enable_webhooks = plugin_prefs.get("enable_webhooks", False)
+
         # Component instances
         self.data_provider = None
         self.mcp_handler = None
         self.auth_manager = AuthManager(logger=self.logger)
+
+        # Event subscription components
+        self.subscription_manager = None
+        self.webhook_dispatcher = None
 
         # Device management
         self.mcp_server_device = None
@@ -351,11 +358,41 @@ class Plugin(indigo.PluginBase):
             self.logger.error(f"\t❌ Data provider initialization failed: {e}")
             return
 
+        # Subscribe to all device and variable changes for event webhooks
+        indigo.devices.subscribeToChanges()
+        indigo.variables.subscribeToChanges()
+
+        # Initialize event subscription system (if webhooks enabled)
+        subscription_handler = None
+        if self.enable_webhooks:
+            try:
+                from mcp_server.events import (
+                    SubscriptionManager, WebhookDispatcher, SubscriptionHandler
+                )
+                self.subscription_manager = SubscriptionManager(logger=self.logger)
+                self.webhook_dispatcher = WebhookDispatcher(logger=self.logger)
+                self.webhook_dispatcher.start()
+                # Wire dwell timer callback to dispatcher
+                self.subscription_manager.set_dispatch_callback(
+                    self.webhook_dispatcher.dispatch
+                )
+                subscription_handler = SubscriptionHandler(
+                    subscription_manager=self.subscription_manager,
+                    webhook_dispatcher=self.webhook_dispatcher,
+                    logger=self.logger,
+                )
+                self.logger.info("\t✅ Event webhook system started")
+            except Exception as e:
+                self.logger.error(f"\t❌ Event webhook system failed to start: {e}")
+                self.subscription_manager = None
+                self.webhook_dispatcher = None
+
         # Initialize MCP handler (includes vector store initialization)
         try:
             self.mcp_handler = MCPHandler(
                 data_provider=self.data_provider,
-                logger=self.logger
+                logger=self.logger,
+                subscription_handler=subscription_handler,
             )
 
             # Log MCP client connection information
@@ -375,6 +412,26 @@ class Plugin(indigo.PluginBase):
         Called when the plugin is being shut down.
         """
         self.logger.info("Stopping plugin...")
+
+        # Clean up webhook dispatcher
+        if self.webhook_dispatcher:
+            try:
+                self.webhook_dispatcher.stop()
+                self.logger.info("\t✅ Webhook dispatcher stopped")
+            except Exception as e:
+                self.logger.error(f"\t❌ Error stopping webhook dispatcher: {e}")
+            finally:
+                self.webhook_dispatcher = None
+
+        # Clean up subscription manager (cancels dwell timers)
+        if self.subscription_manager:
+            try:
+                self.subscription_manager.shutdown()
+                self.logger.info("\t✅ Subscription manager stopped")
+            except Exception as e:
+                self.logger.error(f"\t❌ Error stopping subscription manager: {e}")
+            finally:
+                self.subscription_manager = None
 
         # Clean up MCP handler
         if self.mcp_handler:
@@ -694,18 +751,22 @@ class Plugin(indigo.PluginBase):
 
     def deviceUpdated(self, origDev: indigo.Device, newDev: indigo.Device) -> None:
         """
-        Called when a device configuration is updated.
+        Called when any device is updated (after subscribeToChanges).
+
+        Handles MCP Server device config changes AND evaluates event
+        subscriptions for all other devices.
         """
+        # MCP Server device handling (existing logic)
         if newDev.deviceTypeId == "mcpServer":
             changes = []
-            
+
             # Check property changes (actual configuration)
             for key in newDev.pluginProps:
                 old_val = origDev.pluginProps.get(key)
                 new_val = newDev.pluginProps.get(key)
                 if old_val != new_val:
                     changes.append(f"property '{key}': '{old_val}' → '{new_val}'")
-            
+
             # Check state changes (runtime status)
             for key in newDev.states:
                 if key in origDev.states:
@@ -713,11 +774,11 @@ class Plugin(indigo.PluginBase):
                     new_val = newDev.states[key]
                     if old_val != new_val:
                         changes.append(f"state '{key}': '{old_val}' → '{new_val}'")
-            
+
             # Check device name change
             if origDev.name != newDev.name:
                 changes.append(f"device name: '{origDev.name}' → '{newDev.name}'")
-            
+
             # Log specific changes at debug level
             if changes:
                 self.logger.debug(f"MCP Server device '{newDev.name}' updated: {', '.join(changes)}")
@@ -732,9 +793,39 @@ class Plugin(indigo.PluginBase):
                 self.logger.info(
                     f"Access mode changed from {old_access_mode} to {new_access_mode}"
                 )
-                # No server restart needed - MCP runs via Indigo Web Server
+            return
 
-            # Device name changes are handled automatically by Indigo
+        # Call base implementation (required for subscribeToChanges)
+        indigo.PluginBase.deviceUpdated(self, origDev, newDev)
+
+        # Evaluate event subscriptions for all non-plugin devices
+        if self.subscription_manager and self.webhook_dispatcher:
+            try:
+                matches = self.subscription_manager.evaluate_device_change(
+                    dict(origDev), dict(newDev)
+                )
+                for subscription, event in matches:
+                    self.webhook_dispatcher.dispatch(subscription, event)
+            except Exception as e:
+                self.logger.warning(f"Subscription eval error: {e}")
+
+    def variableUpdated(self, origVar: indigo.Variable, newVar: indigo.Variable) -> None:
+        """
+        Called when any variable is updated (after subscribeToChanges).
+
+        Evaluates event subscriptions against the variable change.
+        """
+        indigo.PluginBase.variableUpdated(self, origVar, newVar)
+
+        if self.subscription_manager and self.webhook_dispatcher:
+            try:
+                matches = self.subscription_manager.evaluate_variable_change(
+                    dict(origVar), dict(newVar)
+                )
+                for subscription, event in matches:
+                    self.webhook_dispatcher.dispatch(subscription, event)
+            except Exception as e:
+                self.logger.warning(f"Variable subscription eval error: {e}")
 
     def validateDeviceConfigUi(
         self, valuesDict: indigo.Dict, typeId: str, devId: int
@@ -823,6 +914,14 @@ class Plugin(indigo.PluginBase):
             self.influx_password = values_dict.get("influx_password", "")
             self.influx_database = values_dict.get("influx_database", "indigo")
 
+            # Webhook configuration
+            new_enable_webhooks = values_dict.get("enable_webhooks", False)
+            if new_enable_webhooks != self.enable_webhooks:
+                self.enable_webhooks = new_enable_webhooks
+                self.logger.info(
+                    f"Event webhooks {'enabled' if self.enable_webhooks else 'disabled'} "
+                    f"- plugin restart required for MCP tool changes to take effect"
+                )
 
             # Set ALL environment variables (same as startup)
             os.environ["OPENAI_API_KEY"] = self.openai_api_key
