@@ -51,6 +51,9 @@ class Subscription:
     # Dwell-time (optional)
     duration_seconds: Optional[int] = None  # If set, condition must hold for this long
 
+    # Auto-expiry (optional)
+    max_fires: Optional[int] = None  # If set, auto-delete after this many successful deliveries
+
     # Metadata
     description: str = ""
     created_at: str = field(
@@ -84,6 +87,7 @@ class Subscription:
             "entity_id": self.entity_id,
             "conditions": self.conditions,
             "duration_seconds": self.duration_seconds,
+            "max_fires": self.max_fires,
             "description": self.description,
             "created_at": self.created_at,
             "stats": dict(self.stats),

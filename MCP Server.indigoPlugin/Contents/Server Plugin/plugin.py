@@ -376,6 +376,10 @@ class Plugin(indigo.PluginBase):
                 self.subscription_manager.set_dispatch_callback(
                     self.webhook_dispatcher.dispatch
                 )
+                # Wire auto-expiry callback for max_fires
+                self.webhook_dispatcher.set_on_expired(
+                    lambda sub: self.subscription_manager.delete(sub.subscription_id)
+                )
                 subscription_handler = SubscriptionHandler(
                     subscription_manager=self.subscription_manager,
                     webhook_dispatcher=self.webhook_dispatcher,

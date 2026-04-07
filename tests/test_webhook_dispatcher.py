@@ -321,3 +321,36 @@ class TestWebhookDispatcher:
             assert RecordingHandler.requests[0]["body"]["event_type"] == "device.state_changed"
         finally:
             server.shutdown()
+
+    def test_auto_expire_after_max_fires(self):
+        """Subscription with max_fires=2 should trigger on_expired after 2 deliveries."""
+        RecordingHandler.requests = []
+        server = _start_server(RecordingHandler, 19884)
+        try:
+            expired_subs = []
+            dispatcher = WebhookDispatcher(logger=Mock(), timeout=5, max_retries=0)
+            dispatcher.set_on_expired(lambda sub: expired_subs.append(sub))
+            dispatcher.start()
+
+            sub = Subscription(
+                webhook_url="http://127.0.0.1:19884/events",
+                entity_type="device",
+                conditions={"onState": False},
+                max_fires=2,
+            )
+
+            # Fire twice
+            dispatcher.dispatch(sub, Event(event_type="test.1"))
+            dispatcher.dispatch(sub, Event(event_type="test.2"))
+            time.sleep(2)
+            dispatcher.stop()
+
+            # Both should have been delivered
+            assert len(RecordingHandler.requests) == 2
+            assert sub.stats["fires"] == 2
+
+            # on_expired should have been called once (after the 2nd fire)
+            assert len(expired_subs) == 1
+            assert expired_subs[0].subscription_id == sub.subscription_id
+        finally:
+            server.shutdown()

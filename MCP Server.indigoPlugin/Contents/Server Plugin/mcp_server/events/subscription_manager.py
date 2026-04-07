@@ -66,6 +66,7 @@ class SubscriptionManager:
         verify_ssl: bool = True,
         entity_id: Optional[int] = None,
         duration_seconds: Optional[int] = None,
+        max_fires: Optional[int] = None,
         description: str = "",
     ) -> Subscription:
         """Create a new subscription. Returns the created Subscription."""
@@ -78,6 +79,7 @@ class SubscriptionManager:
             entity_id=entity_id,
             conditions=conditions,
             duration_seconds=duration_seconds,
+            max_fires=max_fires,
             description=description,
         )
 

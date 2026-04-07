@@ -768,6 +768,11 @@ def get_tool_schemas(tool_functions):
                         "description": "Optional dwell time: condition must remain matched for this many seconds before firing. If condition reverts before expiry, webhook is cancelled.",
                         "minimum": 1
                     },
+                    "max_fires": {
+                        "type": "integer",
+                        "description": "Auto-delete subscription after this many successful deliveries. Omit for unlimited. Use 1 for one-shot notifications.",
+                        "minimum": 1
+                    },
                     "description": {
                         "type": "string",
                         "description": "Human-readable label for this subscription"
