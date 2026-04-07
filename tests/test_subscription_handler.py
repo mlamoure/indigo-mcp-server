@@ -137,6 +137,25 @@ class TestCreateSubscription:
         )
         assert result["success"] is False
 
+    def test_create_with_max_fires(self, handler):
+        result = handler.create_subscription(
+            webhook_url="https://example.com/hook",
+            entity_type="device",
+            conditions={"onState": False},
+            max_fires=1,
+        )
+        assert result["success"] is True
+        assert result["data"]["max_fires"] == 1
+
+    def test_create_invalid_max_fires(self, handler):
+        result = handler.create_subscription(
+            webhook_url="https://example.com/hook",
+            entity_type="device",
+            conditions={"onState": False},
+            max_fires=0,
+        )
+        assert result["success"] is False
+
 
 class TestListSubscriptions:
     """Tests for list_event_subscriptions tool."""

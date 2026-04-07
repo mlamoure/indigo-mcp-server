@@ -107,6 +107,15 @@ class SubscriptionHandler(BaseToolHandler):
                         "success": False,
                     }
 
+            max_fires = kwargs.get("max_fires")
+            if max_fires is not None:
+                max_fires = int(max_fires)
+                if max_fires < 1:
+                    return {
+                        "error": "max_fires must be at least 1",
+                        "success": False,
+                    }
+
             description = kwargs.get("description", "")
 
             # Create the subscription
@@ -119,6 +128,7 @@ class SubscriptionHandler(BaseToolHandler):
                 verify_ssl=verify_ssl,
                 entity_id=entity_id,
                 duration_seconds=duration_seconds,
+                max_fires=max_fires,
                 description=description,
             )
 

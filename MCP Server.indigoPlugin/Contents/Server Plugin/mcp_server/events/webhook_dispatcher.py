@@ -18,7 +18,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from .event_model import Event
 from .subscription_model import Subscription
@@ -64,6 +64,9 @@ class WebhookDispatcher:
         self._warned_ssl: set = set()
         self._warned_http: set = set()
 
+        # Optional callback when a subscription reaches max_fires and should be deleted
+        self._on_expired: Optional[Callable[[Subscription], None]] = None
+
     def start(self) -> None:
         """Start the background delivery worker thread."""
         if self._running:
@@ -75,6 +78,10 @@ class WebhookDispatcher:
         )
         self._worker.start()
         self._logger.debug("Webhook dispatcher started")
+
+    def set_on_expired(self, callback: Callable[[Subscription], None]) -> None:
+        """Set callback invoked when a subscription reaches max_fires."""
+        self._on_expired = callback
 
     def stop(self) -> None:
         """Signal the worker to drain the queue and stop."""
@@ -161,6 +168,23 @@ class WebhookDispatcher:
                         f"Webhook delivered: {event.event_id} → "
                         f"{subscription.webhook_url} ({status_code})"
                     )
+                    # Auto-expire if max_fires reached
+                    if (
+                        subscription.max_fires is not None
+                        and subscription.stats["fires"] >= subscription.max_fires
+                        and self._on_expired
+                    ):
+                        self._logger.info(
+                            f"Subscription {subscription.subscription_id} "
+                            f"auto-expired after {subscription.stats['fires']} fires"
+                        )
+                        try:
+                            self._on_expired(subscription)
+                        except Exception:
+                            self._logger.exception(
+                                f"Error auto-expiring subscription "
+                                f"{subscription.subscription_id}"
+                            )
                     return
                 elif status_code >= 500:
                     # Server error — retry
