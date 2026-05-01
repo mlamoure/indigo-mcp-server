@@ -15,12 +15,10 @@ Search, analyze, and control your Indigo devices using natural language:
 
 ## Server Requirements
 
-- **Indigo Domotics**: 2024.2 or later
+- **Indigo Domotics**: 2025.2 or later (ships Python 3.13)
 - **macOS**: 10.15 (Catalina) or later
-- **CPU**: Intel Mac (2013+) or Apple Silicon (M1/M2/M3/M4)
-    - Note: LanceDB (used for vector search) requires AVX2 CPU instructions
-    - Most Intel Macs from 2013 onwards support AVX2
-    - All Apple Silicon Macs are fully supported
+- **CPU**: Apple Silicon only (M1/M2/M3/M4)
+    - LanceDB 0.30+ no longer ships Intel Mac (x86) wheels
 - **OpenAI API Key**: Required for semantic search ([Get API key](https://platform.openai.com/api-keys))
     - Sends device metadata to OpenAI for embeddings (minimal cost)
     - Only device names, types, descriptions sent - no sensitive data
