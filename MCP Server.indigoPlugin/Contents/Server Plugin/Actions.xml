@@ -5,4 +5,9 @@
         <Name>MCP Endpoint</Name>
         <CallbackMethod>handle_mcp_endpoint</CallbackMethod>
     </Action>
+    <!-- Event Subscriptions Web UI - Hidden from UI -->
+    <Action id="events_ui" uiPath="hidden">
+        <Name>Event Subscriptions UI</Name>
+        <CallbackMethod>handle_events_ui_endpoint</CallbackMethod>
+    </Action>
 </Actions>

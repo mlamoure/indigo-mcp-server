@@ -5,4 +5,8 @@
         <Name>Print MCP Client Connection Information</Name>
         <CallbackMethod>show_mcp_client_info_menu</CallbackMethod>
     </MenuItem>
+    <MenuItem id="show_events_ui_url">
+        <Name>Print Event Subscriptions Web UI URL</Name>
+        <CallbackMethod>show_events_ui_url_menu</CallbackMethod>
+    </MenuItem>
 </MenuItems>
