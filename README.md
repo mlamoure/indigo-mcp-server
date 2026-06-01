@@ -39,6 +39,10 @@ Search, analyze, and control your Indigo devices using natural language:
 
 - **InfluxDB Connection information**: Required for historical data analysis queries
 - **LangSmith**: Optional debugging and tracing of AI prompts. Not needed for most people.
+- **Event Webhooks**: Optional real-time push notifications, delivered as an HTTP POST to an
+  endpoint **you run** (disabled by default; requires a custom agent/automation system, **not**
+  stock Claude Desktop — see [Event Subscriptions & Webhooks](#event-subscriptions--webhooks)).
+  *Added in v2026.1.0.*
 
 ### MCP Server Device Setup
 
@@ -311,6 +315,194 @@ search_entities("bedroom lights", limit=20)
 ### Analysis
 
 - **analyze_historical_data**: AI-powered historical analysis for devices and variables (requires InfluxDB)
+
+### Event Subscriptions
+
+> Available only when **Enable Event Webhooks** is turned on in plugin preferences, and require you
+> to run your own webhook receiver. *Added in v2026.1.0.* See
+> [Event Subscriptions & Webhooks](#event-subscriptions--webhooks) for the full guide.
+
+- **create_event_subscription**: Subscribe to device/variable state changes; POST a JSON event to your webhook URL when conditions match
+- **list_event_subscriptions**: List active subscriptions with delivery health stats (or fetch one by ID)
+- **delete_event_subscription**: Delete a subscription by ID (cancels pending dwell timers)
+
+## Event Subscriptions & Webhooks
+
+*Added in v2026.1.0.*
+
+Event subscriptions let an MCP client ask Indigo to notify it the next time something happens —
+"tell me the next time the front door opens", "alert me if the temperature goes above 80°F", "notify
+me if the garage door stays open for 10 minutes".
+
+> ### ⚠️ This is an *outbound* webhook — you must run your own server
+>
+> When a subscription's conditions match, the plugin sends an **HTTP POST** to a URL **you provide**.
+> The plugin is a **sender only** — there is **no built-in receiver**. You must run your own
+> always-on HTTP server with a reachable endpoint that accepts that POST and does something with it.
+>
+> **This will not work with stock Claude Desktop** (or most off-the-shelf MCP clients). Those clients
+> have no way to receive a proactive, server-initiated notification — enabling webhooks and
+> restarting Claude Desktop does nothing visible. Event subscriptions are intended for **custom
+> agents / automation systems that own a persistent HTTP endpoint** (for example,
+> [OpenClaw](https://openclaw.ai/)). If you don't have a server that can receive a POST, this feature
+> is not for you yet.
+
+### Enabling webhooks
+
+The feature is **disabled by default**. In the plugin's preferences (Plugins → MCP Server → Configure),
+check **Enable Event Webhooks**. The three event-subscription tools
+(`create_event_subscription`, `list_event_subscriptions`, `delete_event_subscription`) are hidden
+from MCP clients until this is turned on.
+
+### Creating a subscription
+
+`create_event_subscription` accepts:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `webhook_url` | string | **yes** | HTTP(S) endpoint **you run** that events are POSTed to. |
+| `entity_type` | `"device"` \| `"variable"` | **yes** | What kind of entity to watch. |
+| `conditions` | object | **yes** | State conditions that trigger the webhook (see operators below). |
+| `entity_id` | integer | no | A specific device/variable ID, or omit to watch **all** entities of that type. |
+| `auth` | object | no | `{ "mode": "none"\|"bearer"\|"hmac", "token": "…", "verify_ssl": true }` (see Authentication). |
+| `duration_seconds` | integer (≥1) | no | **Dwell time** — the condition must stay matched this long before firing. If it reverts first, nothing is sent. |
+| `max_fires` | integer (≥1) | no | Auto-delete the subscription after this many successful deliveries. Use `1` for a one-shot notification. Omit for unlimited. |
+| `description` | string | no | Human-readable label for the subscription. |
+
+A webhook fires on the **transition into** a matching state (not repeatedly while it stays matched).
+When multiple conditions are given, they are combined with **AND** — all must match.
+
+```python
+# Notify me once, the next time the front door opens
+create_event_subscription(
+    webhook_url="https://my-server.example.com/indigo-hook",
+    entity_type="device",
+    entity_id=12345,
+    conditions={"onState": True},
+    max_fires=1,
+    description="Front door opened",
+)
+
+# Alert me if the garage door stays open for 10 minutes
+create_event_subscription(
+    webhook_url="https://my-server.example.com/indigo-hook",
+    entity_type="device",
+    entity_id=67890,
+    conditions={"onState": True},
+    duration_seconds=600,
+    description="Garage left open",
+)
+```
+
+### Condition operators
+
+Conditions are matched against device/variable state keys (including third-party plugin states).
+Use simple equality, or an operator object per key:
+
+```jsonc
+{ "onState": true }                                  // equality
+{ "brightness": { "gt": 50 } }                       // single operator
+{ "temperatureInput1": { "gt": 80 }, "onState": true } // AND of multiple keys
+```
+
+| Operator | Meaning |
+|----------|---------|
+| `eq` | equal to |
+| `ne` | not equal to |
+| `gt` / `gte` | greater than / greater than or equal |
+| `lt` / `lte` | less than / less than or equal |
+| `contains` | substring is contained in the value |
+| `regex` | value matches the regular expression |
+
+### Authentication
+
+Set via the `auth` parameter. The receiver should validate this so that only your Indigo server can
+post to your endpoint.
+
+- **`none`** (default) — no auth headers added.
+- **`bearer`** — adds `Authorization: Bearer <token>` to each POST.
+- **`hmac`** — adds an HMAC-SHA256 signature over the **raw request body**:
+  - `X-Webhook-Signature: sha256=<hexdigest>`
+  - `X-Webhook-Timestamp: <unix-seconds>`
+
+  The signature is computed as `HMAC-SHA256(token, raw_body_bytes)`. Verify it on the receiver:
+
+  ```python
+  import hmac, hashlib
+  expected = "sha256=" + hmac.new(SECRET.encode(), raw_body, hashlib.sha256).hexdigest()
+  ok = hmac.compare_digest(expected, request.headers["X-Webhook-Signature"])
+  ```
+
+Set `"verify_ssl": false` only if your receiver uses a self-signed certificate.
+
+### The webhook payload
+
+Each delivery is a `POST` with `Content-Type: application/json` and these headers:
+
+```
+X-Event-Id: <event id>          # same value as the body's event_id
+X-Event-Type: <event type>      # device.state_changed | variable.value_changed
+X-Subscription-Id: <subscription id>
+```
+
+…plus the auth headers above when configured. The JSON body looks like this:
+
+```json
+{
+  "event_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "schema_version": "1.0",
+  "dedupe_key": "indigo:device:12345:state:onState:True",
+  "source": { "system": "indigo", "plugin": "com.vtmikel.mcp_server", "host": "my-indigo-mac" },
+  "timestamp": "2026-06-01T15:30:45.123456+00:00",
+  "event_type": "device.state_changed",
+  "entity": { "kind": "device", "id": 12345, "name": "Front Door", "device_type": "…" },
+  "state": {
+    "changed_keys": ["onState"],
+    "old": { "onState": false },
+    "new": { "onState": true }
+  },
+  "trigger": { "subscription_id": "…", "conditions_matched": { "onState": true } },
+  "human": { "title": "Front Door state changed", "summary": "Front Door: onState=true" }
+}
+```
+
+Variable changes use `event_type: "variable.value_changed"`, `entity.kind: "variable"`, and a
+`state` of `{ "changed_keys": ["value"], "old": { "value": "…" }, "new": { "value": "…" } }`.
+
+### Delivery behavior
+
+- **At-least-once delivery.** Retries mean the same event can arrive more than once — your receiver
+  **must deduplicate by `event_id`** (or `dedupe_key`).
+- **Retries:** up to **4 delivery attempts** (1 initial + 3 retries), 10-second timeout each, with
+  exponential backoff (~1s, 2s, 4s between attempts). Retries happen on `5xx` and network/connection
+  errors. A `4xx` response is treated as a permanent rejection and is **not** retried.
+- **Success** is any `2xx` response — have your endpoint return `200` promptly.
+- **Not persisted across restarts:** active subscriptions and pending dwell timers live in memory and
+  are lost if the plugin (or Indigo) restarts. Re-create subscriptions your agent still needs on
+  startup, and check `list_event_subscriptions` for delivery health stats.
+
+### Minimal example receiver
+
+Any HTTPS endpoint reachable from your Indigo host works — a small Flask app, a serverless function,
+an automation platform's inbound webhook, etc. Here's a dependency-free Python receiver to test with:
+
+```python
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import json
+
+class Handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length)
+        # (Optional) verify X-Webhook-Signature here if using HMAC auth.
+        event = json.loads(body)
+        # Dedupe by event_id — at-least-once delivery means retries can repeat.
+        print(f"{event['event_type']} {event['event_id']}: {event['human']['summary']}")
+        self.send_response(200)   # any 2xx = success
+        self.end_headers()
+
+HTTPServer(("0.0.0.0", 8888), Handler).serve_forever()
+```
 
 ## Improving Results
 
