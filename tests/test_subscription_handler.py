@@ -156,6 +156,33 @@ class TestCreateSubscription:
         )
         assert result["success"] is False
 
+    def test_create_any_change_variable_ok(self, handler):
+        result = handler.create_subscription(
+            webhook_url="https://example.com/hook",
+            entity_type="variable",
+            conditions={"any_change": True},
+        )
+        assert result["success"] is True
+
+    def test_create_any_change_device_rejected(self, handler):
+        result = handler.create_subscription(
+            webhook_url="https://example.com/hook",
+            entity_type="device",
+            conditions={"any_change": True},
+        )
+        assert result["success"] is False
+        assert "any_change" in result["error"]
+
+    def test_create_any_change_with_duration_rejected(self, handler):
+        result = handler.create_subscription(
+            webhook_url="https://example.com/hook",
+            entity_type="variable",
+            conditions={"any_change": True},
+            duration_seconds=10,
+        )
+        assert result["success"] is False
+        assert "any_change" in result["error"]
+
 
 class TestListSubscriptions:
     """Tests for list_event_subscriptions tool."""
