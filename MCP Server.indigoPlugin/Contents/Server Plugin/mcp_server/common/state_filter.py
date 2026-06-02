@@ -60,16 +60,16 @@ class StateFilter:
                 # Simple equality check
                 # First check direct property
                 if key in entity:
-                    if entity[key] != expected_value:
+                    if not StateFilter._values_equal(entity[key], expected_value):
                         return False
                 # Then check in states dictionary if present
                 elif "states" in entity and key in entity["states"]:
-                    if entity["states"][key] != expected_value:
+                    if not StateFilter._values_equal(entity["states"][key], expected_value):
                         return False
                 else:
                     # State not found, condition fails
                     return False
-                    
+
         return True
     
     @staticmethod
@@ -100,25 +100,98 @@ class StateFilter:
             
         # Handle different operators
         for operator, expected in condition.items():
-            if operator == "gt" and not (value > expected):
+            if operator in ("gt", "gte", "lt", "lte"):
+                # Numeric comparison. Indigo variable values are always strings,
+                # so coerce both sides to a number; if either is uncoercible,
+                # the condition cannot be met (no crash, no lexicographic string
+                # comparison surprises).
+                actual_num = StateFilter._to_number(value)
+                expected_num = StateFilter._to_number(expected)
+                if actual_num is None or expected_num is None:
+                    return False
+                if operator == "gt" and not (actual_num > expected_num):
+                    return False
+                elif operator == "gte" and not (actual_num >= expected_num):
+                    return False
+                elif operator == "lt" and not (actual_num < expected_num):
+                    return False
+                elif operator == "lte" and not (actual_num <= expected_num):
+                    return False
+            elif operator == "ne" and StateFilter._values_equal(value, expected):
                 return False
-            elif operator == "gte" and not (value >= expected):
-                return False
-            elif operator == "lt" and not (value < expected):
-                return False
-            elif operator == "lte" and not (value <= expected):
-                return False
-            elif operator == "ne" and not (value != expected):
-                return False
-            elif operator == "eq" and not (value == expected):
+            elif operator == "eq" and not StateFilter._values_equal(value, expected):
                 return False
             elif operator == "contains" and expected not in str(value):
                 return False
             elif operator == "regex":
                 if not re.match(expected, str(value)):
                     return False
-                    
+
         return True
+
+    # ------------------------------------------------------------------
+    # Type-coercion helpers
+    #
+    # Indigo stores every variable value as a string ("true", "75", ...),
+    # while conditions are typically supplied with native types (True, 50).
+    # These helpers make comparisons type-tolerant. Coercion only changes the
+    # outcome on a type mismatch, so already-typed device states are unaffected.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _to_bool(value: Any) -> Optional[bool]:
+        """Coerce a value to bool. Returns None if it can't be interpreted."""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            v = value.strip().lower()
+            if v in ("true", "1", "yes", "on"):
+                return True
+            if v in ("false", "0", "no", "off", ""):
+                return False
+        return None
+
+    @staticmethod
+    def _to_number(value: Any) -> Optional[float]:
+        """Coerce a value to float. Returns None if it can't be interpreted.
+
+        Bools are intentionally not treated as numbers here so a boolean intent
+        is never silently compared numerically.
+        """
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value.strip())
+            except (ValueError, AttributeError):
+                return None
+        return None
+
+    @staticmethod
+    def _values_equal(actual: Any, expected: Any) -> bool:
+        """Type-tolerant equality.
+
+        Same types compare directly. Otherwise the comparison is driven by the
+        *expected* (condition) type: a bool expectation coerces ``actual`` to
+        bool, a numeric expectation coerces both sides to a number. Anything
+        else falls back to a string comparison.
+        """
+        if type(actual) is type(expected):
+            return actual == expected
+        if isinstance(expected, bool):
+            actual_bool = StateFilter._to_bool(actual)
+            return actual_bool is not None and actual_bool == expected
+        if isinstance(expected, (int, float)):
+            actual_num = StateFilter._to_number(actual)
+            expected_num = StateFilter._to_number(expected)
+            if actual_num is not None and expected_num is not None:
+                return actual_num == expected_num
+            return False
+        return str(actual) == str(expected)
     
     @staticmethod
     def parse_state_requirements(query: str) -> Optional[Dict[str, Any]]:

@@ -414,6 +414,29 @@ Use simple equality, or an operator object per key:
 | `contains` | substring is contained in the value |
 | `regex` | value matches the regular expression |
 
+**Watching variables.** Match a variable on its `value` key. Indigo stores every variable value as a
+**string**, but booleans and numbers in your conditions are coerced automatically, so all of these work:
+
+```jsonc
+{ "value": true }            // matches the string "true"
+{ "value": { "eq": "open" } } // exact string match
+{ "value": { "gt": 50 } }     // numeric comparison against the string value
+```
+
+**Any change (variables only).** To fire on *every* change to a variable's value regardless of what it
+becomes, use the `any_change` sentinel. It is **only valid for variables** (devices update far too
+often), and cannot be combined with `duration_seconds`:
+
+```python
+create_event_subscription(
+    webhook_url="https://my-server.example.com/indigo-hook",
+    entity_type="variable",
+    entity_id=88,
+    conditions={"any_change": True},
+    description="House mode changed",
+)
+```
+
 ### Authentication
 
 Set via the `auth` parameter. The receiver should validate this so that only your Indigo server can
@@ -480,6 +503,21 @@ Variable changes use `event_type: "variable.value_changed"`, `entity.kind: "vari
 - **Not persisted across restarts:** active subscriptions and pending dwell timers live in memory and
   are lost if the plugin (or Indigo) restarts. Re-create subscriptions your agent still needs on
   startup, and check `list_event_subscriptions` for delivery health stats.
+
+### Managing subscriptions in a browser (Web UI)
+
+*Added in v2026.3.0.* When event webhooks are enabled, the plugin serves a small web page that **lists
+every active subscription with full detail and lets you remove individual ones** (it does not create or
+edit — that stays with the MCP tools). API keys / bearer tokens are never shown.
+
+![Event Subscriptions web UI](docs/event-subscriptions-web-ui.png)
+
+- **URL:** `http://<your-indigo-host>:8176/message/com.vtmikel.mcp_server/events_ui/`
+- It is served by the Indigo Web Server and uses the **same authentication** as the rest of IWS — open it
+  from a browser that is logged into Indigo (no separate login).
+- The plugin menu **Plugins → MCP Server → Print Event Subscriptions Web UI URL** prints the exact URLs
+  for local, LAN, and Reflector access to the Indigo log.
+- The page reflects the current process only — subscriptions are in-memory and disappear on a plugin restart.
 
 ### Minimal example receiver
 

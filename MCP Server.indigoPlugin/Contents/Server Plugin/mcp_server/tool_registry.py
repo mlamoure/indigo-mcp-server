@@ -761,7 +761,7 @@ def get_tool_schemas(tool_functions):
                     },
                     "conditions": {
                         "type": "object",
-                        "description": "State conditions that trigger the webhook. Uses StateFilter operators: simple equality ({\"onState\": true}), or complex ({\"brightness\": {\"gt\": 50}, \"temperature\": {\"lt\": 32}}). Operators: eq, ne, gt, gte, lt, lte, contains, regex. Webhook fires on transition INTO matching state."
+                        "description": "State conditions that trigger the webhook. Uses StateFilter operators: simple equality ({\"onState\": true}), or complex ({\"brightness\": {\"gt\": 50}, \"temperature\": {\"lt\": 32}}). Operators: eq, ne, gt, gte, lt, lte, contains, regex. Webhook fires on transition INTO matching state. For variables, match on the \"value\" key (e.g. {\"value\": true} or {\"value\": {\"gt\": 50}}); variable values are stored as strings but booleans and numbers are coerced automatically. Variable-only: pass {\"any_change\": true} to fire on every value change (not allowed for devices, and cannot be combined with duration_seconds)."
                     },
                     "duration_seconds": {
                         "type": "integer",

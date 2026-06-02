@@ -215,6 +215,13 @@ class SubscriptionManager:
             if sub.entity_id is not None and sub.entity_id != variable_id:
                 continue
 
+            # "any change" subscriptions fire on every value change. The
+            # quick-reject above guarantees the value actually changed, so there
+            # is no transition/StateFilter evaluation to do here.
+            if sub.conditions.get("any_change"):
+                matches.append((sub, self._build_variable_event(orig_var, new_var, sub)))
+                continue
+
             new_matches = StateFilter.matches_state(new_var, sub.conditions)
             old_matches = StateFilter.matches_state(orig_var, sub.conditions)
 

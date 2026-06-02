@@ -263,6 +263,65 @@ class TestVariableChangeEvaluation:
         assert "human" in d
         assert d["trigger"]["conditions_matched"] == {"value": "on"}
 
+    def test_any_change_fires_on_every_value_change(self, manager):
+        manager.create(
+            webhook_url="https://example.com/hook",
+            entity_type="variable",
+            entity_id=50,
+            conditions={"any_change": True},
+        )
+        # Any value change fires, regardless of the value.
+        m1 = manager.evaluate_variable_change(
+            {"id": 50, "name": "v", "value": "a"},
+            {"id": 50, "name": "v", "value": "b"},
+        )
+        assert len(m1) == 1
+        m2 = manager.evaluate_variable_change(
+            {"id": 50, "name": "v", "value": "b"},
+            {"id": 50, "name": "v", "value": "c"},
+        )
+        assert len(m2) == 1
+
+    def test_any_change_no_fire_when_value_unchanged(self, manager):
+        manager.create(
+            webhook_url="https://example.com/hook",
+            entity_type="variable",
+            conditions={"any_change": True},
+        )
+        matches = manager.evaluate_variable_change(
+            {"id": 50, "name": "v", "value": "same"},
+            {"id": 50, "name": "v", "value": "same"},
+        )
+        assert len(matches) == 0
+
+    def test_variable_bool_coercion_fires(self, manager):
+        """{"value": true} matches Indigo's string "true" after coercion."""
+        manager.create(
+            webhook_url="https://example.com/hook",
+            entity_type="variable",
+            entity_id=50,
+            conditions={"value": True},
+        )
+        matches = manager.evaluate_variable_change(
+            {"id": 50, "name": "v", "value": "false"},
+            {"id": 50, "name": "v", "value": "true"},
+        )
+        assert len(matches) == 1
+
+    def test_variable_numeric_coercion_fires(self, manager):
+        """{"value": {"gt": 50}} works against string variable values (no TypeError)."""
+        manager.create(
+            webhook_url="https://example.com/hook",
+            entity_type="variable",
+            entity_id=50,
+            conditions={"value": {"gt": 50}},
+        )
+        matches = manager.evaluate_variable_change(
+            {"id": 50, "name": "v", "value": "40"},
+            {"id": 50, "name": "v", "value": "75"},
+        )
+        assert len(matches) == 1
+
 
 class TestDwellTimerIntegration:
     """Tests for dwell timer integration within SubscriptionManager."""

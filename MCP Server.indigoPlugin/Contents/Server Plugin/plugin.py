@@ -209,9 +209,9 @@ class Plugin(indigo.PluginBase):
         self.logger.warning("   Plugin will attempt to start. If it fails, check system requirements.")
         return True
 
-    def _get_mcp_client_urls(self) -> list:
+    def _get_mcp_client_urls(self, path: str = "/message/com.vtmikel.mcp_server/mcp/") -> list:
         """
-        Detect and return all available URLs for MCP client connections.
+        Detect and return all available URLs for a given IWS message endpoint.
 
         Returns a list of dicts with 'label', 'url', and 'config' keys for each access method:
         - localhost URL (always available)
@@ -219,11 +219,11 @@ class Plugin(indigo.PluginBase):
         - IP address-based URLs (all non-localhost IPs)
         - Indigo Reflector URL (if configured)
 
+        :param path: IWS message path to build URLs for (defaults to the MCP endpoint).
         :return: List of URL dicts [{"label": "...", "url": "...", "config": {...}}, ...]
         """
         urls = []
         indigo_port = 8176  # Default Indigo web server port
-        path = "/message/com.vtmikel.mcp_server/mcp/"
 
         # Helper function to generate Claude Desktop config for a given URL
         def make_config(url):
@@ -493,6 +493,59 @@ class Plugin(indigo.PluginBase):
                 "content": json.dumps({"error": str(e)})
             }
 
+    def handle_events_ui_endpoint(self, action, dev=None, callerWaitingForResult=True):
+        """
+        Serve the event-subscriptions web UI through Indigo IWS.
+
+        Routed from /message/com.vtmikel.mcp_server/events_ui/. Authentication is
+        enforced by IWS before this callback runs.
+
+        GET  -> render the subscription list (HTML).
+        POST -> delete one subscription (form field 'subscription_id'), then re-render.
+
+        The handler is intentionally method-agnostic: any non-POST request renders
+        the list, so the page works whether or not IWS forwards GET requests.
+        """
+        from mcp_server.events import web_ui
+
+        method = (action.props.get("incoming_request_method") or "").upper()
+        body = action.props.get("request_body") or ""
+
+        # Event webhooks disabled (or failed to initialize) — friendly notice.
+        if not self.enable_webhooks or self.subscription_manager is None:
+            return {
+                "status": 200,
+                "headers": {"Content-Type": "text/html; charset=utf-8"},
+                "content": web_ui.render_disabled_page(),
+            }
+
+        try:
+            if method == "POST":
+                sub_id = web_ui.parse_delete_subscription_id(body)
+                if sub_id:
+                    # delete() is idempotent and thread-safe.
+                    self.subscription_manager.delete(sub_id)
+
+            subscriptions = [
+                s.to_dict(include_token=False)
+                for s in self.subscription_manager.list_all()
+            ]
+            dispatcher_stats = (
+                self.webhook_dispatcher.get_stats() if self.webhook_dispatcher else None
+            )
+            return {
+                "status": 200,
+                "headers": {"Content-Type": "text/html; charset=utf-8"},
+                "content": web_ui.render_subscriptions_page(subscriptions, dispatcher_stats),
+            }
+        except Exception as e:
+            self.logger.error(f"❌ Events UI endpoint error: {e}")
+            return {
+                "status": 500,
+                "headers": {"Content-Type": "text/html; charset=utf-8"},
+                "content": "<html><body><h1>Internal error</h1></body></html>",
+            }
+
     ########################################
     # Menu Actions
     ########################################
@@ -611,6 +664,26 @@ class Plugin(indigo.PluginBase):
         config_lines.extend(["", ""])
 
         self.logger.info("\n".join(config_lines))
+
+    def show_events_ui_url_menu(self) -> None:
+        """Menu action: print the Event Subscriptions web UI URL(s) to the log."""
+        if not self.enable_webhooks:
+            self.logger.info(
+                "Event webhooks are disabled. Enable them in the plugin configuration "
+                "to use the Event Subscriptions web UI."
+            )
+            return
+
+        urls = self._get_mcp_client_urls(path="/message/com.vtmikel.mcp_server/events_ui/")
+        lines = [
+            "🗂️  Event Subscriptions Web UI:",
+            "   Open one of these URLs in a browser logged into the Indigo Web Server",
+            "   (lists active subscriptions and lets you remove them):",
+            "",
+        ]
+        for u in urls:
+            lines.append(f"   {u['label']}: {u['url']}")
+        self.logger.info("\n".join(lines))
 
     def test_connections_button(self, values_dict: indigo.Dict) -> indigo.Dict:
         """Button action to test connections with current configuration values."""

@@ -68,6 +68,7 @@ def _setup_events_modules():
     _load_module_from_file("mcp_server.events.subscription_manager", events_dir / "subscription_manager.py")
     _load_module_from_file("mcp_server.events.webhook_dispatcher", events_dir / "webhook_dispatcher.py")
     _load_module_from_file("mcp_server.events.subscription_handler", events_dir / "subscription_handler.py")
+    _load_module_from_file("mcp_server.events.web_ui", events_dir / "web_ui.py")
 
     # 4. Load events __init__
     _load_module_from_file("mcp_server.events", events_dir / "__init__.py")

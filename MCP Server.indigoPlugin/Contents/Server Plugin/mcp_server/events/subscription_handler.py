@@ -74,6 +74,17 @@ class SubscriptionHandler(BaseToolHandler):
                     "success": False,
                 }
 
+            # "any change" subscriptions are a variable-only sentinel. Devices
+            # emit updates constantly (timestamps, sensor polling), so watching
+            # for "any change" on a device would be unbounded noise.
+            any_change = bool(conditions.get("any_change"))
+            if any_change and entity_type != "variable":
+                return {
+                    "error": "any_change is only supported for variable subscriptions "
+                             "(devices change too frequently to watch for any change)",
+                    "success": False,
+                }
+
             # Parse auth config
             auth = kwargs.get("auth", {}) or {}
             auth_mode = auth.get("mode", "none") if isinstance(auth, dict) else "none"
@@ -104,6 +115,12 @@ class SubscriptionHandler(BaseToolHandler):
                 if duration_seconds < 1:
                     return {
                         "error": "duration_seconds must be at least 1",
+                        "success": False,
+                    }
+                if any_change:
+                    return {
+                        "error": "duration_seconds cannot be combined with any_change "
+                                 "(there is no steady condition to dwell on)",
                         "success": False,
                     }
 
