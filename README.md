@@ -510,6 +510,8 @@ Variable changes use `event_type: "variable.value_changed"`, `entity.kind: "vari
 every active subscription with full detail and lets you remove individual ones** (it does not create or
 edit — that stays with the MCP tools). API keys / bearer tokens are never shown.
 
+![Event Subscriptions web UI](docs/event-subscriptions-web-ui.png)
+
 - **URL:** `http://<your-indigo-host>:8176/message/com.vtmikel.mcp_server/events_ui/`
 - It is served by the Indigo Web Server and uses the **same authentication** as the rest of IWS — open it
   from a browser that is logged into Indigo (no separate login).
