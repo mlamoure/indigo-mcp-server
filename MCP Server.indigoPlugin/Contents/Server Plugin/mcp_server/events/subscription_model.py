@@ -94,6 +94,36 @@ class Subscription:
         }
         return result
 
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "Subscription":
+        """
+        Reconstruct a Subscription from a dict produced by
+        ``to_dict(include_token=True)`` (used for on-disk persistence).
+
+        Preserves identity (``subscription_id``, ``created_at``), the real
+        ``auth_token``, and delivery ``stats``. Missing keys fall back to the
+        dataclass defaults so older/partial records load gracefully.
+        """
+        sub = cls(
+            subscription_id=d.get("subscription_id") or generate_ulid(),
+            webhook_url=d.get("webhook_url", ""),
+            auth_mode=d.get("auth_mode", "none"),
+            auth_token=d.get("auth_token", ""),
+            verify_ssl=d.get("verify_ssl", True),
+            entity_type=d.get("entity_type", ""),
+            entity_id=d.get("entity_id"),
+            conditions=d.get("conditions") or {},
+            duration_seconds=d.get("duration_seconds"),
+            max_fires=d.get("max_fires"),
+            description=d.get("description", ""),
+        )
+        if d.get("created_at"):
+            sub.created_at = d["created_at"]
+        stats = d.get("stats")
+        if isinstance(stats, dict):
+            sub.stats.update(stats)
+        return sub
+
     def record_success(self, http_status: int) -> None:
         """Record a successful webhook delivery."""
         now = datetime.now(timezone.utc).isoformat()

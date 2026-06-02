@@ -500,9 +500,13 @@ Variable changes use `event_type: "variable.value_changed"`, `entity.kind: "vari
   exponential backoff (~1s, 2s, 4s between attempts). Retries happen on `5xx` and network/connection
   errors. A `4xx` response is treated as a permanent rejection and is **not** retried.
 - **Success** is any `2xx` response — have your endpoint return `200` promptly.
-- **Not persisted across restarts:** active subscriptions and pending dwell timers live in memory and
-  are lost if the plugin (or Indigo) restarts. Re-create subscriptions your agent still needs on
-  startup, and check `list_event_subscriptions` for delivery health stats.
+- **Persisted across restarts:** subscriptions are saved to
+  `…/Preferences/Plugins/com.vtmikel.mcp_server/subscriptions.json` and reloaded on startup, so they
+  survive plugin/Indigo restarts and upgrades. The file is written `0600` and **contains your webhook
+  auth tokens** (it must, so authenticated webhooks can re-authenticate after a restart) — it lives in
+  Indigo's protected app-support directory. Delivery stats are saved on each change and on shutdown
+  (best-effort after an unclean crash). Pending **dwell timers are not persisted** — a held condition
+  re-arms on its next matching transition.
 
 ### Managing subscriptions in a browser (Web UI)
 
