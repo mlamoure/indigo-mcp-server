@@ -15,6 +15,7 @@ sys.path.insert(0, str(plugin_path))
 
 from mcp_server.events.subscription_manager import SubscriptionManager
 from mcp_server.events.subscription_model import Subscription
+from mcp_server.events.subscription_store import SubscriptionStore
 
 
 class TestSubscriptionCRUD:
@@ -394,3 +395,63 @@ class TestDwellTimerIntegration:
         assert dispatch_mock.call_count == 0
 
         manager.shutdown()
+
+
+class TestPersistence:
+    """Tests for store-backed persistence (create/delete save; load restores)."""
+
+    @pytest.fixture
+    def store_path(self, tmp_path):
+        return str(tmp_path / "subscriptions.json")
+
+    def test_create_writes_file(self, store_path):
+        store = SubscriptionStore(store_path, logger=Mock())
+        manager = SubscriptionManager(logger=Mock(), store=store)
+        manager.create(
+            webhook_url="https://a.com", entity_type="device", conditions={"onState": True}
+        )
+        import os
+        assert os.path.exists(store_path)
+        assert len(store.load()) == 1
+
+    def test_load_from_store_restores(self, store_path):
+        store = SubscriptionStore(store_path, logger=Mock())
+        m1 = SubscriptionManager(logger=Mock(), store=store)
+        sub = m1.create(
+            webhook_url="https://a.com",
+            entity_type="variable",
+            entity_id=88,
+            conditions={"value": {"gt": 50}},
+            auth_mode="bearer",
+            auth_token="tok",
+        )
+
+        # Fresh manager pointed at the same file restores the subscription.
+        m2 = SubscriptionManager(logger=Mock(), store=SubscriptionStore(store_path, logger=Mock()))
+        n = m2.load_from_store()
+        assert n == 1
+        restored = m2.get(sub.subscription_id)
+        assert restored is not None
+        assert restored.auth_token == "tok"
+        assert restored.conditions == {"value": {"gt": 50}}
+        assert m2.count() == 1
+
+    def test_delete_updates_file(self, store_path):
+        store = SubscriptionStore(store_path, logger=Mock())
+        manager = SubscriptionManager(logger=Mock(), store=store)
+        sub = manager.create(
+            webhook_url="https://a.com", entity_type="device", conditions={"onState": True}
+        )
+        assert len(store.load()) == 1
+        manager.delete(sub.subscription_id)
+        assert store.load() == []
+
+    def test_no_store_is_noop(self):
+        # store=None must behave exactly as before: no file, no error.
+        manager = SubscriptionManager(logger=Mock())
+        manager.create(
+            webhook_url="https://a.com", entity_type="device", conditions={"onState": True}
+        )
+        assert manager.load_from_store() == 0
+        manager.save()  # no-op, no raise
+        assert manager.count() == 1

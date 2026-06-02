@@ -7,6 +7,7 @@ webhook subscriptions for Indigo device/variable state changes.
 
 from .event_model import Event, generate_ulid, SCHEMA_VERSION
 from .subscription_model import Subscription
+from .subscription_store import SubscriptionStore
 from .subscription_manager import SubscriptionManager
 from .webhook_dispatcher import WebhookDispatcher
 from .subscription_handler import SubscriptionHandler
@@ -17,6 +18,7 @@ __all__ = [
     "generate_ulid",
     "SCHEMA_VERSION",
     "Subscription",
+    "SubscriptionStore",
     "SubscriptionManager",
     "WebhookDispatcher",
     "SubscriptionHandler",

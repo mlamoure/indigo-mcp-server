@@ -367,9 +367,21 @@ class Plugin(indigo.PluginBase):
         if self.enable_webhooks:
             try:
                 from mcp_server.events import (
-                    SubscriptionManager, WebhookDispatcher, SubscriptionHandler
+                    SubscriptionManager, WebhookDispatcher, SubscriptionHandler,
+                    SubscriptionStore
                 )
-                self.subscription_manager = SubscriptionManager(logger=self.logger)
+                # Persist subscriptions next to the vector DB so they survive
+                # plugin/Indigo restarts.
+                subscriptions_path = os.path.join(
+                    indigo.server.getInstallFolderPath(),
+                    "Preferences/Plugins/com.vtmikel.mcp_server/subscriptions.json",
+                )
+                subscription_store = SubscriptionStore(
+                    subscriptions_path, logger=self.logger
+                )
+                self.subscription_manager = SubscriptionManager(
+                    logger=self.logger, store=subscription_store
+                )
                 self.webhook_dispatcher = WebhookDispatcher(logger=self.logger)
                 self.webhook_dispatcher.start()
                 # Wire dwell timer callback to dispatcher
@@ -380,6 +392,12 @@ class Plugin(indigo.PluginBase):
                 self.webhook_dispatcher.set_on_expired(
                     lambda sub: self.subscription_manager.delete(sub.subscription_id)
                 )
+                # Restore subscriptions persisted from a previous run
+                restored = self.subscription_manager.load_from_store()
+                if restored:
+                    self.logger.info(
+                        f"\t✅ Restored {restored} event subscription(s) from disk"
+                    )
                 subscription_handler = SubscriptionHandler(
                     subscription_manager=self.subscription_manager,
                     webhook_dispatcher=self.webhook_dispatcher,
@@ -430,6 +448,8 @@ class Plugin(indigo.PluginBase):
         # Clean up subscription manager (cancels dwell timers)
         if self.subscription_manager:
             try:
+                # Flush latest stats to disk before stopping
+                self.subscription_manager.save()
                 self.subscription_manager.shutdown()
                 self.logger.info("\t✅ Subscription manager stopped")
             except Exception as e:

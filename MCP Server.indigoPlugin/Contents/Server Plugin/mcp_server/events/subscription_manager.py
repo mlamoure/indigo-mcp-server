@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from ..common.state_filter import StateFilter
 from .event_model import Event, generate_ulid
 from .subscription_model import Subscription
+from .subscription_store import SubscriptionStore
 from .dwell_timer import DwellTimerQueue
 
 
@@ -28,16 +29,21 @@ class SubscriptionManager:
         self,
         dispatch_callback: Optional[Callable[[Subscription, Event], None]] = None,
         logger: Optional[logging.Logger] = None,
+        store: Optional[SubscriptionStore] = None,
     ):
         """
         Args:
             dispatch_callback: Called to dispatch webhook for dwell timer expiry.
                                Set after WebhookDispatcher is created.
             logger: Optional logger instance.
+            store: Optional persistence store. When set, subscriptions are saved
+                   on every structural change and can be restored via
+                   load_from_store(). When None, behaviour is purely in-memory.
         """
         self._logger = logger or logging.getLogger(__name__)
         self._subscriptions: Dict[str, Subscription] = {}
         self._lock = threading.Lock()
+        self._store = store
 
         # Dwell timer queue — callback set to dispatch_callback
         self._dwell_timer: Optional[DwellTimerQueue] = None
@@ -86,6 +92,7 @@ class SubscriptionManager:
         with self._lock:
             self._subscriptions[sub.subscription_id] = sub
 
+        self._save()
         self._logger.info(
             f"Subscription created: {sub.subscription_id} "
             f"({sub.entity_type}"
@@ -106,6 +113,7 @@ class SubscriptionManager:
         if self._dwell_timer and sub.entity_id is not None:
             self._dwell_timer.cancel_dwell(subscription_id, sub.entity_id)
 
+        self._save()
         self._logger.info(f"Subscription deleted: {subscription_id}")
         return True
 
@@ -123,6 +131,41 @@ class SubscriptionManager:
         """Return the number of active subscriptions."""
         with self._lock:
             return len(self._subscriptions)
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+
+    def load_from_store(self) -> int:
+        """
+        Repopulate subscriptions from the persistence store, if one is set.
+
+        Pure restore: does NOT dispatch webhooks or re-arm dwell timers
+        (those are transient and re-arm on the next matching transition).
+        Returns the number of subscriptions loaded.
+        """
+        if self._store is None:
+            return 0
+        subs = self._store.load()
+        with self._lock:
+            for sub in subs:
+                self._subscriptions[sub.subscription_id] = sub
+        return len(subs)
+
+    def save(self) -> None:
+        """Persist the current subscriptions (e.g. on shutdown, to flush stats)."""
+        self._save()
+
+    def _save(self) -> None:
+        """Snapshot under the lock, then write outside it. Never raises to callers."""
+        if self._store is None:
+            return
+        with self._lock:
+            snapshot = list(self._subscriptions.values())
+        try:
+            self._store.save(snapshot)
+        except Exception as e:
+            self._logger.error(f"Failed to persist subscriptions: {e}")
 
     # ------------------------------------------------------------------
     # State change evaluation

@@ -64,6 +64,7 @@ def _setup_events_modules():
     events_dir = base / "events"
     _load_module_from_file("mcp_server.events.event_model", events_dir / "event_model.py")
     _load_module_from_file("mcp_server.events.subscription_model", events_dir / "subscription_model.py")
+    _load_module_from_file("mcp_server.events.subscription_store", events_dir / "subscription_store.py")
     _load_module_from_file("mcp_server.events.dwell_timer", events_dir / "dwell_timer.py")
     _load_module_from_file("mcp_server.events.subscription_manager", events_dir / "subscription_manager.py")
     _load_module_from_file("mcp_server.events.webhook_dispatcher", events_dir / "webhook_dispatcher.py")
