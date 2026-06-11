@@ -2,7 +2,10 @@
 Tool wrapper methods for MCP server.
 
 Provides wrapper methods that connect MCP tool calls to their implementations.
-Each wrapper handles parameter validation, error handling, and JSON serialization.
+Each wrapper keeps its explicit name and signature — mcp_handler binds them by
+name, and a wrong keyword argument must raise TypeError at the call site so the
+dispatcher can return an MCP "Tool Execution Error" (isError) result. Execution,
+JSON serialization, and error shaping all funnel through _call().
 """
 
 from typing import Any, Dict, List, Optional
@@ -65,7 +68,75 @@ class ToolWrappers:
         self.subscription_handler = subscription_handler
         self.logger = logger or logging.getLogger(__name__)
 
+    ########################################
+    # Shared execution / error shaping
+    ########################################
+
+    def _call(
+        self,
+        label: str,
+        fn,
+        *args,
+        _error_extra: Optional[Dict[str, Any]] = None,
+        **kwargs
+    ) -> str:
+        """
+        Execute a handler call and serialize the result.
+
+        Single choke point for the wrapper layer: handler exceptions are
+        logged once here and returned as an error payload instead of raised.
+        Argument-binding errors (wrong kwarg on the wrapper itself) happen
+        before _call is entered, so they still raise TypeError to the
+        dispatcher as the MCP isError path requires.
+        """
+        try:
+            return safe_json_dumps(fn(*args, **kwargs))
+        except Exception as e:
+            self.logger.error(f"[{label}]: Error - {e}")
+            payload: Dict[str, Any] = {"error": str(e), "success": False}
+            if _error_extra:
+                payload.update(_error_extra)
+            return safe_json_dumps(payload)
+
+    def _get_by_id(self, label: str, fetch, entity_id, not_found: str) -> str:
+        """
+        Fetch an entity by id, mapping a None result to a not-found error.
+
+        Coercion happens inside the call so a non-numeric id (resources pass
+        strings) becomes an error payload rather than an exception.
+        """
+        def run():
+            entity = fetch(int(entity_id))
+            if entity is None:
+                return {"error": not_found}
+            return entity
+        return self._call(label, run)
+
+    @staticmethod
+    def _validate_device_types(device_types: List[str]) -> tuple:
+        """
+        Resolve device type aliases, building a helpful error message for
+        invalid ones (with suggestions).
+
+        Returns:
+            (resolved_types, error_message) — error_message is None when valid.
+        """
+        resolved_types, invalid_types = DeviceTypeResolver.resolve_device_types(device_types)
+        if not invalid_types:
+            return resolved_types, None
+
+        error_parts = [f"Invalid device types: {invalid_types}"]
+        error_parts.append(f"Valid types: {IndigoDeviceType.get_all_types()}")
+        for invalid_type in invalid_types:
+            suggestions = DeviceTypeResolver.get_suggestions_for_invalid_type(invalid_type)
+            if suggestions:
+                error_parts.append(f"Did you mean: {', '.join(suggestions)}")
+        return None, " | ".join(error_parts)
+
+    ########################################
     # Tool wrapper methods
+    ########################################
+
     def tool_search_entities(
         self,
         query: str,
@@ -76,98 +147,65 @@ class ToolWrappers:
         offset: int = 0
     ) -> str:
         """Search entities tool implementation with pagination."""
-        try:
-            # Validate device types
-            if device_types:
-                resolved_types, invalid_device_types = DeviceTypeResolver.resolve_device_types(device_types)
-                if invalid_device_types:
-                    # Generate helpful error message with suggestions
-                    error_parts = [f"Invalid device types: {invalid_device_types}"]
-                    error_parts.append(f"Valid types: {IndigoDeviceType.get_all_types()}")
+        if device_types:
+            device_types, error = self._validate_device_types(device_types)
+            if error:
+                return safe_json_dumps({"error": error, "query": query})
 
-                    # Add suggestions for each invalid type
-                    for invalid_type in invalid_device_types:
-                        suggestions = DeviceTypeResolver.get_suggestions_for_invalid_type(invalid_type)
-                        if suggestions:
-                            error_parts.append(f"Did you mean: {', '.join(suggestions)}")
+        if entity_types:
+            invalid_entity_types = [
+                et for et in entity_types
+                if not IndigoEntityType.is_valid_type(et)
+            ]
+            if invalid_entity_types:
+                return safe_json_dumps({
+                    "error": f"Invalid entity types: {invalid_entity_types}",
+                    "query": query
+                })
 
-                    return safe_json_dumps({
-                        "error": " | ".join(error_parts),
-                        "query": query
-                    })
+        self.logger.info(
+            f"[search_entities]: query: '{query}', "
+            f"device_types: {device_types}, "
+            f"entity_types: {entity_types}, "
+            f"state_filter: {state_filter}, "
+            f"limit: {limit}, offset: {offset}"
+        )
 
-                # Use resolved types for the search
-                device_types = resolved_types
-
-            # Validate entity types
-            if entity_types:
-                invalid_entity_types = [
-                    et for et in entity_types
-                    if not IndigoEntityType.is_valid_type(et)
-                ]
-                if invalid_entity_types:
-                    return safe_json_dumps({
-                        "error": f"Invalid entity types: {invalid_entity_types}",
-                        "query": query
-                    })
-
-            self.logger.info(
-                f"[search_entities]: query: '{query}', "
-                f"device_types: {device_types}, "
-                f"entity_types: {entity_types}, "
-                f"state_filter: {state_filter}, "
-                f"limit: {limit}, offset: {offset}"
-            )
-
-            results = self.search_handler.search(
-                query=query,
-                device_types=device_types,
-                entity_types=entity_types,
-                state_filter=state_filter,
-                limit=limit,
-                offset=offset
-            )
-            return safe_json_dumps(results)
-
-        except Exception as e:
-            self.logger.error(f"[search_entities]: Error - {e}")
-            return safe_json_dumps({"error": str(e), "query": query})
+        return self._call(
+            "search_entities",
+            self.search_handler.search,
+            query=query,
+            device_types=device_types,
+            entity_types=entity_types,
+            state_filter=state_filter,
+            limit=limit,
+            offset=offset,
+            _error_extra={"query": query},
+        )
 
     def tool_get_devices_by_type(self, device_type: str, limit: int = 50, offset: int = 0) -> str:
         """Get devices by type tool implementation with pagination."""
-        try:
-            result = self.get_devices_by_type_handler.get_devices(device_type, limit=limit, offset=offset)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Get devices by type error: {e}")
-            return safe_json_dumps({"error": str(e), "device_type": device_type})
+        return self._call(
+            "get_devices_by_type",
+            self.get_devices_by_type_handler.get_devices,
+            device_type, limit=limit, offset=offset,
+            _error_extra={"device_type": device_type},
+        )
 
     def tool_device_turn_on(self, device_id: int) -> str:
         """Turn on device tool implementation."""
-        try:
-            result = self.device_control_handler.turn_on(device_id)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Device turn on error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call("device_turn_on", self.device_control_handler.turn_on, device_id)
 
     def tool_device_turn_off(self, device_id: int) -> str:
         """Turn off device tool implementation."""
-        try:
-            result = self.device_control_handler.turn_off(device_id)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Device turn off error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call("device_turn_off", self.device_control_handler.turn_off, device_id)
 
     def tool_device_set_brightness(self, device_id: int, brightness: float) -> str:
         """Set device brightness tool implementation."""
-        try:
-            result = self.device_control_handler.set_brightness(device_id, brightness)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Device set brightness error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "device_set_brightness",
+            self.device_control_handler.set_brightness, device_id, brightness
+        )
 
     def tool_device_set_rgb_color(
         self,
@@ -178,12 +216,10 @@ class ToolWrappers:
         delay: int = 0
     ) -> str:
         """Set RGB color using 0-255 values tool implementation."""
-        try:
-            result = self.rgb_control_handler.set_rgb_color(device_id, red, green, blue, delay)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"RGB color set error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "device_set_rgb_color",
+            self.rgb_control_handler.set_rgb_color, device_id, red, green, blue, delay
+        )
 
     def tool_device_set_rgb_percent(
         self,
@@ -194,14 +230,11 @@ class ToolWrappers:
         delay: int = 0
     ) -> str:
         """Set RGB color using 0-100 percentages tool implementation."""
-        try:
-            result = self.rgb_control_handler.set_rgb_percent(
-                device_id, red_percent, green_percent, blue_percent, delay
-            )
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"RGB percent set error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "device_set_rgb_percent",
+            self.rgb_control_handler.set_rgb_percent,
+            device_id, red_percent, green_percent, blue_percent, delay
+        )
 
     def tool_device_set_hex_color(
         self,
@@ -210,12 +243,10 @@ class ToolWrappers:
         delay: int = 0
     ) -> str:
         """Set RGB color using hex code tool implementation."""
-        try:
-            result = self.rgb_control_handler.set_hex_color(device_id, hex_color, delay)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Hex color set error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "device_set_hex_color",
+            self.rgb_control_handler.set_hex_color, device_id, hex_color, delay
+        )
 
     def tool_device_set_named_color(
         self,
@@ -224,12 +255,10 @@ class ToolWrappers:
         delay: int = 0
     ) -> str:
         """Set RGB color using named color tool implementation."""
-        try:
-            result = self.rgb_control_handler.set_named_color(device_id, color_name, delay)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Named color set error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "device_set_named_color",
+            self.rgb_control_handler.set_named_color, device_id, color_name, delay
+        )
 
     def tool_device_set_white_levels(
         self,
@@ -240,59 +269,45 @@ class ToolWrappers:
         delay: int = 0
     ) -> str:
         """Set white channel levels tool implementation."""
-        try:
-            result = self.rgb_control_handler.set_white_levels(
-                device_id, white_level, white_level2, white_temperature, delay
-            )
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"White levels set error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "device_set_white_levels",
+            self.rgb_control_handler.set_white_levels,
+            device_id, white_level, white_level2, white_temperature, delay
+        )
 
     def tool_thermostat_set_heat_setpoint(self, device_id: int, temperature: float) -> str:
         """Set thermostat heat setpoint tool implementation."""
-        try:
-            result = self.thermostat_control_handler.set_heat_setpoint(device_id, temperature)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Thermostat heat setpoint error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "thermostat_set_heat_setpoint",
+            self.thermostat_control_handler.set_heat_setpoint, device_id, temperature
+        )
 
     def tool_thermostat_set_cool_setpoint(self, device_id: int, temperature: float) -> str:
         """Set thermostat cool setpoint tool implementation."""
-        try:
-            result = self.thermostat_control_handler.set_cool_setpoint(device_id, temperature)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Thermostat cool setpoint error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "thermostat_set_cool_setpoint",
+            self.thermostat_control_handler.set_cool_setpoint, device_id, temperature
+        )
 
     def tool_thermostat_set_hvac_mode(self, device_id: int, mode: str) -> str:
         """Set thermostat HVAC mode tool implementation."""
-        try:
-            result = self.thermostat_control_handler.set_hvac_mode(device_id, mode)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Thermostat HVAC mode error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "thermostat_set_hvac_mode",
+            self.thermostat_control_handler.set_hvac_mode, device_id, mode
+        )
 
     def tool_thermostat_set_fan_mode(self, device_id: int, mode: str) -> str:
         """Set thermostat fan mode tool implementation."""
-        try:
-            result = self.thermostat_control_handler.set_fan_mode(device_id, mode)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Thermostat fan mode error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "thermostat_set_fan_mode",
+            self.thermostat_control_handler.set_fan_mode, device_id, mode
+        )
 
     def tool_variable_update(self, variable_id: int, value: str) -> str:
         """Update variable tool implementation."""
-        try:
-            result = self.variable_control_handler.update(variable_id, value)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Variable update error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "variable_update", self.variable_control_handler.update, variable_id, value
+        )
 
     def tool_variable_create(
         self,
@@ -301,12 +316,9 @@ class ToolWrappers:
         folder_id: int = 0
     ) -> str:
         """Create variable tool implementation."""
-        try:
-            result = self.variable_control_handler.create(name, value, folder_id)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Variable create error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "variable_create", self.variable_control_handler.create, name, value, folder_id
+        )
 
     def tool_action_execute_group(
         self,
@@ -314,12 +326,9 @@ class ToolWrappers:
         delay: int = None
     ) -> str:
         """Execute action group tool implementation."""
-        try:
-            result = self.action_control_handler.execute(action_group_id, delay)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Action execute error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "action_execute_group", self.action_control_handler.execute, action_group_id, delay
+        )
 
     def tool_analyze_historical_data(
         self,
@@ -328,14 +337,11 @@ class ToolWrappers:
         time_range_days: int = 30
     ) -> str:
         """Analyze historical data tool implementation."""
-        try:
-            result = self.historical_analysis_handler.analyze_historical_data(
-                query, device_names, time_range_days
-            )
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Historical analysis error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "analyze_historical_data",
+            self.historical_analysis_handler.analyze_historical_data,
+            query, device_names, time_range_days
+        )
 
     def tool_list_devices(
         self,
@@ -344,43 +350,29 @@ class ToolWrappers:
         offset: int = 0
     ) -> str:
         """List devices tool implementation with pagination."""
-        try:
-            result = self.list_handlers.list_all_devices(
-                state_filter=state_filter,
-                limit=limit,
-                offset=offset
-            )
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"List devices error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "list_devices",
+            self.list_handlers.list_all_devices,
+            state_filter=state_filter, limit=limit, offset=offset
+        )
 
     def tool_list_variables(self, limit: int = 50, offset: int = 0) -> str:
         """List variables tool implementation with pagination."""
-        try:
-            result = self.list_handlers.list_all_variables(limit=limit, offset=offset)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"List variables error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "list_variables",
+            self.list_handlers.list_all_variables, limit=limit, offset=offset
+        )
 
     def tool_list_action_groups(self, limit: int = 50, offset: int = 0) -> str:
         """List action groups tool implementation with pagination."""
-        try:
-            result = self.list_handlers.list_all_action_groups(limit=limit, offset=offset)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"List action groups error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "list_action_groups",
+            self.list_handlers.list_all_action_groups, limit=limit, offset=offset
+        )
 
     def tool_list_variable_folders(self) -> str:
         """List variable folders tool implementation."""
-        try:
-            folders = self.list_handlers.list_variable_folders()
-            return safe_json_dumps(folders)
-        except Exception as e:
-            self.logger.error(f"List variable folders error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call("list_variable_folders", self.list_handlers.list_variable_folders)
 
     def tool_get_devices_by_state(
         self,
@@ -390,77 +382,40 @@ class ToolWrappers:
         offset: int = 0
     ) -> str:
         """Get devices by state tool implementation with pagination."""
-        try:
-            # Validate device types if provided
-            if device_types:
-                resolved_types, invalid_types = DeviceTypeResolver.resolve_device_types(device_types)
-                if invalid_types:
-                    # Generate helpful error message with suggestions
-                    error_parts = [f"Invalid device types: {invalid_types}"]
-                    error_parts.append(f"Valid types: {IndigoDeviceType.get_all_types()}")
+        if device_types:
+            device_types, error = self._validate_device_types(device_types)
+            if error:
+                return safe_json_dumps({"error": error})
 
-                    # Add suggestions for each invalid type
-                    for invalid_type in invalid_types:
-                        suggestions = DeviceTypeResolver.get_suggestions_for_invalid_type(invalid_type)
-                        if suggestions:
-                            error_parts.append(f"Did you mean: {', '.join(suggestions)}")
-
-                    return safe_json_dumps({
-                        "error": " | ".join(error_parts)
-                    })
-
-                # Use resolved types for the query
-                device_types = resolved_types
-
-            result = self.list_handlers.get_devices_by_state(
-                state_conditions=state_conditions,
-                device_types=device_types,
-                limit=limit,
-                offset=offset
-            )
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Get devices by state error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "get_devices_by_state",
+            self.list_handlers.get_devices_by_state,
+            state_conditions=state_conditions,
+            device_types=device_types,
+            limit=limit,
+            offset=offset,
+        )
 
     def tool_get_device_by_id(self, device_id: int) -> str:
         """Get device by ID tool implementation."""
-        try:
-            device = self.data_provider.get_device(device_id)
-            if device is None:
-                return safe_json_dumps({
-                    "error": f"Device {device_id} not found"
-                })
-            return safe_json_dumps(device)
-        except Exception as e:
-            self.logger.error(f"Get device by ID error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._get_by_id(
+            "get_device_by_id", self.data_provider.get_device,
+            device_id, f"Device {device_id} not found"
+        )
 
     def tool_get_variable_by_id(self, variable_id: int) -> str:
         """Get variable by ID tool implementation."""
-        try:
-            variable = self.data_provider.get_variable(variable_id)
-            if variable is None:
-                return safe_json_dumps({
-                    "error": f"Variable {variable_id} not found"
-                })
-            return safe_json_dumps(variable)
-        except Exception as e:
-            self.logger.error(f"Get variable by ID error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._get_by_id(
+            "get_variable_by_id", self.data_provider.get_variable,
+            variable_id, f"Variable {variable_id} not found"
+        )
 
     def tool_get_action_group_by_id(self, action_group_id: int) -> str:
         """Get action group by ID tool implementation."""
-        try:
-            action = self.data_provider.get_action_group(action_group_id)
-            if action is None:
-                return safe_json_dumps({
-                    "error": f"Action group {action_group_id} not found"
-                })
-            return safe_json_dumps(action)
-        except Exception as e:
-            self.logger.error(f"Get action group by ID error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._get_by_id(
+            "get_action_group_by_id", self.data_provider.get_action_group,
+            action_group_id, f"Action group {action_group_id} not found"
+        )
 
     def tool_query_event_log(
         self,
@@ -468,147 +423,90 @@ class ToolWrappers:
         show_timestamp: bool = True
     ) -> str:
         """Query event log tool implementation."""
-        try:
-            result = self.log_query_handler.query(
-                line_count=line_count,
-                show_timestamp=show_timestamp
-            )
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Query event log error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "query_event_log",
+            self.log_query_handler.query,
+            line_count=line_count, show_timestamp=show_timestamp
+        )
 
     def tool_list_plugins(self, include_disabled: bool = False) -> str:
         """List plugins tool implementation."""
-        try:
-            result = self.plugin_control_handler.list_plugins(include_disabled)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"List plugins error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "list_plugins", self.plugin_control_handler.list_plugins, include_disabled
+        )
 
     def tool_get_plugin_by_id(self, plugin_id: str) -> str:
         """Get plugin by ID tool implementation."""
-        try:
-            result = self.plugin_control_handler.get_plugin_by_id(plugin_id)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Get plugin by ID error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "get_plugin_by_id", self.plugin_control_handler.get_plugin_by_id, plugin_id
+        )
 
     def tool_restart_plugin(self, plugin_id: str) -> str:
         """Restart plugin tool implementation."""
-        try:
-            result = self.plugin_control_handler.restart_plugin(plugin_id)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Restart plugin error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "restart_plugin", self.plugin_control_handler.restart_plugin, plugin_id
+        )
 
     def tool_get_plugin_status(self, plugin_id: str) -> str:
         """Get plugin status tool implementation."""
-        try:
-            result = self.plugin_control_handler.get_plugin_status(plugin_id)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Get plugin status error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "get_plugin_status", self.plugin_control_handler.get_plugin_status, plugin_id
+        )
 
     # Event subscription wrapper methods
     def tool_create_event_subscription(self, **kwargs) -> str:
         """Create event subscription tool implementation."""
-        try:
-            result = self.subscription_handler.create_subscription(**kwargs)
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Create event subscription error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "create_event_subscription",
+            self.subscription_handler.create_subscription, **kwargs
+        )
 
     def tool_list_event_subscriptions(self, subscription_id: str = None) -> str:
         """List event subscriptions tool implementation."""
-        try:
-            result = self.subscription_handler.list_subscriptions(
-                subscription_id=subscription_id
-            )
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"List event subscriptions error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "list_event_subscriptions",
+            self.subscription_handler.list_subscriptions,
+            subscription_id=subscription_id
+        )
 
     def tool_delete_event_subscription(self, subscription_id: str) -> str:
         """Delete event subscription tool implementation."""
-        try:
-            result = self.subscription_handler.delete_subscription(
-                subscription_id=subscription_id
-            )
-            return safe_json_dumps(result)
-        except Exception as e:
-            self.logger.error(f"Delete event subscription error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call(
+            "delete_event_subscription",
+            self.subscription_handler.delete_subscription,
+            subscription_id=subscription_id
+        )
 
     # Resource wrapper methods
     def resource_list_devices(self) -> str:
         """List all devices resource."""
-        try:
-            devices = self.list_handlers.list_all_devices()
-            return safe_json_dumps(devices)
-        except Exception as e:
-            self.logger.error(f"Resource list devices error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call("resource_list_devices", self.list_handlers.list_all_devices)
 
     def resource_get_device(self, device_id: str) -> str:
         """Get specific device resource."""
-        try:
-            device = self.data_provider.get_device(int(device_id))
-            if device is None:
-                return safe_json_dumps({
-                    "error": f"Device {device_id} not found"
-                })
-            return safe_json_dumps(device)
-        except Exception as e:
-            self.logger.error(f"Resource get device error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._get_by_id(
+            "resource_get_device", self.data_provider.get_device,
+            device_id, f"Device {device_id} not found"
+        )
 
     def resource_list_variables(self) -> str:
         """List all variables resource."""
-        try:
-            variables = self.list_handlers.list_all_variables()
-            return safe_json_dumps(variables)
-        except Exception as e:
-            self.logger.error(f"Resource list variables error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call("resource_list_variables", self.list_handlers.list_all_variables)
 
     def resource_get_variable(self, variable_id: str) -> str:
         """Get specific variable resource."""
-        try:
-            variable = self.data_provider.get_variable(int(variable_id))
-            if variable is None:
-                return safe_json_dumps({
-                    "error": f"Variable {variable_id} not found"
-                })
-            return safe_json_dumps(variable)
-        except Exception as e:
-            self.logger.error(f"Resource get variable error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._get_by_id(
+            "resource_get_variable", self.data_provider.get_variable,
+            variable_id, f"Variable {variable_id} not found"
+        )
 
     def resource_list_actions(self) -> str:
         """List all action groups resource."""
-        try:
-            actions = self.list_handlers.list_all_action_groups()
-            return safe_json_dumps(actions)
-        except Exception as e:
-            self.logger.error(f"Resource list actions error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._call("resource_list_actions", self.list_handlers.list_all_action_groups)
 
     def resource_get_action(self, action_id: str) -> str:
         """Get specific action group resource."""
-        try:
-            action = self.data_provider.get_action_group(int(action_id))
-            if action is None:
-                return safe_json_dumps({
-                    "error": f"Action group {action_id} not found"
-                })
-            return safe_json_dumps(action)
-        except Exception as e:
-            self.logger.error(f"Resource get action error: {e}")
-            return safe_json_dumps({"error": str(e)})
+        return self._get_by_id(
+            "resource_get_action", self.data_provider.get_action_group,
+            action_id, f"Action group {action_id} not found"
+        )
