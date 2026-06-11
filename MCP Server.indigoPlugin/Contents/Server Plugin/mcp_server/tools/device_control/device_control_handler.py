@@ -38,10 +38,9 @@ class DeviceControlHandler(BaseToolHandler):
             Dictionary with operation results
         """
         try:
-            # Validate device_id
-            if not isinstance(device_id, int):
-                self.info_log("❌ Invalid device_id type")
-                return {"error": "device_id must be an integer", "success": False}
+            error = self.validate_device_id(device_id)
+            if error:
+                return error
 
             # Get device name
             device = self.data_provider.get_device(device_id)
@@ -71,10 +70,9 @@ class DeviceControlHandler(BaseToolHandler):
             Dictionary with operation results
         """
         try:
-            # Validate device_id
-            if not isinstance(device_id, int):
-                self.info_log("❌ Invalid device_id type")
-                return {"error": "device_id must be an integer", "success": False}
+            error = self.validate_device_id(device_id)
+            if error:
+                return error
 
             # Get device name
             device = self.data_provider.get_device(device_id)
@@ -105,10 +103,9 @@ class DeviceControlHandler(BaseToolHandler):
             Dictionary with operation results
         """
         try:
-            # Validate device_id
-            if not isinstance(device_id, int):
-                self.info_log("❌ Invalid device_id type")
-                return {"error": "device_id must be an integer", "success": False}
+            error = self.validate_device_id(device_id)
+            if error:
+                return error
 
             # Validate brightness
             if not isinstance(brightness, (int, float)):

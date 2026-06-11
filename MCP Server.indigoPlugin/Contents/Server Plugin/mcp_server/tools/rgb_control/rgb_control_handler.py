@@ -61,10 +61,9 @@ class RGBControlHandler(BaseToolHandler):
             Operation result dictionary
         """
         try:
-            # Validate device ID
-            if not isinstance(device_id, int) or device_id <= 0:
-                self.info_log(f"❌ Invalid device_id: {device_id}. Must be a positive integer.")
-                return {"error": f"Invalid device_id: {device_id}. Must be a positive integer.", "success": False}
+            error = self.validate_device_id(device_id)
+            if error:
+                return error
 
             # Convert RGB (0-255) to percentages (0-100)
             red_percent, green_percent, blue_percent = rgb_to_percent(red, green, blue)
@@ -118,10 +117,9 @@ class RGBControlHandler(BaseToolHandler):
             Operation result dictionary
         """
         try:
-            # Validate device ID
-            if not isinstance(device_id, int) or device_id <= 0:
-                self.info_log(f"❌ Invalid device_id: {device_id}. Must be a positive integer.")
-                return {"error": f"Invalid device_id: {device_id}. Must be a positive integer.", "success": False}
+            error = self.validate_device_id(device_id)
+            if error:
+                return error
 
             # Validate percentages
             red_percent, green_percent, blue_percent = validate_percent(
@@ -172,10 +170,9 @@ class RGBControlHandler(BaseToolHandler):
             Operation result dictionary
         """
         try:
-            # Validate device ID
-            if not isinstance(device_id, int) or device_id <= 0:
-                self.info_log(f"❌ Invalid device_id: {device_id}. Must be a positive integer.")
-                return {"error": f"Invalid device_id: {device_id}. Must be a positive integer.", "success": False}
+            error = self.validate_device_id(device_id)
+            if error:
+                return error
 
             # Convert hex to RGB percentages
             red_percent, green_percent, blue_percent = hex_to_rgb_percent(hex_color)
@@ -227,10 +224,9 @@ class RGBControlHandler(BaseToolHandler):
             Operation result dictionary
         """
         try:
-            # Validate device ID
-            if not isinstance(device_id, int) or device_id <= 0:
-                self.info_log(f"❌ Invalid device_id: {device_id}. Must be a positive integer.")
-                return {"error": f"Invalid device_id: {device_id}. Must be a positive integer.", "success": False}
+            error = self.validate_device_id(device_id)
+            if error:
+                return error
 
             # Convert named color to RGB percentages
             try:
@@ -290,10 +286,9 @@ class RGBControlHandler(BaseToolHandler):
             Operation result dictionary
         """
         try:
-            # Validate device ID
-            if not isinstance(device_id, int) or device_id <= 0:
-                self.info_log(f"❌ Invalid device_id: {device_id}. Must be a positive integer.")
-                return {"error": f"Invalid device_id: {device_id}. Must be a positive integer.", "success": False}
+            error = self.validate_device_id(device_id)
+            if error:
+                return error
 
             # Validate at least one white parameter is provided
             if white_level is None and white_level2 is None and white_temperature is None:
