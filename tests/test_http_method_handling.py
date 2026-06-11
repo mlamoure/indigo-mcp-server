@@ -20,7 +20,7 @@ sys.path.insert(0, str(plugin_path))
 from mcp_server.mcp_handler import MCPHandler
 
 
-def make_handler(mock_vsm):
+def make_handler(mock_vsm, **kwargs):
     """Create an MCPHandler with a mocked vector store manager."""
     mock_vsm_instance = Mock()
     mock_vsm_instance.get_vector_store = Mock(return_value=Mock())
@@ -28,7 +28,7 @@ def make_handler(mock_vsm):
     mock_vsm.return_value = mock_vsm_instance
 
     os.environ['DB_FILE'] = '/tmp/test_db'
-    return MCPHandler(data_provider=Mock(), logger=Mock())
+    return MCPHandler(data_provider=Mock(), logger=Mock(), **kwargs)
 
 
 def do_initialize(handler):
@@ -61,6 +61,14 @@ class TestHTTPMethodHandling:
         assert session_id in handler._sessions
         result = json.loads(response["content"])
         assert result["result"]["serverInfo"]["name"] == "Indigo MCP Server"
+
+    @patch('mcp_server.mcp_handler.VectorStoreManager')
+    def test_server_info_reports_injected_version(self, mock_vsm):
+        handler = make_handler(mock_vsm, server_version="2099.1.0")
+        response, _ = do_initialize(handler)
+
+        result = json.loads(response["content"])
+        assert result["result"]["serverInfo"]["version"] == "2099.1.0"
 
     @patch('mcp_server.mcp_handler.VectorStoreManager')
     def test_delete_removes_session(self, mock_vsm):

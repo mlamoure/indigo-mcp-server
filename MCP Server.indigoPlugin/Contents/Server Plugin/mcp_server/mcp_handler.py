@@ -46,6 +46,7 @@ class MCPHandler:
         data_provider: DataProvider,
         logger: Optional[logging.Logger] = None,
         subscription_handler: "Optional[SubscriptionHandler]" = None,
+        server_version: str = "unknown",
     ):
         """
         Initialize the MCP handler.
@@ -54,10 +55,12 @@ class MCPHandler:
             data_provider: Data provider for accessing entity data
             logger: Optional logger instance
             subscription_handler: Optional event subscription handler (when webhooks enabled)
+            server_version: Plugin version reported in the MCP initialize response
         """
         self.data_provider = data_provider
         self.logger = logger or logging.getLogger("Plugin")
         self.subscription_handler = subscription_handler
+        self.server_version = server_version
 
         # Session management
         self._sessions = {}  # session_id -> {created, last_seen, client_info}
@@ -479,7 +482,7 @@ class MCPHandler:
                     },
                     "serverInfo": {
                         "name": "Indigo MCP Server",
-                        "version": "2025.0.1"
+                        "version": self.server_version
                     }
                 }
             }
