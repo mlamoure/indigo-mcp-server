@@ -20,7 +20,6 @@ import openai
 from mcp_server.adapters.indigo_data_provider import IndigoDataProvider
 from mcp_server.common.openai_client.langsmith_config import get_langsmith_config
 from mcp_server.mcp_handler import MCPHandler
-from mcp_server.security import AuthManager, AccessMode
 
 
 ################################################################################
@@ -68,16 +67,12 @@ class Plugin(indigo.PluginBase):
         self.influx_password = plugin_prefs.get("influx_password", "")
         self.influx_database = plugin_prefs.get("influx_database", "indigo")
 
-        # Security configuration
-        self.access_mode = plugin_prefs.get("access_mode", "local_only")
-
         # Webhook configuration
         self.enable_webhooks = plugin_prefs.get("enable_webhooks", False)
 
         # Component instances
         self.data_provider = None
         self.mcp_handler = None
-        self.auth_manager = AuthManager(logger=self.logger)
 
         # Event subscription components
         self.subscription_manager = None
@@ -297,6 +292,53 @@ class Plugin(indigo.PluginBase):
         return urls
 
     ########################################
+    def _apply_environment(self) -> None:
+        """
+        Push the current plugin configuration into environment variables for
+        the mcp_server modules, and refresh the LangSmith config.
+
+        Called from startup() and closedPrefsConfigUi(); must run before the
+        MCPHandler is (re)initialized so DB_FILE and API keys are in place.
+        """
+        os.environ["OPENAI_API_KEY"] = self.openai_api_key
+
+        # Model selection
+        os.environ["LARGE_MODEL"] = self.large_model
+        os.environ["SMALL_MODEL"] = self.small_model
+        os.environ["OPENAI_EMBEDDING_MODEL"] = "text-embedding-3-small"
+
+        # LangSmith tracing
+        if self.enable_langsmith:
+            os.environ["LANGSMITH_TRACING"] = "true"
+            os.environ["LANGSMITH_ENDPOINT"] = self.langsmith_endpoint
+            os.environ["LANGSMITH_API_KEY"] = self.langsmith_api_key
+            os.environ["LANGSMITH_PROJECT"] = self.langsmith_project
+        else:
+            os.environ["LANGSMITH_TRACING"] = "false"
+
+        # InfluxDB (historical data)
+        if self.enable_influxdb:
+            os.environ["INFLUXDB_HOST"] = self.influx_url.replace(
+                "http://", ""
+            ).replace("https://", "")
+            os.environ["INFLUXDB_PORT"] = str(self.influx_port)
+            os.environ["INFLUXDB_USERNAME"] = self.influx_login
+            os.environ["INFLUXDB_PASSWORD"] = self.influx_password
+            os.environ["INFLUXDB_DATABASE"] = self.influx_database
+            os.environ["INFLUXDB_ENABLED"] = "true"
+        else:
+            os.environ["INFLUXDB_ENABLED"] = "false"
+
+        self.langsmith_config = get_langsmith_config()
+
+        # Vector store location
+        db_path = os.path.join(
+            indigo.server.getInstallFolderPath(),
+            "Preferences/Plugins/com.vtmikel.mcp_server/vector_db",
+        )
+        os.environ["DB_FILE"] = db_path
+
+    ########################################
     def startup(self) -> None:
         """
         Called after __init__ when the plugin is starting up.
@@ -311,45 +353,8 @@ class Plugin(indigo.PluginBase):
         # Log CPU architecture information
         self.check_cpu_compatibility()
 
-        # Set OpenAI API key in environment for the modules to use
-        os.environ["OPENAI_API_KEY"] = self.openai_api_key
-
-        # Set model environment variables
-        os.environ["LARGE_MODEL"] = self.large_model
-        os.environ["SMALL_MODEL"] = self.small_model
-        os.environ["OPENAI_EMBEDDING_MODEL"] = "text-embedding-3-small"
-
-        # Set LangSmith environment variables
-        if self.enable_langsmith:
-            os.environ["LANGSMITH_TRACING"] = "true"
-            os.environ["LANGSMITH_ENDPOINT"] = self.langsmith_endpoint
-            os.environ["LANGSMITH_API_KEY"] = self.langsmith_api_key
-            os.environ["LANGSMITH_PROJECT"] = self.langsmith_project
-        else:
-            os.environ["LANGSMITH_TRACING"] = "false"
-
-        # Set InfluxDB environment variables if enabled
-        if self.enable_influxdb:
-            os.environ["INFLUXDB_HOST"] = self.influx_url.replace(
-                "http://", ""
-            ).replace("https://", "")
-            os.environ["INFLUXDB_PORT"] = str(self.influx_port)
-            os.environ["INFLUXDB_USERNAME"] = self.influx_login
-            os.environ["INFLUXDB_PASSWORD"] = self.influx_password
-            os.environ["INFLUXDB_DATABASE"] = self.influx_database
-            os.environ["INFLUXDB_ENABLED"] = "true"
-        else:
-            os.environ["INFLUXDB_ENABLED"] = "false"
-
-        # Initialize LangSmith configuration
-        self.langsmith_config = get_langsmith_config()
-
-        # Set DB_FILE environment variable for vector store
-        db_path = os.path.join(
-            indigo.server.getInstallFolderPath(),
-            "Preferences/Plugins/com.vtmikel.mcp_server/vector_db",
-        )
-        os.environ["DB_FILE"] = db_path
+        # Apply configuration to environment for the modules to use
+        self._apply_environment()
 
         # Initialize data provider
         try:
@@ -415,6 +420,7 @@ class Plugin(indigo.PluginBase):
                 data_provider=self.data_provider,
                 logger=self.logger,
                 subscription_handler=subscription_handler,
+                server_version=self.pluginVersion,
             )
 
             # Log MCP client connection information
@@ -990,10 +996,6 @@ class Plugin(indigo.PluginBase):
             self.openai_api_key = values_dict.get("openai_api_key", "")
             self.large_model = values_dict.get("large_model", "gpt-5")
             self.small_model = values_dict.get("small_model", "gpt-5-mini")
-            self.server_port = int(values_dict.get("server_port", 8080))
-
-            # Security configuration
-            self.access_mode = values_dict.get("access_mode", "local_only")
 
             # LangSmith configuration
             self.enable_langsmith = values_dict.get("enable_langsmith", False)
@@ -1020,43 +1022,8 @@ class Plugin(indigo.PluginBase):
                     f"- plugin restart required for MCP tool changes to take effect"
                 )
 
-            # Set ALL environment variables (same as startup)
-            os.environ["OPENAI_API_KEY"] = self.openai_api_key
-            os.environ["LARGE_MODEL"] = self.large_model
-            os.environ["SMALL_MODEL"] = self.small_model
-            os.environ["OPENAI_EMBEDDING_MODEL"] = "text-embedding-3-small"
-
-            # Set LangSmith environment variables
-            if self.enable_langsmith:
-                os.environ["LANGSMITH_TRACING"] = "true"
-                os.environ["LANGSMITH_ENDPOINT"] = self.langsmith_endpoint
-                os.environ["LANGSMITH_API_KEY"] = self.langsmith_api_key
-                os.environ["LANGSMITH_PROJECT"] = self.langsmith_project
-            else:
-                os.environ["LANGSMITH_TRACING"] = "false"
-
-            # Set InfluxDB environment variables
-            if self.enable_influxdb:
-                os.environ["INFLUXDB_HOST"] = self.influx_url.replace(
-                    "http://", ""
-                ).replace("https://", "")
-                os.environ["INFLUXDB_PORT"] = str(self.influx_port)
-                os.environ["INFLUXDB_USERNAME"] = self.influx_login
-                os.environ["INFLUXDB_PASSWORD"] = self.influx_password
-                os.environ["INFLUXDB_DATABASE"] = self.influx_database
-                os.environ["INFLUXDB_ENABLED"] = "true"
-            else:
-                os.environ["INFLUXDB_ENABLED"] = "false"
-
-            # Set DB_FILE environment variable for vector store (same as startup)
-            db_path = os.path.join(
-                indigo.server.getInstallFolderPath(),
-                "Preferences/Plugins/com.vtmikel.mcp_server/vector_db",
-            )
-            os.environ["DB_FILE"] = db_path
-
-            # Reinitialize LangSmith configuration
-            self.langsmith_config = get_langsmith_config()
+            # Apply configuration to environment (same as startup)
+            self._apply_environment()
 
             # Test connections with new configuration
             self.logger.info("Testing connections with new configuration...")
