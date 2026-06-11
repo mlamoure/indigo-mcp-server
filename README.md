@@ -64,6 +64,14 @@ The MCP Server Indigo device is what creates the actual MCP Server.
     - Note: Restart Indigo Web Server after creating/modifying this file
 - **Remote access**: Use your Indigo Reflector API key from your Reflector settings
 
+### HTTP Transport Behavior
+
+The endpoint implements the MCP streamable-HTTP transport over the Indigo Web Server:
+
+- `POST` carries all MCP messages.
+- `GET` returns `405` — the server does not offer a server→client SSE stream (spec-permitted).
+- `DELETE` with an `Mcp-Session-Id` header terminates that session. Note: current Indigo Web Server versions reject `DELETE` before it reaches the plugin, so sessions are also expired automatically after 2 hours idle.
+
 ### Claude Desktop / MCP Client Configuration
 
 Requirements:

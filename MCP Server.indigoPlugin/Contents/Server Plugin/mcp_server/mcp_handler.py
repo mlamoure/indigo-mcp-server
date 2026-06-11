@@ -36,6 +36,10 @@ class MCPHandler:
     # MCP Protocol versions we support (newest first)
     SUPPORTED_PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18")
     LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]
+
+    # Session expiry: clients that never send DELETE would otherwise leak sessions
+    SESSION_TTL_SECONDS = 2 * 60 * 60   # purge sessions idle longer than 2 hours
+    SESSION_SWEEP_INTERVAL = 300        # scan for idle sessions at most every 5 minutes
     
     def __init__(
         self,
@@ -57,6 +61,7 @@ class MCPHandler:
 
         # Session management
         self._sessions = {}  # session_id -> {created, last_seen, client_info}
+        self._last_session_sweep = time.time()
 
         # Get database path from environment variable
         db_path = os.environ.get("DB_FILE")
@@ -163,7 +168,51 @@ class MCPHandler:
         """Stop the MCP handler and cleanup resources."""
         if self.vector_store_manager:
             self.vector_store_manager.stop()
-    
+
+    def _handle_delete_session(self, headers: Dict[str, str]) -> Dict[str, Any]:
+        """Handle HTTP DELETE: client-initiated session termination."""
+        session_id = headers.get("mcp-session-id")
+        if not session_id:
+            return {
+                "status": 400,
+                "headers": {"Content-Type": "application/json; charset=utf-8"},
+                "content": json.dumps({"error": "Missing Mcp-Session-Id header"})
+            }
+
+        session = self._sessions.pop(session_id, None)
+        if session:
+            client_name = session.get("client_info", {}).get("name", "Unknown")
+            self.logger.debug(f"🔌 Session terminated by client: {client_name} | session: {session_id[:8]}")
+        else:
+            # Idempotent: deleting an unknown/expired session is still success
+            # (404 would be spec-purist but generates an IWS warning log line).
+            self.logger.debug(f"DELETE for unknown session: {session_id[:8]}")
+
+        return {
+            "status": 200,
+            "headers": {"Content-Type": "application/json; charset=utf-8"},
+            "content": "{}"
+        }
+
+    def _sweep_sessions(self) -> None:
+        """Purge sessions idle longer than SESSION_TTL_SECONDS (rate-limited)."""
+        now = time.time()
+        if now - self._last_session_sweep < self.SESSION_SWEEP_INTERVAL:
+            return
+        self._last_session_sweep = now
+
+        expired = [
+            sid for sid, data in list(self._sessions.items())
+            if now - data.get("last_seen", 0) > self.SESSION_TTL_SECONDS
+        ]
+        for sid in expired:
+            self._sessions.pop(sid, None)
+
+        if expired:
+            self.logger.debug(
+                f"🧹 Purged {len(expired)} idle MCP session(s); {len(self._sessions)} active"
+            )
+
     def handle_request(
         self,
         method: str,
@@ -184,13 +233,23 @@ class MCPHandler:
         # Normalize headers to lowercase
         headers = {k.lower(): v for k, v in headers.items()}
         accept = headers.get("accept", "")
-        
-        # Only support POST
+
+        # Opportunistically purge idle sessions (rate-limited; see _sweep_sessions)
+        self._sweep_sessions()
+
+        # DELETE: explicit session termination (MCP streamable HTTP)
+        if method == "DELETE":
+            return self._handle_delete_session(headers)
+
+        # GET would open a server->client SSE stream, which we don't offer;
+        # the MCP spec requires 405 in that case. The body must be non-empty:
+        # IWS turns an empty-content plugin response into a 500 "incorrect
+        # value returned from plugin" error.
         if method != "POST":
             return {
                 "status": 405,
-                "headers": {"Allow": "POST"},
-                "content": ""
+                "headers": {"Allow": "POST, DELETE", "Content-Type": "text/plain; charset=utf-8"},
+                "content": "Method Not Allowed"
             }
 
         # Check Accept header - client must accept json, event-stream, or */* (wildcard)
@@ -405,7 +464,7 @@ class MCPHandler:
             }
 
             # Log new session creation with client details
-            self.logger.info(f"🔌 New session: {client_name}@{client_ip} | session: {session_id[:8]} | protocol: {requested_version}")
+            self.logger.debug(f"🔌 New session: {client_name}@{client_ip} | session: {session_id[:8]} | protocol: {requested_version}")
 
             result = {
                 "jsonrpc": "2.0",
@@ -428,7 +487,7 @@ class MCPHandler:
             # Add session ID for header
             result["_mcp_session_id"] = session_id
 
-            self.logger.info(f"\t✅ Client initialized: {client_name} | session: {session_id[:8]}")
+            self.logger.debug(f"\t✅ Client initialized: {client_name} | session: {session_id[:8]}")
 
             return result
         else:
