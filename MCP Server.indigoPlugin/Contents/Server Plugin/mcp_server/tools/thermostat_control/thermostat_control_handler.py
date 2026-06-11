@@ -51,10 +51,9 @@ class ThermostatControlHandler(BaseToolHandler):
             Operation result dictionary
         """
         try:
-            # Validate device ID
-            if not isinstance(device_id, int) or device_id <= 0:
-                self.info_log(f"❌ Invalid device_id: {device_id}. Must be a positive integer.")
-                return {"error": f"Invalid device_id: {device_id}. Must be a positive integer.", "success": False}
+            error = self.validate_device_id(device_id)
+            if error:
+                return error
 
             # Validate temperature
             if not isinstance(temperature, (int, float)):
@@ -96,10 +95,9 @@ class ThermostatControlHandler(BaseToolHandler):
             Operation result dictionary
         """
         try:
-            # Validate device ID
-            if not isinstance(device_id, int) or device_id <= 0:
-                self.info_log(f"❌ Invalid device_id: {device_id}. Must be a positive integer.")
-                return {"error": f"Invalid device_id: {device_id}. Must be a positive integer.", "success": False}
+            error = self.validate_device_id(device_id)
+            if error:
+                return error
 
             # Validate temperature
             if not isinstance(temperature, (int, float)):
@@ -141,10 +139,9 @@ class ThermostatControlHandler(BaseToolHandler):
             Operation result dictionary
         """
         try:
-            # Validate device ID
-            if not isinstance(device_id, int) or device_id <= 0:
-                self.info_log(f"❌ Invalid device_id: {device_id}. Must be a positive integer.")
-                return {"error": f"Invalid device_id: {device_id}. Must be a positive integer.", "success": False}
+            error = self.validate_device_id(device_id)
+            if error:
+                return error
 
             # Validate mode
             if not isinstance(mode, str):
@@ -184,10 +181,9 @@ class ThermostatControlHandler(BaseToolHandler):
             Operation result dictionary
         """
         try:
-            # Validate device ID
-            if not isinstance(device_id, int) or device_id <= 0:
-                self.info_log(f"❌ Invalid device_id: {device_id}. Must be a positive integer.")
-                return {"error": f"Invalid device_id: {device_id}. Must be a positive integer.", "success": False}
+            error = self.validate_device_id(device_id)
+            if error:
+                return error
 
             # Validate mode
             if not isinstance(mode, str):

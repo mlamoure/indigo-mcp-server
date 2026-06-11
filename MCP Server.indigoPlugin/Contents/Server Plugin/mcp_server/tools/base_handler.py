@@ -133,7 +133,23 @@ class BaseToolHandler:
             }
         
         return None
-    
+
+    def validate_device_id(self, device_id) -> Optional[dict]:
+        """
+        Validate a device id parameter.
+
+        Args:
+            device_id: The value to validate
+
+        Returns:
+            None if valid, error dictionary if invalid
+        """
+        if not isinstance(device_id, int) or isinstance(device_id, bool) or device_id <= 0:
+            error_msg = f"Invalid device_id: {device_id!r}. Must be a positive integer."
+            self.error_log(error_msg)
+            return {"error": error_msg, "success": False}
+        return None
+
     def log_incoming_request(self, operation: str, params: dict = None) -> None:
         """
         Log an incoming tool request (concise).
