@@ -46,8 +46,8 @@ class SubscriptionStore:
                 payload = json.load(f)
         except (OSError, ValueError) as e:
             self._logger.error(
-                f"Could not read subscriptions file {self._path}: {e}. "
-                f"Backing it up and starting empty."
+                f"❌ Event subscriptions file is unreadable ({e}) — "
+                f"backed it up and starting with none"
             )
             self._backup_corrupt()
             return []
@@ -55,8 +55,8 @@ class SubscriptionStore:
         version = payload.get("version")
         if version != SCHEMA_VERSION:
             self._logger.warning(
-                f"Subscriptions file schema version {version!r} != "
-                f"{SCHEMA_VERSION}; loading best-effort."
+                f"⚠️ Event subscriptions file is from a different plugin version "
+                f"({version!r} vs {SCHEMA_VERSION}) — loading best-effort"
             )
 
         subscriptions = []
@@ -64,7 +64,7 @@ class SubscriptionStore:
             try:
                 subscriptions.append(Subscription.from_dict(record))
             except Exception as e:
-                self._logger.error(f"Skipping unparseable subscription record: {e}")
+                self._logger.error(f"❌ Skipping an unreadable event subscription record: {e}")
         return subscriptions
 
     def save(self, subscriptions: List[Subscription]) -> None:
@@ -103,4 +103,4 @@ class SubscriptionStore:
         try:
             os.replace(self._path, self._path + ".corrupt")
         except OSError as e:
-            self._logger.error(f"Could not back up corrupt subscriptions file: {e}")
+            self._logger.error(f"❌ Could not back up the corrupt subscriptions file: {e}")

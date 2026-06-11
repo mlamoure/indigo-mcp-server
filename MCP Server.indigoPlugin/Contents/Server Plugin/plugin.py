@@ -18,6 +18,7 @@ import openai
 
 # Import our modules
 from mcp_server.adapters.indigo_data_provider import IndigoDataProvider
+from mcp_server.common import log_style
 from mcp_server.common.openai_client.langsmith_config import get_langsmith_config
 from mcp_server.mcp_handler import MCPHandler
 
@@ -86,6 +87,7 @@ class Plugin(indigo.PluginBase):
         self.indigo_log_handler.setLevel(self.log_level)
         self.plugin_file_handler.setLevel(self.log_level)
         logging.getLogger("Plugin").setLevel(self.log_level)
+        log_style.set_verbose_activity(plugin_prefs.get("log_mcp_activity", False))
 
     def test_connections(self) -> bool:
         """
@@ -103,7 +105,7 @@ class Plugin(indigo.PluginBase):
                 not self.openai_api_key
                 or self.openai_api_key == "xxxxx-xxxxx-xxxxx-xxxxx"
             ):
-                self.logger.error("\t❌ OpenAI API key not configured")
+                self.logger.error("❌ OpenAI API key is missing — open Plugins → MCP Server → Configure and enter your key")
                 all_required_connections_ok = False
             else:
                 # Set API key temporarily for testing
@@ -116,19 +118,19 @@ class Plugin(indigo.PluginBase):
                         model="text-embedding-3-small", input="test", timeout=10.0
                     )
                     if response and response.data:
-                        self.logger.info("\t✅ OpenAI API connected")
+                        self.logger.info("✅ OpenAI connected")
                     else:
-                        self.logger.error("\t❌ OpenAI API returned invalid response")
+                        self.logger.error("❌ OpenAI returned an invalid response — try again or check status.openai.com")
                         all_required_connections_ok = False
                 except Exception as api_error:
-                    self.logger.error(f"\t❌ OpenAI API failed: {api_error}")
+                    self.logger.error(f"❌ OpenAI connection failed: {api_error}")
                     all_required_connections_ok = False
 
         except ImportError:
-            self.logger.error("\t❌ OpenAI library not available")
+            self.logger.error("❌ OpenAI library not available — reinstall the plugin")
             all_required_connections_ok = False
         except Exception as e:
-            self.logger.error(f"\t❌ OpenAI connection failed: {e}")
+            self.logger.error(f"❌ OpenAI connection failed: {e}")
             all_required_connections_ok = False
 
         # Test InfluxDB connection (optional, only if enabled)
@@ -138,7 +140,7 @@ class Plugin(indigo.PluginBase):
 
                 # Validate InfluxDB configuration
                 if not self.influx_url or not self.influx_port:
-                    self.logger.warning("\t⚠️ InfluxDB enabled but not configured")
+                    self.logger.warning("⚠️ InfluxDB is enabled but has no URL/port — historical data won't be available (fix in Plugin Config)")
                 else:
                     try:
                         port = int(self.influx_port)
@@ -158,21 +160,21 @@ class Plugin(indigo.PluginBase):
                         # Test connection with ping
                         result = client.ping()
                         if result:
-                            self.logger.info("\t✅ InfluxDB connected (historical data available)")
+                            self.logger.info("✅ InfluxDB connected — historical data available")
                         else:
-                            self.logger.warning("\t⚠️ InfluxDB ping failed")
+                            self.logger.warning("⚠️ InfluxDB isn't responding — historical data won't be available")
 
                         client.close()
 
                     except ValueError as ve:
-                        self.logger.warning(f"\t⚠️ InfluxDB port error: {ve}")
+                        self.logger.warning(f"⚠️ InfluxDB port is invalid: {ve}")
                     except Exception as influx_error:
-                        self.logger.warning(f"\t⚠️ InfluxDB connection failed: {influx_error}")
+                        self.logger.warning(f"⚠️ InfluxDB connection failed: {influx_error} — historical data won't be available")
 
             except ImportError:
-                self.logger.warning("\t⚠️ InfluxDB library not available")
+                self.logger.warning("⚠️ InfluxDB library not available — historical data won't be available")
             except Exception as e:
-                self.logger.warning(f"\t⚠️ InfluxDB connection failed: {e}")
+                self.logger.warning(f"⚠️ InfluxDB connection failed: {e} — historical data won't be available")
 
         return all_required_connections_ok
 
@@ -201,7 +203,7 @@ class Plugin(indigo.PluginBase):
 
         # Unknown architecture - log warning but continue
         self.logger.warning(f"⚠️ Unknown CPU architecture: {machine}")
-        self.logger.warning("   Plugin will attempt to start. If it fails, check system requirements.")
+        self.logger.warning("⚠️ Plugin will attempt to start; if it fails, check system requirements.")
         return True
 
     def _get_mcp_client_urls(self, path: str = "/message/com.vtmikel.mcp_server/mcp/") -> list:
@@ -343,11 +345,11 @@ class Plugin(indigo.PluginBase):
         """
         Called after __init__ when the plugin is starting up.
         """
-        self.logger.info("Starting plugin...")
+        self.logger.info("Starting MCP Server...")
 
         # Test connections before proceeding
         if not self.test_connections():
-            self.logger.error("\t❌ Required service connections failed - startup aborted")
+            self.logger.error("❌ MCP Server can't start until the connection problems above are fixed")
             return
 
         # Log CPU architecture information
@@ -360,7 +362,7 @@ class Plugin(indigo.PluginBase):
         try:
             self.data_provider = IndigoDataProvider(logger=self.logger)
         except Exception as e:
-            self.logger.error(f"\t❌ Data provider initialization failed: {e}")
+            self.logger.error(f"❌ MCP Server failed to start (Indigo data access): {e}")
             return
 
         # Subscribe to all device and variable changes for event webhooks
@@ -400,17 +402,15 @@ class Plugin(indigo.PluginBase):
                 # Restore subscriptions persisted from a previous run
                 restored = self.subscription_manager.load_from_store()
                 if restored:
-                    self.logger.info(
-                        f"\t✅ Restored {restored} event subscription(s) from disk"
-                    )
+                    self.logger.info(f"🔔 Restored {restored} event subscription(s)")
                 subscription_handler = SubscriptionHandler(
                     subscription_manager=self.subscription_manager,
                     webhook_dispatcher=self.webhook_dispatcher,
                     logger=self.logger,
                 )
-                self.logger.info("\t✅ Event webhook system started")
+                self.logger.info("✅ Event webhooks ready")
             except Exception as e:
-                self.logger.error(f"\t❌ Event webhook system failed to start: {e}")
+                self.logger.error(f"❌ Event webhooks failed to start: {e} — subscriptions won't fire until the plugin is reloaded")
                 self.subscription_manager = None
                 self.webhook_dispatcher = None
 
@@ -423,31 +423,35 @@ class Plugin(indigo.PluginBase):
                 server_version=self.pluginVersion,
             )
 
-            # Log MCP client connection information
-            self.logger.info("🌐 MCP Client Connection Information:")
+            # Log MCP client connection information (full list in the menu action)
             urls = self._get_mcp_client_urls()
+            if urls:
+                self.logger.info(
+                    f"🌐 MCP endpoint: {urls[0]['url']} "
+                    f"(Plugins → MCP Server → Show Client Connection Info for all options)"
+                )
             for url_info in urls:
-                self.logger.info(f"   {url_info['label']}: {url_info['url']}")
+                self.logger.debug(f"MCP endpoint ({url_info['label']}): {url_info['url']}")
 
         except Exception as e:
-            self.logger.error(f"\t❌ MCP handler initialization failed: {e}")
             self.mcp_handler = None
-            self.logger.error("\t❌ MCP server unavailable - plugin restart required")
+            self.logger.error(f"❌ MCP Server failed to start: {e} — fix the problem and reload the plugin")
+            self.logger.debug("MCP handler initialization failed", exc_info=True)
             return
 
     def shutdown(self) -> None:
         """
         Called when the plugin is being shut down.
         """
-        self.logger.info("Stopping plugin...")
+        self.logger.info("Stopping MCP Server...")
 
         # Clean up webhook dispatcher
         if self.webhook_dispatcher:
             try:
                 self.webhook_dispatcher.stop()
-                self.logger.info("\t✅ Webhook dispatcher stopped")
+                self.logger.debug("Webhook dispatcher stopped")
             except Exception as e:
-                self.logger.error(f"\t❌ Error stopping webhook dispatcher: {e}")
+                self.logger.warning(f"⚠️ Webhook dispatcher didn't stop cleanly: {e}")
             finally:
                 self.webhook_dispatcher = None
 
@@ -457,9 +461,9 @@ class Plugin(indigo.PluginBase):
                 # Flush latest stats to disk before stopping
                 self.subscription_manager.save()
                 self.subscription_manager.shutdown()
-                self.logger.info("\t✅ Subscription manager stopped")
+                self.logger.debug("Subscription manager stopped")
             except Exception as e:
-                self.logger.error(f"\t❌ Error stopping subscription manager: {e}")
+                self.logger.warning(f"⚠️ Subscription manager didn't stop cleanly: {e}")
             finally:
                 self.subscription_manager = None
 
@@ -467,9 +471,9 @@ class Plugin(indigo.PluginBase):
         if self.mcp_handler:
             try:
                 self.mcp_handler.stop()
-                self.logger.info("\t✅ MCP handler stopped")
+                self.logger.debug("MCP handler stopped")
             except Exception as e:
-                self.logger.error(f"\t❌ Error stopping MCP handler: {e}")
+                self.logger.warning(f"⚠️ MCP handler didn't stop cleanly: {e}")
             finally:
                 self.mcp_handler = None
 
@@ -497,7 +501,7 @@ class Plugin(indigo.PluginBase):
 
         # Validate MCP handler is available
         if not self.mcp_handler:
-            self.logger.error("❌ MCP handler not initialized")
+            self.logger.error("❌ MCP request received but the server isn't running — reload the plugin")
             return {
                 "status": 503,  # Service Unavailable
                 "headers": {"Content-Type": "application/json"},
@@ -512,7 +516,7 @@ class Plugin(indigo.PluginBase):
             return response
 
         except Exception as e:
-            self.logger.error(f"❌ MCP endpoint error: {e}")
+            self.logger.error(f"❌ MCP request failed unexpectedly: {e}")
             return {
                 "status": 500,
                 "headers": {"Content-Type": "application/json"},
@@ -565,7 +569,7 @@ class Plugin(indigo.PluginBase):
                 "content": web_ui.render_subscriptions_page(subscriptions, dispatcher_stats),
             }
         except Exception as e:
-            self.logger.error(f"❌ Events UI endpoint error: {e}")
+            self.logger.error(f"❌ Event subscriptions web page failed to render: {e}")
             return {
                 "status": 500,
                 "headers": {"Content-Type": "text/html; charset=utf-8"},
@@ -713,7 +717,7 @@ class Plugin(indigo.PluginBase):
 
     def test_connections_button(self, values_dict: indigo.Dict) -> indigo.Dict:
         """Button action to test connections with current configuration values."""
-        self.logger.info("Testing connections with current configuration...")
+        self.logger.info("Testing connections...")
 
         # Temporarily update instance variables with dialog values for testing
         old_api_key = self.openai_api_key
@@ -738,10 +742,10 @@ class Plugin(indigo.PluginBase):
             connections_ok = self.test_connections()
 
             if connections_ok:
-                self.logger.info("✅ All required connections tested successfully!")
+                self.logger.info("✅ All required connections OK")
             else:
                 self.logger.error(
-                    "❌ Some required connections failed. Please check the logs above."
+                    "❌ Some required connections failed — see the messages above"
                 )
 
         finally:
@@ -910,7 +914,7 @@ class Plugin(indigo.PluginBase):
                 for subscription, event in matches:
                     self.webhook_dispatcher.dispatch(subscription, event)
             except Exception as e:
-                self.logger.warning(f"Subscription eval error: {e}")
+                self.logger.warning(f"⚠️ Event subscription check failed for a device change: {e}")
 
     def variableUpdated(self, origVar: indigo.Variable, newVar: indigo.Variable) -> None:
         """
@@ -928,7 +932,7 @@ class Plugin(indigo.PluginBase):
                 for subscription, event in matches:
                     self.webhook_dispatcher.dispatch(subscription, event)
             except Exception as e:
-                self.logger.warning(f"Variable subscription eval error: {e}")
+                self.logger.warning(f"⚠️ Event subscription check failed for a variable change: {e}")
 
     def validateDeviceConfigUi(
         self, valuesDict: indigo.Dict, typeId: str, devId: int
@@ -991,6 +995,7 @@ class Plugin(indigo.PluginBase):
             self.indigo_log_handler.setLevel(self.log_level)
             self.plugin_file_handler.setLevel(self.log_level)
             logging.getLogger("Plugin").setLevel(self.log_level)
+            log_style.set_verbose_activity(values_dict.get("log_mcp_activity", False))
 
             # Core configuration
             self.openai_api_key = values_dict.get("openai_api_key", "")
@@ -1026,21 +1031,17 @@ class Plugin(indigo.PluginBase):
             self._apply_environment()
 
             # Test connections with new configuration
-            self.logger.info("Testing connections with new configuration...")
+            self.logger.debug("Testing connections with new configuration...")
             connections_ok = self.test_connections()
 
             if not connections_ok:
                 self.logger.error(
-                    "⚠️ Some required connections failed. Configuration saved."
-                )
-                self.logger.error(
-                    "Please check your configuration and restart the plugin manually."
+                    "❌ Configuration saved, but a required connection failed — "
+                    "the plugin can't work until this is fixed (see messages above)"
                 )
                 return
 
-            self.logger.info(
-                "✅ Configuration updated successfully. Changes will take effect on next MCP request."
-            )
+            self.logger.info("✅ Configuration saved")
 
             # No server restart needed - MCP runs via Indigo Web Server
             # Configuration changes (environment variables) are already applied above

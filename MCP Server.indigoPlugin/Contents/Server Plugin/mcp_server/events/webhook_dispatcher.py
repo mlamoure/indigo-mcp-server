@@ -20,8 +20,25 @@ import urllib.error
 import urllib.request
 from typing import Any, Callable, Dict, Optional, Tuple
 
+from ..common.log_style import host_only
 from .event_model import Event
 from .subscription_model import Subscription
+
+
+def _entity_label(event: Event) -> str:
+    """Display name for the entity that triggered an event."""
+    entity = event.entity or {}
+    return entity.get("name") or f"{entity.get('kind', 'entity')} {entity.get('id', '?')}"
+
+
+def _subscription_label(subscription: Subscription) -> str:
+    """Display name for a subscription (description, else entity reference)."""
+    if subscription.description:
+        return subscription.description
+    ref = subscription.entity_type
+    if subscription.entity_id is not None:
+        ref += f" {subscription.entity_id}"
+    return ref
 
 
 class WebhookDispatcher:
@@ -164,6 +181,10 @@ class WebhookDispatcher:
                     subscription.record_success(status_code)
                     with self._stats_lock:
                         self._events_sent += 1
+                    self._logger.info(
+                        f"🔔 '{_entity_label(event)}' changed → webhook sent to "
+                        f"{host_only(subscription.webhook_url)} (HTTP {status_code})"
+                    )
                     self._logger.debug(
                         f"Webhook delivered: {event.event_id} → "
                         f"{subscription.webhook_url} ({status_code})"
@@ -175,8 +196,8 @@ class WebhookDispatcher:
                         and self._on_expired
                     ):
                         self._logger.info(
-                            f"Subscription {subscription.subscription_id} "
-                            f"auto-expired after {subscription.stats['fires']} fires"
+                            f"🔔 Subscription '{_subscription_label(subscription)}' finished "
+                            f"(reached {subscription.stats['fires']} events) and was removed"
                         )
                         try:
                             self._on_expired(subscription)
@@ -206,6 +227,11 @@ class WebhookDispatcher:
                         f"HTTP {status_code}", http_status=status_code
                     )
                     self._logger.warning(
+                        f"⚠️ Webhook for '{_entity_label(event)}' rejected by "
+                        f"{host_only(subscription.webhook_url)} (HTTP {status_code}) — "
+                        f"check the receiving server's URL"
+                    )
+                    self._logger.debug(
                         f"Webhook rejected ({status_code}): {event.event_id} "
                         f"→ {subscription.webhook_url}"
                     )
@@ -224,9 +250,13 @@ class WebhookDispatcher:
                     continue
 
         # All retries exhausted
-        self._logger.warning(
-            f"Webhook delivery failed after {self._max_retries + 1} attempts: "
-            f"{event.event_id} → {subscription.webhook_url}"
+        self._logger.error(
+            f"❌ Webhook delivery failed: '{_entity_label(event)}' event could not reach "
+            f"{host_only(subscription.webhook_url)} after {self._max_retries + 1} attempts — "
+            f"check that the receiver is running"
+        )
+        self._logger.debug(
+            f"Webhook delivery failed: {event.event_id} → {subscription.webhook_url}"
         )
         with self._stats_lock:
             self._events_failed += 1
@@ -249,12 +279,12 @@ class WebhookDispatcher:
         sub_id = subscription.subscription_id
         if not subscription.verify_ssl and sub_id not in self._warned_ssl:
             self._logger.warning(
-                f"Subscription {sub_id}: SSL verification disabled"
+                f"⚠️ Subscription '{_subscription_label(subscription)}' has SSL verification disabled"
             )
             self._warned_ssl.add(sub_id)
         if url.startswith("http://") and sub_id not in self._warned_http:
             self._logger.warning(
-                f"Subscription {sub_id}: using plain HTTP (not HTTPS)"
+                f"⚠️ Subscription '{_subscription_label(subscription)}' delivers over unencrypted HTTP"
             )
             self._warned_http.add(sub_id)
 

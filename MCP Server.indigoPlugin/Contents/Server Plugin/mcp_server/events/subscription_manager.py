@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..common.state_filter import StateFilter
 from .event_model import Event, generate_ulid
+from ..common.log_style import host_only
 from .subscription_model import Subscription
 from .subscription_store import SubscriptionStore
 from .dwell_timer import DwellTimerQueue
@@ -93,7 +94,16 @@ class SubscriptionManager:
             self._subscriptions[sub.subscription_id] = sub
 
         self._save()
+        label = sub.description or (
+            sub.entity_type + (f" {sub.entity_id}" if sub.entity_id else "")
+        )
+        suffix = ""
+        if sub.max_fires is not None:
+            suffix = f" (stops after {sub.max_fires} event{'s' if sub.max_fires != 1 else ''})"
         self._logger.info(
+            f"🔔 New subscription: '{label}' → {host_only(sub.webhook_url)}{suffix}"
+        )
+        self._logger.debug(
             f"Subscription created: {sub.subscription_id} "
             f"({sub.entity_type}"
             f"{':' + str(sub.entity_id) if sub.entity_id else ''}) "
@@ -114,7 +124,11 @@ class SubscriptionManager:
             self._dwell_timer.cancel_dwell(subscription_id, sub.entity_id)
 
         self._save()
-        self._logger.info(f"Subscription deleted: {subscription_id}")
+        label = sub.description or (
+            sub.entity_type + (f" {sub.entity_id}" if sub.entity_id else "")
+        )
+        self._logger.info(f"🔔 Subscription '{label}' removed")
+        self._logger.debug(f"Subscription deleted: {subscription_id}")
         return True
 
     def list_all(self) -> List[Subscription]:
@@ -165,7 +179,7 @@ class SubscriptionManager:
         try:
             self._store.save(snapshot)
         except Exception as e:
-            self._logger.error(f"Failed to persist subscriptions: {e}")
+            self._logger.error(f"❌ Saving event subscriptions to disk failed: {e} — subscriptions may not survive a restart")
 
     # ------------------------------------------------------------------
     # State change evaluation

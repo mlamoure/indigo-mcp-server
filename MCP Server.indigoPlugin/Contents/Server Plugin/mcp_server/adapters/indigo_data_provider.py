@@ -40,7 +40,7 @@ class IndigoDataProvider(DataProvider):
                 dev = indigo.devices[dev_id]
                 devices.append(dict(dev))
         except Exception as e:
-            self.logger.error(f"Error getting all devices: {e}")
+            self.logger.debug(f"Error getting all devices: {e}", exc_info=True)
             
         # Apply filtering to return only minimal keys
         return filter_json(devices, KEYS_TO_KEEP_MINIMAL_DEVICES)
@@ -60,7 +60,7 @@ class IndigoDataProvider(DataProvider):
                 dev = indigo.devices[device_id]
                 return dict(dev)
         except Exception as e:
-            self.logger.error(f"Error getting device {device_id}: {e}")
+            self.logger.debug(f"Error getting device {device_id}: {e}", exc_info=True)
             
         return None
     
@@ -82,7 +82,7 @@ class IndigoDataProvider(DataProvider):
                 for folder in indigo.variables.folders:
                     folder_map[folder.id] = folder.name
             except Exception as folder_error:
-                self.logger.error(f"Error building folder map: {folder_error}")
+                self.logger.debug(f"Error building folder map: {folder_error}", exc_info=True)
 
             # Get all variables with filtered fields
             for var_id in indigo.variables:
@@ -102,7 +102,7 @@ class IndigoDataProvider(DataProvider):
                 variables.append(minimal_var)
 
         except Exception as e:
-            self.logger.error(f"Error getting all variables: {e}")
+            self.logger.debug(f"Error getting all variables: {e}", exc_info=True)
 
         return variables
     
@@ -121,7 +121,7 @@ class IndigoDataProvider(DataProvider):
                 var = indigo.variables[variable_id]
                 return dict(var)
         except Exception as e:
-            self.logger.error(f"Error getting variable {variable_id}: {e}")
+            self.logger.debug(f"Error getting variable {variable_id}: {e}", exc_info=True)
 
         return None
 
@@ -138,7 +138,7 @@ class IndigoDataProvider(DataProvider):
                 var = indigo.variables[var_id]
                 variables.append(dict(var))
         except Exception as e:
-            self.logger.error(f"Error getting all variables (unfiltered): {e}")
+            self.logger.debug(f"Error getting all variables (unfiltered): {e}", exc_info=True)
 
         return variables
 
@@ -155,7 +155,7 @@ class IndigoDataProvider(DataProvider):
                 action = indigo.actionGroups[action_id]
                 actions.append(dict(action))
         except Exception as e:
-            self.logger.error(f"Error getting all actions: {e}")
+            self.logger.debug(f"Error getting all actions: {e}", exc_info=True)
             
         return actions
     
@@ -174,7 +174,7 @@ class IndigoDataProvider(DataProvider):
                 action = indigo.actionGroups[action_id]
                 return dict(action)
         except Exception as e:
-            self.logger.error(f"Error getting action {action_id}: {e}")
+            self.logger.debug(f"Error getting action {action_id}: {e}", exc_info=True)
             
         return None
     
@@ -203,7 +203,7 @@ class IndigoDataProvider(DataProvider):
                 dev = indigo.devices[dev_id]
                 devices.append(dict(dev))
         except Exception as e:
-            self.logger.error(f"Error getting all devices (unfiltered): {e}")
+            self.logger.debug(f"Error getting all devices (unfiltered): {e}", exc_info=True)
             
         return devices
     
@@ -256,7 +256,7 @@ class IndigoDataProvider(DataProvider):
             }
             
         except Exception as e:
-            self.logger.error(f"Error turning on device {device_id}: {e}")
+            self.logger.debug(f"Error turning on device {device_id}: {e}", exc_info=True)
             return {"error": str(e)}
     
     def turn_off_device(self, device_id: int) -> Dict[str, Any]:
@@ -295,7 +295,7 @@ class IndigoDataProvider(DataProvider):
             }
             
         except Exception as e:
-            self.logger.error(f"Error turning off device {device_id}: {e}")
+            self.logger.debug(f"Error turning off device {device_id}: {e}", exc_info=True)
             return {"error": str(e)}
     
     def set_device_brightness(self, device_id: int, brightness: float) -> Dict[str, Any]:
@@ -349,7 +349,7 @@ class IndigoDataProvider(DataProvider):
             }
             
         except Exception as e:
-            self.logger.error(f"Error setting brightness for device {device_id}: {e}")
+            self.logger.debug(f"Error setting brightness for device {device_id}: {e}", exc_info=True)
             return {"error": str(e)}
     
     def update_variable(self, variable_id: int, value: Any) -> Dict[str, Any]:
@@ -388,7 +388,7 @@ class IndigoDataProvider(DataProvider):
             }
             
         except Exception as e:
-            self.logger.error(f"Error updating variable {variable_id}: {e}")
+            self.logger.debug(f"Error updating variable {variable_id}: {e}", exc_info=True)
             return {"error": str(e)}
     
     def execute_action_group(self, action_group_id: int, delay: Optional[int] = None) -> Dict[str, Any]:
@@ -418,7 +418,7 @@ class IndigoDataProvider(DataProvider):
             }
             
         except Exception as e:
-            self.logger.error(f"Error executing action group {action_group_id}: {e}")
+            self.logger.debug(f"Error executing action group {action_group_id}: {e}", exc_info=True)
             return {"error": str(e), "success": False}
 
     def get_event_log_list(
@@ -452,7 +452,7 @@ class IndigoDataProvider(DataProvider):
             return log_entries if log_entries else []
 
         except Exception as e:
-            self.logger.error(f"Error getting event log list: {e}")
+            self.logger.debug(f"Error getting event log list: {e}", exc_info=True)
             return []
 
     def create_variable(
@@ -498,7 +498,7 @@ class IndigoDataProvider(DataProvider):
             }
 
         except Exception as e:
-            self.logger.error(f"Error creating variable '{name}': {e}")
+            self.logger.debug(f"Error creating variable '{name}': {e}", exc_info=True)
             return {"error": str(e)}
 
     def get_variable_folders(self) -> List[Dict[str, Any]]:
@@ -517,7 +517,7 @@ class IndigoDataProvider(DataProvider):
                     "description": folder.description if hasattr(folder, 'description') else ""
                 })
         except Exception as e:
-            self.logger.error(f"Error getting variable folders: {e}")
+            self.logger.debug(f"Error getting variable folders: {e}", exc_info=True)
 
         return folders
 
@@ -606,7 +606,7 @@ class IndigoDataProvider(DataProvider):
             }
 
         except Exception as e:
-            self.logger.error(f"Error setting color levels for device {device_id}: {e}")
+            self.logger.debug(f"Error setting color levels for device {device_id}: {e}", exc_info=True)
             return {"error": str(e)}
 
     def set_thermostat_heat_setpoint(self, device_id: int, value: float) -> Dict[str, Any]:
@@ -655,7 +655,7 @@ class IndigoDataProvider(DataProvider):
             }
 
         except Exception as e:
-            self.logger.error(f"Error setting heat setpoint for device {device_id}: {e}")
+            self.logger.debug(f"Error setting heat setpoint for device {device_id}: {e}", exc_info=True)
             return {"error": str(e)}
 
     def set_thermostat_cool_setpoint(self, device_id: int, value: float) -> Dict[str, Any]:
@@ -704,7 +704,7 @@ class IndigoDataProvider(DataProvider):
             }
 
         except Exception as e:
-            self.logger.error(f"Error setting cool setpoint for device {device_id}: {e}")
+            self.logger.debug(f"Error setting cool setpoint for device {device_id}: {e}", exc_info=True)
             return {"error": str(e)}
 
     def set_thermostat_hvac_mode(self, device_id: int, mode: str) -> Dict[str, Any]:
@@ -769,7 +769,7 @@ class IndigoDataProvider(DataProvider):
             }
 
         except Exception as e:
-            self.logger.error(f"Error setting HVAC mode for device {device_id}: {e}")
+            self.logger.debug(f"Error setting HVAC mode for device {device_id}: {e}", exc_info=True)
             return {"error": str(e)}
 
     def set_thermostat_fan_mode(self, device_id: int, mode: str) -> Dict[str, Any]:
@@ -828,5 +828,5 @@ class IndigoDataProvider(DataProvider):
             }
 
         except Exception as e:
-            self.logger.error(f"Error setting fan mode for device {device_id}: {e}")
+            self.logger.debug(f"Error setting fan mode for device {device_id}: {e}", exc_info=True)
             return {"error": str(e)}

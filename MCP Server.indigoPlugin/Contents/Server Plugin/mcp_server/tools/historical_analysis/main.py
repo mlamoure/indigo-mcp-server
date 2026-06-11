@@ -65,7 +65,7 @@ class HistoricalAnalysisHandler(BaseToolHandler):
         start_time = time.time()
         
         try:
-            self.info_log(f"Starting historical analysis for {len(entity_names)} entities over {time_range_days} days")
+            self.activity_log(f"Analyzing history for {len(entity_names)} entities over {time_range_days} days", write=False)
             self.debug_log(f"Query: '{query}'")
             self.debug_log(f"Entities: {entity_names}")
             self.debug_log(f"Entity type: {entity_type}")
@@ -106,7 +106,7 @@ class HistoricalAnalysisHandler(BaseToolHandler):
             
             # Check if InfluxDB is available
             if os.environ.get("INFLUXDB_ENABLED", "false").lower() != "true":
-                self.warning_log("InfluxDB is not enabled - historical analysis not available")
+                self.warning_log("InfluxDB is not enabled — historical data is unavailable (enable it in Plugin Config)")
                 return {
                     "success": False,
                     "error": "InfluxDB is not enabled. Please enable InfluxDB in plugin configuration to use historical analysis.",
@@ -134,7 +134,7 @@ class HistoricalAnalysisHandler(BaseToolHandler):
                 recommended_properties = self._get_recommended_properties(device_name, query)
                 
                 if recommended_properties:
-                    self.info_log(f"LLM recommended properties for {device_name}: {recommended_properties}")
+                    self.debug_log(f"LLM recommended properties for {device_name}: {recommended_properties}")
                     
                     # Try recommended properties in order
                     for device_property in recommended_properties:
@@ -145,7 +145,7 @@ class HistoricalAnalysisHandler(BaseToolHandler):
                             )
                             if property_results:
                                 device_results.extend(property_results)
-                                self.info_log(f"✅ Found {len(property_results)} records for {device_name}.{device_property}")
+                                self.debug_log(f"Found {len(property_results)} records for {device_name}.{device_property}")
                                 break  # Found data, stop trying other properties
                             else:
                                 self.debug_log(f"❌ No data for {device_name}.{device_property}")
@@ -164,7 +164,7 @@ class HistoricalAnalysisHandler(BaseToolHandler):
                             )
                             if property_results:
                                 device_results.extend(property_results)
-                                self.info_log(f"✅ Fallback success: Found {len(property_results)} records for {device_name}.{device_property}")
+                                self.debug_log(f"Fallback success: found {len(property_results)} records for {device_name}.{device_property}")
                                 break  # Found data, stop trying other properties
                             else:
                                 self.debug_log(f"❌ No fallback data for {device_name}.{device_property}")
@@ -187,7 +187,7 @@ class HistoricalAnalysisHandler(BaseToolHandler):
                     if variable_results:
                         all_results.extend(variable_results)
                         entities_analyzed.append(variable_name)
-                        self.info_log(f"✅ Found {len(variable_results)} records for variable {variable_name}")
+                        self.debug_log(f"Found {len(variable_results)} records for variable {variable_name}")
                     else:
                         self.debug_log(f"❌ No data for variable {variable_name}")
                 except Exception as e:
@@ -208,7 +208,7 @@ class HistoricalAnalysisHandler(BaseToolHandler):
                     all_results, entities_analyzed, time_range_days, summary_stats, entity_classification
                 )
                 
-                self.info_log(f"Analysis completed successfully in {analysis_duration:.2f}s")
+                self.debug_log(f"Analysis completed in {analysis_duration:.2f}s")
                 return self.create_success_response(
                     data={
                         "report": report,
@@ -463,7 +463,7 @@ class HistoricalAnalysisHandler(BaseToolHandler):
             
             return local_datetime
         except Exception as e:
-            self.error_log(f"Failed to parse datetime '{datetime_str}': {e}")
+            self.debug_log(f"Failed to parse datetime '{datetime_str}': {e}")
             # Return current time as fallback
             return datetime.now().astimezone()
     
@@ -570,7 +570,7 @@ class HistoricalAnalysisHandler(BaseToolHandler):
             return device_names
             
         except Exception as e:
-            self.error_log(f"Failed to get available devices: {e}")
+            self.error_log(f"Historical analysis failed: {e}")
             return []
     
     def is_influxdb_available(self) -> bool:
@@ -807,7 +807,7 @@ Recommend 1-3 most relevant properties:"""
                         []
                     )
                     if device_suggestions:
-                        error_lines.append(f"     💡 Did you mean: {', '.join(device_suggestions)}")
+                        error_lines.append(f"     Did you mean: {', '.join(device_suggestions)}")
                 
                 if valid_devices:
                     error_lines.append(f"\n✅ Valid devices found: {', '.join(valid_devices)}")
@@ -832,7 +832,7 @@ Recommend 1-3 most relevant properties:"""
                 }
                 
         except Exception as e:
-            self.error_log(f"Error validating device names: {e}")
+            self.debug_log(f"Error validating device names: {e}")
             return {
                 "all_valid": True,  # Allow processing to continue on validation errors
                 "valid_devices": device_names,
@@ -1270,7 +1270,7 @@ Recommend 1-3 most relevant properties:"""
                             []
                         )
                         if entity_suggestions:
-                            error_lines.append(f"     💡 Did you mean: {', '.join(entity_suggestions)}")
+                            error_lines.append(f"     Did you mean: {', '.join(entity_suggestions)}")
                 
                 if valid_entities:
                     if classified_devices:
@@ -1308,7 +1308,7 @@ Recommend 1-3 most relevant properties:"""
                 }
                 
         except Exception as e:
-            self.error_log(f"Error validating entity names: {e}")
+            self.debug_log(f"Error validating entity names: {e}")
             # Fallback classification (assume all are devices for backward compatibility)
             return {
                 "all_valid": True,

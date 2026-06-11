@@ -112,6 +112,12 @@
         </List>
     </Field>
 
+    <Field id="log_mcp_activity" type="checkbox" defaultValue="false">
+        <Label>Log AI read activity:</Label>
+        <Description>Also log read-only MCP requests (searches, lists, lookups) to the event log.
+            Device and variable changes are always logged.</Description>
+    </Field>
+
     <Field id="separator5" type="separator"/>
 
     <!-- Connection Testing -->

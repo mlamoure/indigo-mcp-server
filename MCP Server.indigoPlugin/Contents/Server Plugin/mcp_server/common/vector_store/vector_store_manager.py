@@ -76,7 +76,7 @@ class VectorStoreManager:
 
         except Exception as e:
             self._is_initializing = False
-            self.logger.error(f"\t❌ Vector store startup failed: {e}")
+            self.logger.error(f"❌ Search index failed to start: {e} — AI search won't work until the plugin is reloaded")
             raise
     
     def stop(self) -> None:
@@ -105,25 +105,25 @@ class VectorStoreManager:
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
 
             # Create vector store instance
-            self.logger.info("\t📊 Vector store: initializing...")
+            self.logger.debug("Vector store: initializing...")
             self.vector_store = VectorStore(self.db_path, logger=self.logger)
-            self.logger.info("\t📊 Vector store: database connected")
+            self.logger.debug("Vector store: database connected")
 
         except Exception as e:
-            self.logger.error(f"\t❌ Vector store initialization failed: {e}")
+            self.logger.error(f"❌ Search index initialization failed: {e}")
             raise
     
     def update_now(self) -> None:
         """Perform an immediate vector store update with progress tracking."""
         if not self.vector_store:
-            self.logger.error("\t❌ Vector store not initialized")
+            self.logger.error("❌ Search index is not initialized")
             return
 
         try:
             update_start = time.time()
 
             # Get all entity data
-            self.logger.info("\t📊 Vector store: synchronizing...")
+            self.logger.debug("Vector store: synchronizing...")
             entities = self.data_provider.get_all_entities_for_vector_store()
 
             # Count entities
@@ -142,10 +142,11 @@ class VectorStoreManager:
             self._last_update_time = time.time()
             elapsed = self._last_update_time - update_start
 
-            self.logger.info(f"\t📊 Vector store: synchronized {total_entities} entities ({device_count} devices, {variable_count} variables, {action_count} actions) in {elapsed:.1f}s")
+            self.logger.info(f"📊 Search index up to date — {device_count} devices, {variable_count} variables, {action_count} actions")
+            self.logger.debug(f"Vector store: synchronized {total_entities} entities in {elapsed:.1f}s")
 
         except Exception as e:
-            self.logger.error(f"\t❌ Vector store update failed: {e}")
+            self.logger.error(f"❌ Search index update failed: {e} — new or renamed devices may not appear in AI searches")
             raise
     
     def _start_background_updates(self) -> None:
@@ -187,7 +188,7 @@ class VectorStoreManager:
                 self.update_now()
                 
             except Exception as e:
-                self.logger.error(f"Background update error: {e}")
+                self.logger.error(f"❌ Search index background update failed: {e}")
                 # Continue loop even if update fails
     
     def get_vector_store(self) -> Optional[VectorStoreInterface]:
@@ -238,4 +239,4 @@ class VectorStoreManager:
             if interval > 0:
                 self._start_background_updates()
         
-        self.logger.info(f"Update interval changed from {old_interval}s to {interval}s")
+        self.logger.debug(f"Update interval changed from {old_interval}s to {interval}s")

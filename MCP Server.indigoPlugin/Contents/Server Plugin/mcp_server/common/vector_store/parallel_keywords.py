@@ -149,7 +149,7 @@ def generate_keywords_parallel(
             else:
                 logger.error(f"❌ All {max_retries} parallel keyword attempts failed: {e}")
                 # Fallback to sequential processing
-                logger.info("🔄 Falling back to sequential keyword processing...")
+                logger.debug("Falling back to sequential keyword processing...")
                 return _generate_keywords_sequential_batch(entities, batch_size, collection_name, progress_callback)
     
     return {}

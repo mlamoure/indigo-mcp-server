@@ -41,13 +41,13 @@ class ActionControlHandler(BaseToolHandler):
         try:
             # Validate action_group_id
             if not isinstance(action_group_id, int):
-                self.info_log("❌ Invalid action_group_id type")
+                self.error_log("action_group_id must be an integer")
                 return {"error": "action_group_id must be an integer", "success": False}
 
             # Validate delay if provided
             if delay is not None:
                 if not isinstance(delay, int) or delay < 0:
-                    self.info_log("❌ Invalid delay value")
+                    self.error_log("delay must be a non-negative integer")
                     return {"error": "delay must be a non-negative integer", "success": False}
 
             # Get action group name
@@ -58,11 +58,11 @@ class ActionControlHandler(BaseToolHandler):
             result = self.data_provider.execute_action_group(action_group_id, delay)
 
             if result.get("success"):
-                delay_str = f" (delay: {delay}s)" if delay else ""
-                self.info_log(f"▶️ {action_name}{delay_str}")
+                delay_str = f" (in {delay}s)" if delay else ""
+                self.activity_log(f"Action group '{action_name}' executed{delay_str}")
             else:
                 error_msg = result.get('error', 'unknown error')
-                self.info_log(f"❌ {action_name}: {error_msg}")
+                self.error_log(f"Run action group '{action_name}' failed: {error_msg}")
 
             return result
 

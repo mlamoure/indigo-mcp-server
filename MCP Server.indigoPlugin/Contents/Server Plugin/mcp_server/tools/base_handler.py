@@ -6,6 +6,8 @@ import inspect
 import logging
 from typing import Optional, Any
 
+from ..common.log_style import FAIL, fail as log_fail, activity as log_activity
+
 
 class BaseToolHandler:
     """Base class for all MCP tool handlers with standardized logging."""
@@ -54,12 +56,27 @@ class BaseToolHandler:
     
     def error_log(self, message: str) -> None:
         """
-        Log an error message with standardized format.
-        
+        Log one user-facing error line (❌ prefix added if absent).
+
         Args:
             message: The message to log
         """
-        self.logger.error(f"[{self.tool_name}]: {message}")
+        if not message.startswith(FAIL):
+            message = f"{FAIL} {message}"
+        self.logger.error(message)
+
+    def activity_log(self, message: str, write: bool = True) -> None:
+        """
+        Log MCP client activity (🔧 prefix).
+
+        Writes (state changes) always log at INFO; reads log at DEBUG unless
+        the "Log AI read activity" pref is enabled.
+
+        Args:
+            message: The message to log (no emoji; it's added here)
+            write: Whether this activity changed state
+        """
+        log_activity(self.logger, message, write=write)
     
     def handle_exception(self, e: Exception, context: str = "") -> dict:
         """
@@ -72,13 +89,9 @@ class BaseToolHandler:
         Returns:
             Dictionary with error information
         """
-        error_message = f"Error in {self.tool_name}"
-        if context:
-            error_message += f" ({context})"
-        error_message += f": {str(e)}"
-        
-        self.error_log(error_message)
-        
+        action = context.strip().capitalize() if context else self.tool_name
+        log_fail(self.logger, action, e)
+
         return {
             "error": str(e),
             "tool": self.tool_name,
@@ -134,6 +147,24 @@ class BaseToolHandler:
         
         return None
 
+    def device_label(self, device_id) -> str:
+        """
+        Best-effort display name for a device, for user-facing log lines.
+
+        Returns the device's name when the handler has a data provider and
+        the device exists; otherwise 'device {id}'.
+        """
+        provider = getattr(self, "data_provider", None)
+        device = None
+        if provider is not None:
+            try:
+                device = provider.get_device(device_id)
+            except Exception:
+                device = None
+        if device and device.get("name"):
+            return device["name"]
+        return f"device {device_id}"
+
     def validate_device_id(self, device_id) -> Optional[dict]:
         """
         Validate a device id parameter.
@@ -163,8 +194,12 @@ class BaseToolHandler:
     
     def log_tool_outcome(self, operation: str, success: bool, details: str = "", count: int = None, query_info: dict = None) -> None:
         """
-        Log the outcome of a tool operation with enhanced context and emojis.
-        
+        Log the outcome of a tool operation.
+
+        Successful read-only outcomes go through log_style.activity() as
+        reads (DEBUG unless the "Log AI read activity" pref is on); failures
+        log one ERROR line.
+
         Args:
             operation: The operation that was performed
             success: Whether the operation succeeded
@@ -172,142 +207,49 @@ class BaseToolHandler:
             count: Optional count of items returned/affected
             query_info: Optional dictionary with query context (filters, types, etc.)
         """
-        status = "completed successfully" if success else "failed"
-        
-        # Add emoji based on operation type
-        emoji = self._get_operation_emoji(operation)
-        message = f"{operation} {status}"
-        
+        message = operation
         if count is not None:
-            message += f" - {count} item{'s' if count != 1 else ''}"
-        
-        # Add query specifics if provided
+            message += f" → {count} item{'s' if count != 1 else ''}"
+
         if query_info:
             query_details = self._format_query_info(query_info)
             if query_details:
                 message += f" ({query_details})"
-        
+
         if details:
             message += f" - {details}"
-        
-        # Add emoji at the end for visual appeal
-        if emoji:
-            message = f"{emoji} {message}"
-        
+
         if success:
-            self.info_log(message)
+            log_activity(self.logger, message, write=False)
         else:
-            self.error_log(message)
-    
-    def _get_operation_emoji(self, operation: str) -> str:
-        """
-        Get an appropriate emoji for the operation type.
-        
-        Args:
-            operation: The operation name
-            
-        Returns:
-            Emoji string or empty string if no match
-        """
-        emoji_map = {
-            # Device operations
-            "list_devices": "💡",
-            "turn_on": "🟢", 
-            "turn_off": "🔴",
-            "set_brightness": "🔆",
-            
-            # Variable operations  
-            "list_variables": "📊",
-            "update": "📝",
-            
-            # Action operations
-            "list_action_groups": "🎬",
-            "execute": "▶️",
-            
-            # Search operations
-            "search": "🔍",
-            "search_devices": "🔍",
-            "search_variables": "🔍", 
-            "search_actions": "🔍",
-        }
-        
-        return emoji_map.get(operation, "")
-    
+            self.error_log(f"{operation} failed" + (f" - {details}" if details else ""))
+
     def _format_query_info(self, query_info: dict) -> str:
         """
-        Format query information for logging with appropriate emojis.
-        
+        Format query information for logging.
+
         Args:
             query_info: Dictionary containing query context
-            
+
         Returns:
             Formatted string with query details
         """
         if not query_info:
             return ""
-        
+
         parts = []
-        
-        # Handle state filters
+
         if "state_filter" in query_info and query_info["state_filter"]:
             state_filter = query_info["state_filter"]
             if isinstance(state_filter, dict):
-                state_parts = []
-                for key, value in state_filter.items():
-                    if key == "onState":
-                        emoji = "🟢" if value else "🔴"
-                        state_parts.append(f"{emoji} {key}={value}")
-                    elif "brightness" in key.lower():
-                        state_parts.append(f"🔆 {key}={value}")
-                    elif "temperature" in key.lower():
-                        state_parts.append(f"🌡️ {key}={value}")
-                    else:
-                        state_parts.append(f"{key}={value}")
-                
+                state_parts = [f"{key}={value}" for key, value in state_filter.items()]
                 if state_parts:
                     parts.append(f"states: {', '.join(state_parts)}")
-        
-        # Handle device types
+
         if "device_types" in query_info and query_info["device_types"]:
-            device_types = query_info["device_types"]
-            type_parts = []
-            
-            for device_type in device_types:
-                emoji = self._get_device_type_emoji(device_type)
-                if emoji:
-                    type_parts.append(f"{emoji} {device_type}")
-                else:
-                    type_parts.append(device_type)
-            
-            if type_parts:
-                parts.append(f"types: {', '.join(type_parts)}")
-        
-        # Handle search query
+            parts.append(f"types: {', '.join(query_info['device_types'])}")
+
         if "search_query" in query_info and query_info["search_query"]:
             parts.append(f"query: '{query_info['search_query']}'")
-        
+
         return ", ".join(parts)
-    
-    def _get_device_type_emoji(self, device_type: str) -> str:
-        """
-        Get an emoji for a device type.
-        
-        Args:
-            device_type: The device type name
-            
-        Returns:
-            Emoji string or empty string if no match
-        """
-        type_emoji_map = {
-            "dimmer": "💡",
-            "relay": "🔌", 
-            "sensor": "📡",
-            "thermostat": "🌡️",
-            "sprinkler": "💧",
-            "io": "🔗",
-            "multiio": "🔗",
-            "speedcontrol": "⚙️",
-            "device": "📱",
-        }
-        
-        return type_emoji_map.get(device_type, "")

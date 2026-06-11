@@ -31,7 +31,7 @@ class ProgressTracker:
         self.should_report_progress = total >= threshold
 
         if self.should_report_progress:
-            logger.info(f"🚀 Starting {stage}: processing {total} items. Updates will be displayed every 10% until finished.")
+            logger.info(f"📊 Search index: {stage} — {total} items, progress every 10%")
 
     def update(self, current: int, operation: str = ""):
         """
@@ -55,7 +55,7 @@ class ProgressTracker:
             rate = current / elapsed if elapsed > 0 else 0
             eta = (self.total - current) / rate if rate > 0 else 0
 
-            progress_msg = f"📊 {self.stage} progress: {percent}% complete ({current}/{self.total})"
+            progress_msg = f"📊 Search index: {self.stage} {percent}% ({current}/{self.total})"
             if operation:
                 progress_msg += f" - {operation}"
             if eta > 0 and eta < 300:  # Show ETA if less than 5 minutes
@@ -78,7 +78,7 @@ class ProgressTracker:
         if self.should_report_progress:
             rate = self.total / elapsed if elapsed > 0 else 0
             final_msg = (
-                f"✅ {self.stage} completed: {self.total} items in {elapsed:.2f}s"
+                f"📊 Search index: {self.stage} done — {self.total} items in {elapsed:.0f}s"
             )
             if rate > 0:
                 final_msg += f" ({rate:.1f} items/sec)"
@@ -87,14 +87,14 @@ class ProgressTracker:
             logger.info(final_msg)
         elif self.total > 0:
             # Single info notification for small datasets
-            logger.info(
-                f"✅ {self.stage}: processed {self.total} items ({elapsed:.2f}s)"
+            logger.debug(
+                f"{self.stage}: processed {self.total} items ({elapsed:.2f}s)"
             )
 
     def error(self, message: str):
         """Report an error during processing."""
         elapsed = time.time() - self.start_time
-        logger.error(f"❌ {self.stage} failed after {elapsed:.2f}s: {message}")
+        logger.error(f"❌ Search index: {self.stage} failed after {elapsed:.0f}s: {message}")
 
 
 def create_progress_tracker(
