@@ -113,9 +113,9 @@ class SearchEntitiesHandler(BaseToolHandler):
 
             returned_count = paginated_device_count + paginated_variable_count + paginated_action_count
             if limit:
-                self.info_log(f"✅ search_entities(\"{query_short}\"): {returned_count}/{total_count} results ({paginated_device_count} devices, {paginated_variable_count} vars, {paginated_action_count} actions)")
+                self.activity_log(f"Search '{query_short}' → {returned_count} of {total_count} results", write=False)
             else:
-                self.info_log(f"✅ search_entities(\"{query_short}\"): {device_count} devices, {variable_count} vars, {action_count} actions")
+                self.activity_log(f"Search '{query_short}' → {device_count} devices, {variable_count} variables, {action_count} actions", write=False)
 
             # Format results
             formatted_results = self.result_formatter.format_search_results(

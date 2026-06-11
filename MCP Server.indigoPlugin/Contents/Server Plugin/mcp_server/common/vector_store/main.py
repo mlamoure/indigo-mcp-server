@@ -80,7 +80,7 @@ class VectorStore(VectorStoreInterface):
             
             # Connect to LanceDB
             self.db = lancedb.connect(self.db_path)
-            self.logger.info(f"Vector database connected at: {self.db_path}")
+            self.logger.debug(f"Vector database connected at: {self.db_path}")
             
             # Database initialized
                 
@@ -97,7 +97,7 @@ class VectorStore(VectorStoreInterface):
                     # Table exists
                     pass
         except Exception as e:
-            self.logger.error(f"Database initialization failed: {e}")
+            self.logger.error(f"❌ Search index database failed to open: {e}")
             raise
     
     def _create_table(self, table_name: str) -> None:
@@ -138,17 +138,17 @@ class VectorStore(VectorStoreInterface):
             # Create metadata table and store current embedding model
             self._create_metadata_table()
             self._store_embedding_model(current_model)
-            self.logger.info(f"📊 Created metadata table with embedding model: {current_model}")
+            self.logger.debug(f"Created metadata table with embedding model: {current_model}")
         else:
             # Check stored embedding model
             stored_model = self._get_stored_embedding_model()
             if stored_model is None:
                 # No stored model (legacy database), assume current model
                 self._store_embedding_model(current_model)
-                self.logger.info(f"📊 Legacy database detected, assumed embedding model: {current_model}")
+                self.logger.debug(f"Legacy database detected, assumed embedding model: {current_model}")
             elif stored_model != current_model:
                 # Model has changed, need to rebuild vector store
-                self.logger.warning(f"🔄 Embedding model changed from '{stored_model}' to '{current_model}' - vector store rebuild required")
+                self.logger.info("📊 Embedding model changed — rebuilding the search index (one-time, may take several minutes)")
                 self._rebuild_vector_store_for_new_model(current_model)
             else:
                 self.logger.debug(f"✅ Embedding model verified: {current_model}")
@@ -213,13 +213,13 @@ class VectorStore(VectorStoreInterface):
     
     def _rebuild_vector_store_for_new_model(self, new_model: str) -> None:
         """Rebuild the entire vector store when embedding model changes."""
-        self.logger.warning("🔄 Rebuilding vector store for new embedding model...")
+        self.logger.debug("Rebuilding vector store for new embedding model...")
         
         # Drop all entity tables
         for table_name in ["devices", "variables", "actions"]:
             try:
                 self.db.drop_table(table_name)
-                self.logger.info(f"Dropped table: {table_name}")
+                self.logger.debug(f"Dropped table: {table_name}")
             except Exception as e:
                 self.logger.debug(f"Could not drop table {table_name}: {e}")
         
@@ -230,8 +230,8 @@ class VectorStore(VectorStoreInterface):
         # Update metadata with new model
         self._store_embedding_model(new_model)
         
-        self.logger.info(f"✅ Vector store rebuilt for embedding model: {new_model}")
-        self.logger.info("🔄 Note: Vector store is now empty and needs to be repopulated with embeddings")
+        self.logger.debug(f"Vector store rebuilt for embedding model: {new_model}")
+        self.logger.debug("Vector store is now empty and needs to be repopulated with embeddings")
     
     def _create_embedding_text(self, entity: Dict[str, Any], entity_type: str, semantic_keywords: List[str] = None) -> str:
         """
@@ -306,7 +306,7 @@ class VectorStore(VectorStoreInterface):
             return emb_text(text)
             
         except Exception as e:
-            self.logger.error(f"Failed to generate embedding: {e}")
+            self.logger.error(f"❌ Search index embedding request failed: {e}")
             raise
     
     def _generate_embeddings_batch(self, texts: List[str], entity_names: List[str] = None, progress_callback: Optional[callable] = None) -> List[List[float]]:
@@ -319,7 +319,7 @@ class VectorStore(VectorStoreInterface):
             return emb_texts_batch(texts, entity_names, progress_callback)
             
         except Exception as e:
-            self.logger.error(f"Failed to generate batch embeddings: {e}")
+            self.logger.error(f"❌ Search index embedding request failed: {e}")
             # Return empty embeddings for all texts on failure
             return [[] for _ in texts]
     
@@ -400,7 +400,7 @@ class VectorStore(VectorStoreInterface):
             validation_data = load_validation_data(table, self.logger)
             
             if not validation_data:
-                self.logger.debug(f"🔍 No existing data found for {table_name}, will create all records")
+                self.logger.debug(f"No existing data found for {table_name}, will create all records")
                 # All entities need to be created
                 entities_to_process = valid_entities
             else:
@@ -438,10 +438,11 @@ class VectorStore(VectorStoreInterface):
                         entity_names = []
                         for e in entities_to_process[:20]:
                             entity_names.append(e.get("name", f"ID:{e.get('id')}"))
-                        self.logger.info(f"Refreshing embeddings for {total_to_refresh} {table_name}: {', '.join(entity_names)}")
+                        self.logger.info(f"📊 Updating search index for {total_to_refresh} changed {table_name}")
+                        self.logger.debug(f"Refreshing embeddings: {', '.join(entity_names)}")
                     else:
                         # Just show count for larger updates
-                        self.logger.info(f"Refreshing embeddings for {total_to_refresh} {table_name}")
+                        self.logger.info(f"📊 Updating search index for {total_to_refresh} changed {table_name}")
             
             total_updates = len(entities_to_process)
             
@@ -451,13 +452,13 @@ class VectorStore(VectorStoreInterface):
             
             # Show update summary at debug level unless significant
             if total_updates > 50:
-                self.logger.info(f"Processing {total_updates} {table_name} entities")
+                self.logger.debug(f"Processing {total_updates} {table_name} entities")
             elif total_updates > 10:
                 self.logger.debug(f"Processing {total_updates} {table_name} entities")
             
             # Initialize progress tracking
             progress = create_progress_tracker(
-                f"{table_name.title()} Embeddings", 
+                f"indexing {table_name}",
                 total_updates,
                 threshold=10
             )
@@ -522,7 +523,7 @@ class VectorStore(VectorStoreInterface):
                 return
                 
             # Generate embeddings in batches - this is the major performance improvement
-            self.logger.info(f"🚀 Generating embeddings for {len(texts_for_embedding)} {table_name} in batches...")
+            self.logger.info(f"📊 Updating search index for {len(texts_for_embedding)} {table_name} — this can take a few minutes on first run")
             
             # Create embedding progress callback that reports to the overall progress tracker
             def embedding_progress_callback(current_batch, total_batches, batch_size):
@@ -532,7 +533,7 @@ class VectorStore(VectorStoreInterface):
                 
                 # Log embedding progress every 10% or every batch if few batches
                 if current_batch % max(1, total_batches // 10) == 0 or current_batch == total_batches:
-                    self.logger.info(f"📊 Embedding Generation progress: {embedding_progress}% complete (batch {current_batch}/{total_batches}, {current_batch * batch_size}/{len(texts_for_embedding)} texts)")
+                    self.logger.debug(f"Embedding generation: {embedding_progress}% (batch {current_batch}/{total_batches})")
             
             batch_embeddings = self._generate_embeddings_batch(texts_for_embedding, entity_names_for_embedding, embedding_progress_callback)
             
@@ -615,13 +616,13 @@ class VectorStore(VectorStoreInterface):
             # Final summary
             success_count = len(records_to_add)
             if failed_count > 0:
-                self.logger.warning(f"⚠️ {table_name.title()} update completed with {failed_count} failures")
+                self.logger.warning(f"⚠️ Search index updated with {failed_count} failures ({success_count} of {success_count + failed_count} {table_name} indexed) — affected items may not appear in AI searches")
             
             if success_count > 0 or failed_count > 0:
-                self.logger.info(f"✅ {table_name.title()} embeddings updated: {success_count} successful, {failed_count} failed")
+                self.logger.debug(f"{table_name.title()} embeddings updated: {success_count} successful, {failed_count} failed")
             
         except Exception as e:
-            self.logger.error(f"Failed to update {table_name} embeddings: {e}")
+            self.logger.error(f"❌ Search index update for {table_name} failed: {e}")
             raise
     
     def search(
@@ -651,7 +652,7 @@ class VectorStore(VectorStoreInterface):
         try:
             query_embedding = self._generate_embedding(query)
         except Exception as e:
-            self.logger.error(f"Failed to generate query embedding: {e}")
+            self.logger.error(f"❌ Search failed (couldn't reach OpenAI for the query embedding): {e}")
             return [], {"total_found": 0, "total_returned": 0, "truncated": False}
         
         all_results = []
@@ -686,7 +687,7 @@ class VectorStore(VectorStoreInterface):
                         all_results.append(entity_data)
                 
             except Exception as e:
-                self.logger.error(f"Search failed for {entity_type}: {e}")
+                self.logger.error(f"❌ Search failed for {entity_type}: {e}")
         
         # Deduplicate results by entity ID and type, keeping highest similarity score
         seen_entities = {}
@@ -748,7 +749,7 @@ class VectorStore(VectorStoreInterface):
         table_name = entity_type + "s" if not entity_type.endswith("s") else entity_type
         
         if table_name not in ["devices", "variables", "actions"]:
-            self.logger.error(f"Invalid entity type: {entity_type}")
+            self.logger.debug(f"Invalid entity type: {entity_type}")
             return
         
         try:

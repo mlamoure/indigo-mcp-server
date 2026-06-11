@@ -49,10 +49,10 @@ class DeviceControlHandler(BaseToolHandler):
             result = self.data_provider.turn_on_device(device_id)
 
             if "error" in result:
-                self.info_log(f"❌ {device_name}: {result['error']}")
+                self.error_log(f"❌ Turn on '{device_name}' failed: {result['error']}")
             else:
-                change_str = "changed" if result.get('changed', False) else "no change"
-                self.info_log(f"🟢 {device_name} → on ({change_str})")
+                was = "was off" if result.get('changed', False) else "already on"
+                self.activity_log(f"{device_name} → on ({was})")
 
             return result
 
@@ -81,10 +81,10 @@ class DeviceControlHandler(BaseToolHandler):
             result = self.data_provider.turn_off_device(device_id)
 
             if "error" in result:
-                self.info_log(f"❌ {device_name}: {result['error']}")
+                self.error_log(f"❌ Turn off '{device_name}' failed: {result['error']}")
             else:
-                change_str = "changed" if result.get('changed', False) else "no change"
-                self.info_log(f"🔴 {device_name} → off ({change_str})")
+                was = "was on" if result.get('changed', False) else "already off"
+                self.activity_log(f"{device_name} → off ({was})")
 
             return result
 
@@ -109,7 +109,7 @@ class DeviceControlHandler(BaseToolHandler):
 
             # Validate brightness
             if not isinstance(brightness, (int, float)):
-                self.info_log("❌ Invalid brightness type")
+                self.error_log("brightness must be a number")
                 return {"error": "brightness must be a number", "success": False}
 
             # Get device name
@@ -119,10 +119,10 @@ class DeviceControlHandler(BaseToolHandler):
             result = self.data_provider.set_device_brightness(device_id, brightness)
 
             if "error" in result:
-                self.info_log(f"❌ {device_name}: {result['error']}")
+                self.error_log(f"❌ Set brightness on '{device_name}' failed: {result['error']}")
             else:
-                change_str = "changed" if result.get('changed', False) else "no change"
-                self.info_log(f"🔆 {device_name} → {brightness}% ({change_str})")
+                suffix = "" if result.get('changed', False) else " (no change)"
+                self.activity_log(f"{device_name} → {brightness}% brightness{suffix}")
 
             return result
 

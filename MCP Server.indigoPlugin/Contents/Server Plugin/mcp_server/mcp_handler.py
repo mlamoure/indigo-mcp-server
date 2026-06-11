@@ -91,8 +91,8 @@ class MCPHandler:
         self._register_tools()
         self._register_resources()
 
-        self.logger.info(f"\t🚀 MCP Server ready ({len(self._tools)} tools, {len(self._resources)} resources)")
-        self.logger.info(f"\t🌐 Endpoint: /message/com.vtmikel.mcp_server/mcp/")
+        self.logger.info(f"✅ MCP Server ready — {len(self._tools)} tools available to AI clients")
+        self.logger.debug("Endpoint: /message/com.vtmikel.mcp_server/mcp/")
         
     def _init_handlers(self):
         """Initialize all handler instances."""
@@ -185,7 +185,7 @@ class MCPHandler:
         session = self._sessions.pop(session_id, None)
         if session:
             client_name = session.get("client_info", {}).get("name", "Unknown")
-            self.logger.debug(f"🔌 Session terminated by client: {client_name} | session: {session_id[:8]}")
+            self.logger.debug(f"Session terminated by client: {client_name} | session: {session_id[:8]}")
         else:
             # Idempotent: deleting an unknown/expired session is still success
             # (404 would be spec-purist but generates an IWS warning log line).
@@ -213,7 +213,7 @@ class MCPHandler:
 
         if expired:
             self.logger.debug(
-                f"🧹 Purged {len(expired)} idle MCP session(s); {len(self._sessions)} active"
+                f"Purged {len(expired)} idle MCP session(s); {len(self._sessions)} active"
             )
 
     def handle_request(
@@ -268,7 +268,7 @@ class MCPHandler:
         try:
             payload = json.loads(body) if body else None
         except Exception as e:
-            self.logger.error(f"Failed to parse JSON body: {e}")
+            self.logger.debug(f"Failed to parse JSON body: {e}")
             return self._json_response(
                 self._json_error(None, -32700, "Parse error"),
                 status=200
@@ -378,12 +378,9 @@ class MCPHandler:
         else:
             log_method = method
 
-        # Only log significant MCP operations at INFO, move protocol to DEBUG
-        significant_methods = ["tools/call", "resources/read"]
-        if any(method.startswith(sm) for sm in significant_methods):
-            self.logger.info(f"📨 {log_method} | {client_label} | session: {session_short}")
-        else:
-            self.logger.debug(f"📨 {log_method} | {client_label} | session: {session_short}")
+        # Transport-level detail; user-facing activity is logged by the
+        # tool handlers (which know entity names and outcomes).
+        self.logger.debug(f"{log_method} | {client_label} | session: {session_short}")
         
         # MCP protocol requires MCP-Protocol-Version header for HTTP transport
         protocol_version_header = headers.get("mcp-protocol-version")
@@ -467,7 +464,7 @@ class MCPHandler:
             }
 
             # Log new session creation with client details
-            self.logger.debug(f"🔌 New session: {client_name}@{client_ip} | session: {session_id[:8]} | protocol: {requested_version}")
+            self.logger.debug(f"New session: {client_name}@{client_ip} | session: {session_id[:8]} | protocol: {requested_version}")
 
             result = {
                 "jsonrpc": "2.0",
@@ -490,7 +487,7 @@ class MCPHandler:
             # Add session ID for header
             result["_mcp_session_id"] = session_id
 
-            self.logger.debug(f"\t✅ Client initialized: {client_name} | session: {session_id[:8]}")
+            self.logger.debug(f"Client initialized: {client_name} | session: {session_id[:8]}")
 
             return result
         else:
@@ -570,7 +567,7 @@ class MCPHandler:
         except (TypeError, ValueError) as e:
             # MCP 2025-11-25: Input validation errors return as Tool Execution Errors
             # This enables model self-correction by returning error as tool result
-            self.logger.warning(f"Tool {tool_name} validation error: {e}")
+            self.logger.debug(f"Tool {tool_name} validation error: {e}")
             return {
                 "jsonrpc": "2.0",
                 "id": msg_id,
@@ -590,7 +587,7 @@ class MCPHandler:
             }
         except Exception as e:
             # Internal errors still return as JSON-RPC errors
-            self.logger.error(f"Tool {tool_name} internal error: {e}")
+            self.logger.error(f"❌ Tool '{tool_name}' failed unexpectedly: {e}")
             return self._json_error(
                 msg_id,
                 -32603,
@@ -649,7 +646,7 @@ class MCPHandler:
                     }
                 }
             except Exception as e:
-                self.logger.error(f"Resource {uri} error: {e}")
+                self.logger.error(f"❌ Read resource {uri} failed: {e}")
                 return self._json_error(
                     msg_id, 
                     -32603, 
@@ -681,7 +678,7 @@ class MCPHandler:
                                 }
                             }
                         except Exception as e:
-                            self.logger.error(f"Resource {uri} error: {e}")
+                            self.logger.error(f"❌ Read resource {uri} failed: {e}")
                             return self._json_error(
                                 msg_id, 
                                 -32603, 

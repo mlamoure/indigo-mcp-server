@@ -511,7 +511,7 @@ def _generate_llm_keywords_batch_with_fallback(entities: List[Dict[str, Any]], e
         if fallback_size >= original_batch_size:
             continue
             
-        logger.debug(f"🔄 Trying fallback batch size: {fallback_size}")
+        logger.debug(f"Trying fallback batch size: {fallback_size}")
         all_results = {}
         
         for i in range(0, len(entities), fallback_size):
@@ -606,7 +606,7 @@ def _generate_llm_keywords_batch(entities: List[Dict[str, Any]], entity_type: st
                 logger.debug(f"All {len(cached_results)} entities served from LLM keyword cache")
             return cached_results
         
-        logger.debug(f"🚀 Batch processing {len(device_descriptions)} devices for LLM keywords")
+        logger.debug(f"Batch processing {len(device_descriptions)} devices for LLM keywords")
         
         # Create batch prompt for structured response
         batch_prompt = f"""Generate semantic search keywords for these {len(device_descriptions)} home automation devices.
@@ -672,7 +672,7 @@ def _process_structured_response(response, entity_ids: List[str], cache_keys: Li
         
         if isinstance(response, str):
             # OpenAI returned JSON string - parse it into BatchKeywordsResponse
-            logger.debug(f"🔍 Parsing JSON string response (length: {len(response)})")
+            logger.debug(f"Parsing JSON string response (length: {len(response)})")
             try:
                 import json
                 json_data = json.loads(response)
@@ -692,7 +692,7 @@ def _process_structured_response(response, entity_ids: List[str], cache_keys: Li
             logger.debug(f"Response object: {response}")
             return {}
         
-        logger.debug(f"🔍 Processing structured response with {len(parsed_response.devices)} device entries")
+        logger.debug(f"Processing structured response with {len(parsed_response.devices)} device entries")
         
         # Map structured response back to entity IDs
         successful_mappings = 0
@@ -763,7 +763,7 @@ def _parse_batch_keywords_response(response_text: str, entity_ids: List[str], ca
     keywords_map = {}
     
     try:
-        logger.debug(f"🔍 Parsing batch response text (length: {len(response_text)})")
+        logger.debug(f"Parsing batch response text (length: {len(response_text)})")
         logger.debug(f"Response preview: {response_text[:300]}...")
         
         lines = response_text.strip().split('\n')
@@ -818,7 +818,7 @@ def _parse_batch_keywords_response(response_text: str, entity_ids: List[str], ca
         for i, (entity_id, cache_key) in enumerate(zip(entity_ids, cache_keys)):
             if i < len(device_responses):
                 keywords_text = device_responses[i]
-                logger.debug(f"🔍 Parsing keywords for entity {entity_id}: {keywords_text[:100]}...")
+                logger.debug(f"Parsing keywords for entity {entity_id}: {keywords_text[:100]}...")
                 
                 # Parse keywords with improved cleaning
                 keywords = []

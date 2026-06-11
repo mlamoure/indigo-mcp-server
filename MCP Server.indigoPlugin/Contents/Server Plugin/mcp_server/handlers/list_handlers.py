@@ -105,7 +105,7 @@ class ListHandlers(BaseToolHandler):
             }
 
         except Exception as e:
-            self.error_log(f"Error listing devices: {e}")
+            self.error_log(f"List devices failed: {e}")
             raise
     
     def list_all_variables(
@@ -157,7 +157,7 @@ class ListHandlers(BaseToolHandler):
             }
 
         except Exception as e:
-            self.error_log(f"Error listing variables: {e}")
+            self.error_log(f"List variables failed: {e}")
             raise
     
     def list_all_action_groups(
@@ -209,7 +209,7 @@ class ListHandlers(BaseToolHandler):
             }
 
         except Exception as e:
-            self.error_log(f"Error listing action groups: {e}")
+            self.error_log(f"List action groups failed: {e}")
             raise
     
     def get_devices_by_state(

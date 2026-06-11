@@ -57,7 +57,7 @@ class ThermostatControlHandler(BaseToolHandler):
 
             # Validate temperature
             if not isinstance(temperature, (int, float)):
-                self.info_log(f"❌ Invalid temperature: {temperature}. Must be a number.")
+                self.error_log(f"Invalid temperature: {temperature}. Must be a number.")
                 return {"error": f"Invalid temperature: {temperature}. Must be a number.", "success": False}
 
             # Temperature range warning (not enforcing, as some systems may use Celsius)
@@ -74,10 +74,10 @@ class ThermostatControlHandler(BaseToolHandler):
             result = self.data_provider.set_thermostat_heat_setpoint(device_id, temperature)
 
             if "error" in result:
-                self.info_log(f"❌ {result['error']}")
+                self.error_log(f"Set heat setpoint on '{self.device_label(device_id)}' failed: {result['error']}")
                 return result
 
-            self.info_log(f"✅ Set heat setpoint to {temperature} for device {device_id}")
+            self.activity_log(f"{self.device_label(device_id)} → heat setpoint {temperature}°")
             return self.create_success_response(result, f"Set heat setpoint to {temperature} for device {device_id}")
 
         except Exception as e:
@@ -101,7 +101,7 @@ class ThermostatControlHandler(BaseToolHandler):
 
             # Validate temperature
             if not isinstance(temperature, (int, float)):
-                self.info_log(f"❌ Invalid temperature: {temperature}. Must be a number.")
+                self.error_log(f"Invalid temperature: {temperature}. Must be a number.")
                 return {"error": f"Invalid temperature: {temperature}. Must be a number.", "success": False}
 
             # Temperature range warning (not enforcing, as some systems may use Celsius)
@@ -118,10 +118,10 @@ class ThermostatControlHandler(BaseToolHandler):
             result = self.data_provider.set_thermostat_cool_setpoint(device_id, temperature)
 
             if "error" in result:
-                self.info_log(f"❌ {result['error']}")
+                self.error_log(f"Set cool setpoint on '{self.device_label(device_id)}' failed: {result['error']}")
                 return result
 
-            self.info_log(f"✅ Set cool setpoint to {temperature} for device {device_id}")
+            self.activity_log(f"{self.device_label(device_id)} → cool setpoint {temperature}°")
             return self.create_success_response(result, f"Set cool setpoint to {temperature} for device {device_id}")
 
         except Exception as e:
@@ -145,13 +145,13 @@ class ThermostatControlHandler(BaseToolHandler):
 
             # Validate mode
             if not isinstance(mode, str):
-                self.info_log(f"❌ Invalid mode: {mode}. Must be a string.")
+                self.error_log(f"Invalid mode: {mode}. Must be a string.")
                 return {"error": f"Invalid mode: {mode}. Must be a string.", "success": False}
 
             mode_lower = mode.lower()
             if mode_lower not in self.VALID_HVAC_MODES:
                 error_msg = f"Invalid HVAC mode: {mode}. Valid modes: {', '.join(self.VALID_HVAC_MODES)}"
-                self.info_log(f"❌ {error_msg}")
+                self.error_log(error_msg)
                 return {"error": error_msg, "success": False}
 
             self.logger.debug(f"Setting HVAC mode to '{mode}' for device {device_id}")
@@ -160,10 +160,10 @@ class ThermostatControlHandler(BaseToolHandler):
             result = self.data_provider.set_thermostat_hvac_mode(device_id, mode)
 
             if "error" in result:
-                self.info_log(f"❌ {result['error']}")
+                self.error_log(f"Set HVAC mode on '{self.device_label(device_id)}' failed: {result['error']}")
                 return result
 
-            self.info_log(f"✅ Set HVAC mode to '{mode}' for device {device_id}")
+            self.activity_log(f"{self.device_label(device_id)} → HVAC mode '{mode}'")
             return self.create_success_response(result, f"Set HVAC mode to '{mode}' for device {device_id}")
 
         except Exception as e:
@@ -187,13 +187,13 @@ class ThermostatControlHandler(BaseToolHandler):
 
             # Validate mode
             if not isinstance(mode, str):
-                self.info_log(f"❌ Invalid mode: {mode}. Must be a string.")
+                self.error_log(f"Invalid mode: {mode}. Must be a string.")
                 return {"error": f"Invalid mode: {mode}. Must be a string.", "success": False}
 
             mode_lower = mode.lower()
             if mode_lower not in self.VALID_FAN_MODES:
                 error_msg = f"Invalid fan mode: {mode}. Valid modes: {', '.join(self.VALID_FAN_MODES)}"
-                self.info_log(f"❌ {error_msg}")
+                self.error_log(error_msg)
                 return {"error": error_msg, "success": False}
 
             self.logger.debug(f"Setting fan mode to '{mode}' for device {device_id}")
@@ -202,10 +202,10 @@ class ThermostatControlHandler(BaseToolHandler):
             result = self.data_provider.set_thermostat_fan_mode(device_id, mode)
 
             if "error" in result:
-                self.info_log(f"❌ {result['error']}")
+                self.error_log(f"Set fan mode on '{self.device_label(device_id)}' failed: {result['error']}")
                 return result
 
-            self.info_log(f"✅ Set fan mode to '{mode}' for device {device_id}")
+            self.activity_log(f"{self.device_label(device_id)} → fan mode '{mode}'")
             return self.create_success_response(result, f"Set fan mode to '{mode}' for device {device_id}")
 
         except Exception as e:

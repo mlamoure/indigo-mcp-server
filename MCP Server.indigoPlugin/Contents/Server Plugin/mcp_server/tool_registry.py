@@ -5,6 +5,30 @@ Defines all available tool schemas for the MCP server.
 Each tool includes a description, input schema, and reference to its implementation function.
 """
 
+# Tools that change state. Their activity is always logged at INFO;
+# everything else is read-only and logs at DEBUG unless the user enables
+# the "Log AI read activity" preference (see common/log_style.py).
+WRITE_TOOLS = frozenset({
+    "device_turn_on",
+    "device_turn_off",
+    "device_set_brightness",
+    "device_set_rgb_color",
+    "device_set_rgb_percent",
+    "device_set_hex_color",
+    "device_set_named_color",
+    "device_set_white_levels",
+    "thermostat_set_heat_setpoint",
+    "thermostat_set_cool_setpoint",
+    "thermostat_set_hvac_mode",
+    "thermostat_set_fan_mode",
+    "variable_update",
+    "variable_create",
+    "action_execute_group",
+    "restart_plugin",
+    "create_event_subscription",
+    "delete_event_subscription",
+})
+
 
 def get_tool_schemas(tool_functions):
     """

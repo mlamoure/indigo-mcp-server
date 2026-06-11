@@ -83,14 +83,14 @@ class RGBControlHandler(BaseToolHandler):
             )
 
             if "error" in result:
-                self.info_log(f"❌ {result['error']}")
+                self.error_log(f"Set RGB color on '{self.device_label(device_id)}' failed: {result['error']}")
                 return result
 
-            self.info_log(f"✅ Set RGB color for device {device_id}")
+            self.activity_log(f"{self.device_label(device_id)} → RGB({red}, {green}, {blue})")
             return self.create_success_response(result, f"Set RGB color for device {device_id}")
 
         except ValueError as e:
-            self.info_log(f"❌ {str(e)}")
+            self.error_log(f"Set RGB color failed: {e}")
             return {"error": str(e), "success": False}
         except Exception as e:
             return self.handle_exception(e, f"setting RGB color for device {device_id}")
@@ -140,14 +140,14 @@ class RGBControlHandler(BaseToolHandler):
             )
 
             if "error" in result:
-                self.info_log(f"❌ {result['error']}")
+                self.error_log(f"Set RGB color on '{self.device_label(device_id)}' failed: {result['error']}")
                 return result
 
-            self.info_log(f"✅ Set RGB percentage color for device {device_id}")
+            self.activity_log(f"{self.device_label(device_id)} → RGB({red_percent}%, {green_percent}%, {blue_percent}%)")
             return self.create_success_response(result, f"Set RGB percentage color for device {device_id}")
 
         except ValueError as e:
-            self.info_log(f"❌ {str(e)}")
+            self.error_log(f"Set RGB color failed: {e}")
             return {"error": str(e), "success": False}
         except Exception as e:
             return self.handle_exception(e, f"setting RGB percentage for device {device_id}")
@@ -192,14 +192,14 @@ class RGBControlHandler(BaseToolHandler):
             )
 
             if "error" in result:
-                self.info_log(f"❌ {result['error']}")
+                self.error_log(f"Set color on '{self.device_label(device_id)}' failed: {result['error']}")
                 return result
 
-            self.info_log(f"✅ Set hex color {hex_color} for device {device_id}")
+            self.activity_log(f"{self.device_label(device_id)} → color {hex_color}")
             return self.create_success_response(result, f"Set hex color {hex_color} for device {device_id}")
 
         except ValueError as e:
-            self.info_log(f"❌ {str(e)}")
+            self.error_log(f"Set color failed: {e}")
             return {"error": str(e), "success": False}
         except Exception as e:
             return self.handle_exception(e, f"setting hex color for device {device_id}")
@@ -237,7 +237,7 @@ class RGBControlHandler(BaseToolHandler):
                 error_msg = str(e)
                 if suggestions:
                     error_msg += f". Did you mean: {', '.join(suggestions)}?"
-                self.info_log(f"❌ {error_msg}")
+                self.error_log(f"Set color failed: {error_msg}")
                 return {"error": error_msg, "success": False}
 
             self.logger.debug(
@@ -255,10 +255,10 @@ class RGBControlHandler(BaseToolHandler):
             )
 
             if "error" in result:
-                self.info_log(f"❌ {result['error']}")
+                self.error_log(f"Set color on '{self.device_label(device_id)}' failed: {result['error']}")
                 return result
 
-            self.info_log(f"✅ Set color '{color_name}' for device {device_id}")
+            self.activity_log(f"{self.device_label(device_id)} → '{color_name}'")
             return self.create_success_response(result, f"Set color '{color_name}' for device {device_id}")
 
         except Exception as e:
@@ -293,20 +293,20 @@ class RGBControlHandler(BaseToolHandler):
             # Validate at least one white parameter is provided
             if white_level is None and white_level2 is None and white_temperature is None:
                 error_msg = "At least one white parameter must be provided (white_level, white_level2, or white_temperature)"
-                self.info_log(f"❌ {error_msg}")
+                self.error_log(f"Set white levels failed: {error_msg}")
                 return {"error": error_msg, "success": False}
 
             # Validate white levels
             if white_level is not None:
                 if not 0 <= white_level <= 100:
                     error_msg = f"white_level must be 0-100. Got: {white_level}"
-                    self.info_log(f"❌ {error_msg}")
+                    self.error_log(f"Set white levels failed: {error_msg}")
                     return {"error": error_msg, "success": False}
 
             if white_level2 is not None:
                 if not 0 <= white_level2 <= 100:
                     error_msg = f"white_level2 must be 0-100. Got: {white_level2}"
-                    self.info_log(f"❌ {error_msg}")
+                    self.error_log(f"Set white levels failed: {error_msg}")
                     return {"error": error_msg, "success": False}
 
             # Validate white temperature
@@ -314,7 +314,7 @@ class RGBControlHandler(BaseToolHandler):
                 try:
                     white_temperature = validate_white_temperature(white_temperature)
                 except ValueError as e:
-                    self.info_log(f"❌ {str(e)}")
+                    self.error_log(f"Set white levels failed: {e}")
                     return {"error": str(e), "success": False}
 
             self.logger.debug(
@@ -332,10 +332,10 @@ class RGBControlHandler(BaseToolHandler):
             )
 
             if "error" in result:
-                self.info_log(f"❌ {result['error']}")
+                self.error_log(f"Set white levels on '{self.device_label(device_id)}' failed: {result['error']}")
                 return result
 
-            self.info_log(f"✅ Set white levels for device {device_id}")
+            self.activity_log(f"{self.device_label(device_id)} → white levels updated")
             return self.create_success_response(result, f"Set white levels for device {device_id}")
 
         except Exception as e:
@@ -350,7 +350,7 @@ class RGBControlHandler(BaseToolHandler):
         """
         try:
             color_info = get_available_colors()
-            self.info_log("✅ Retrieved available color information")
+            self.debug_log("Retrieved available color information")
             return self.create_success_response(color_info, "Retrieved available color information")
         except Exception as e:
             return self.handle_exception(e, "getting available color info")

@@ -13,6 +13,7 @@ import logging
 
 from .common.json_encoder import safe_json_dumps
 from .common.indigo_device_types import DeviceTypeResolver, IndigoDeviceType, IndigoEntityType
+from .common.log_style import fail as log_fail
 
 
 class ToolWrappers:
@@ -92,7 +93,7 @@ class ToolWrappers:
         try:
             return safe_json_dumps(fn(*args, **kwargs))
         except Exception as e:
-            self.logger.error(f"[{label}]: Error - {e}")
+            log_fail(self.logger, label, e)
             payload: Dict[str, Any] = {"error": str(e), "success": False}
             if _error_extra:
                 payload.update(_error_extra)
@@ -163,7 +164,7 @@ class ToolWrappers:
                     "query": query
                 })
 
-        self.logger.info(
+        self.logger.debug(
             f"[search_entities]: query: '{query}', "
             f"device_types: {device_types}, "
             f"entity_types: {entity_types}, "
@@ -172,7 +173,7 @@ class ToolWrappers:
         )
 
         return self._call(
-            "search_entities",
+            "Search",
             self.search_handler.search,
             query=query,
             device_types=device_types,
@@ -186,7 +187,7 @@ class ToolWrappers:
     def tool_get_devices_by_type(self, device_type: str, limit: int = 50, offset: int = 0) -> str:
         """Get devices by type tool implementation with pagination."""
         return self._call(
-            "get_devices_by_type",
+            "Get devices by type",
             self.get_devices_by_type_handler.get_devices,
             device_type, limit=limit, offset=offset,
             _error_extra={"device_type": device_type},
@@ -194,16 +195,16 @@ class ToolWrappers:
 
     def tool_device_turn_on(self, device_id: int) -> str:
         """Turn on device tool implementation."""
-        return self._call("device_turn_on", self.device_control_handler.turn_on, device_id)
+        return self._call("Turn on device", self.device_control_handler.turn_on, device_id)
 
     def tool_device_turn_off(self, device_id: int) -> str:
         """Turn off device tool implementation."""
-        return self._call("device_turn_off", self.device_control_handler.turn_off, device_id)
+        return self._call("Turn off device", self.device_control_handler.turn_off, device_id)
 
     def tool_device_set_brightness(self, device_id: int, brightness: float) -> str:
         """Set device brightness tool implementation."""
         return self._call(
-            "device_set_brightness",
+            "Set brightness",
             self.device_control_handler.set_brightness, device_id, brightness
         )
 
@@ -217,7 +218,7 @@ class ToolWrappers:
     ) -> str:
         """Set RGB color using 0-255 values tool implementation."""
         return self._call(
-            "device_set_rgb_color",
+            "Set RGB color",
             self.rgb_control_handler.set_rgb_color, device_id, red, green, blue, delay
         )
 
@@ -231,7 +232,7 @@ class ToolWrappers:
     ) -> str:
         """Set RGB color using 0-100 percentages tool implementation."""
         return self._call(
-            "device_set_rgb_percent",
+            "Set RGB color",
             self.rgb_control_handler.set_rgb_percent,
             device_id, red_percent, green_percent, blue_percent, delay
         )
@@ -244,7 +245,7 @@ class ToolWrappers:
     ) -> str:
         """Set RGB color using hex code tool implementation."""
         return self._call(
-            "device_set_hex_color",
+            "Set color",
             self.rgb_control_handler.set_hex_color, device_id, hex_color, delay
         )
 
@@ -256,7 +257,7 @@ class ToolWrappers:
     ) -> str:
         """Set RGB color using named color tool implementation."""
         return self._call(
-            "device_set_named_color",
+            "Set color",
             self.rgb_control_handler.set_named_color, device_id, color_name, delay
         )
 
@@ -270,7 +271,7 @@ class ToolWrappers:
     ) -> str:
         """Set white channel levels tool implementation."""
         return self._call(
-            "device_set_white_levels",
+            "Set white levels",
             self.rgb_control_handler.set_white_levels,
             device_id, white_level, white_level2, white_temperature, delay
         )
@@ -278,35 +279,35 @@ class ToolWrappers:
     def tool_thermostat_set_heat_setpoint(self, device_id: int, temperature: float) -> str:
         """Set thermostat heat setpoint tool implementation."""
         return self._call(
-            "thermostat_set_heat_setpoint",
+            "Set heat setpoint",
             self.thermostat_control_handler.set_heat_setpoint, device_id, temperature
         )
 
     def tool_thermostat_set_cool_setpoint(self, device_id: int, temperature: float) -> str:
         """Set thermostat cool setpoint tool implementation."""
         return self._call(
-            "thermostat_set_cool_setpoint",
+            "Set cool setpoint",
             self.thermostat_control_handler.set_cool_setpoint, device_id, temperature
         )
 
     def tool_thermostat_set_hvac_mode(self, device_id: int, mode: str) -> str:
         """Set thermostat HVAC mode tool implementation."""
         return self._call(
-            "thermostat_set_hvac_mode",
+            "Set HVAC mode",
             self.thermostat_control_handler.set_hvac_mode, device_id, mode
         )
 
     def tool_thermostat_set_fan_mode(self, device_id: int, mode: str) -> str:
         """Set thermostat fan mode tool implementation."""
         return self._call(
-            "thermostat_set_fan_mode",
+            "Set fan mode",
             self.thermostat_control_handler.set_fan_mode, device_id, mode
         )
 
     def tool_variable_update(self, variable_id: int, value: str) -> str:
         """Update variable tool implementation."""
         return self._call(
-            "variable_update", self.variable_control_handler.update, variable_id, value
+            "Update variable", self.variable_control_handler.update, variable_id, value
         )
 
     def tool_variable_create(
@@ -317,7 +318,7 @@ class ToolWrappers:
     ) -> str:
         """Create variable tool implementation."""
         return self._call(
-            "variable_create", self.variable_control_handler.create, name, value, folder_id
+            "Create variable", self.variable_control_handler.create, name, value, folder_id
         )
 
     def tool_action_execute_group(
@@ -327,7 +328,7 @@ class ToolWrappers:
     ) -> str:
         """Execute action group tool implementation."""
         return self._call(
-            "action_execute_group", self.action_control_handler.execute, action_group_id, delay
+            "Run action group", self.action_control_handler.execute, action_group_id, delay
         )
 
     def tool_analyze_historical_data(
@@ -338,7 +339,7 @@ class ToolWrappers:
     ) -> str:
         """Analyze historical data tool implementation."""
         return self._call(
-            "analyze_historical_data",
+            "Analyze historical data",
             self.historical_analysis_handler.analyze_historical_data,
             query, device_names, time_range_days
         )
@@ -351,7 +352,7 @@ class ToolWrappers:
     ) -> str:
         """List devices tool implementation with pagination."""
         return self._call(
-            "list_devices",
+            "List devices",
             self.list_handlers.list_all_devices,
             state_filter=state_filter, limit=limit, offset=offset
         )
@@ -359,20 +360,20 @@ class ToolWrappers:
     def tool_list_variables(self, limit: int = 50, offset: int = 0) -> str:
         """List variables tool implementation with pagination."""
         return self._call(
-            "list_variables",
+            "List variables",
             self.list_handlers.list_all_variables, limit=limit, offset=offset
         )
 
     def tool_list_action_groups(self, limit: int = 50, offset: int = 0) -> str:
         """List action groups tool implementation with pagination."""
         return self._call(
-            "list_action_groups",
+            "List action groups",
             self.list_handlers.list_all_action_groups, limit=limit, offset=offset
         )
 
     def tool_list_variable_folders(self) -> str:
         """List variable folders tool implementation."""
-        return self._call("list_variable_folders", self.list_handlers.list_variable_folders)
+        return self._call("List variable folders", self.list_handlers.list_variable_folders)
 
     def tool_get_devices_by_state(
         self,
@@ -388,7 +389,7 @@ class ToolWrappers:
                 return safe_json_dumps({"error": error})
 
         return self._call(
-            "get_devices_by_state",
+            "Get devices by state",
             self.list_handlers.get_devices_by_state,
             state_conditions=state_conditions,
             device_types=device_types,
@@ -399,21 +400,21 @@ class ToolWrappers:
     def tool_get_device_by_id(self, device_id: int) -> str:
         """Get device by ID tool implementation."""
         return self._get_by_id(
-            "get_device_by_id", self.data_provider.get_device,
+            "Look up device", self.data_provider.get_device,
             device_id, f"Device {device_id} not found"
         )
 
     def tool_get_variable_by_id(self, variable_id: int) -> str:
         """Get variable by ID tool implementation."""
         return self._get_by_id(
-            "get_variable_by_id", self.data_provider.get_variable,
+            "Look up variable", self.data_provider.get_variable,
             variable_id, f"Variable {variable_id} not found"
         )
 
     def tool_get_action_group_by_id(self, action_group_id: int) -> str:
         """Get action group by ID tool implementation."""
         return self._get_by_id(
-            "get_action_group_by_id", self.data_provider.get_action_group,
+            "Look up action group", self.data_provider.get_action_group,
             action_group_id, f"Action group {action_group_id} not found"
         )
 
@@ -424,7 +425,7 @@ class ToolWrappers:
     ) -> str:
         """Query event log tool implementation."""
         return self._call(
-            "query_event_log",
+            "Read event log",
             self.log_query_handler.query,
             line_count=line_count, show_timestamp=show_timestamp
         )
@@ -432,39 +433,39 @@ class ToolWrappers:
     def tool_list_plugins(self, include_disabled: bool = False) -> str:
         """List plugins tool implementation."""
         return self._call(
-            "list_plugins", self.plugin_control_handler.list_plugins, include_disabled
+            "List plugins", self.plugin_control_handler.list_plugins, include_disabled
         )
 
     def tool_get_plugin_by_id(self, plugin_id: str) -> str:
         """Get plugin by ID tool implementation."""
         return self._call(
-            "get_plugin_by_id", self.plugin_control_handler.get_plugin_by_id, plugin_id
+            "Look up plugin", self.plugin_control_handler.get_plugin_by_id, plugin_id
         )
 
     def tool_restart_plugin(self, plugin_id: str) -> str:
         """Restart plugin tool implementation."""
         return self._call(
-            "restart_plugin", self.plugin_control_handler.restart_plugin, plugin_id
+            "Restart plugin", self.plugin_control_handler.restart_plugin, plugin_id
         )
 
     def tool_get_plugin_status(self, plugin_id: str) -> str:
         """Get plugin status tool implementation."""
         return self._call(
-            "get_plugin_status", self.plugin_control_handler.get_plugin_status, plugin_id
+            "Get plugin status", self.plugin_control_handler.get_plugin_status, plugin_id
         )
 
     # Event subscription wrapper methods
     def tool_create_event_subscription(self, **kwargs) -> str:
         """Create event subscription tool implementation."""
         return self._call(
-            "create_event_subscription",
+            "Create event subscription",
             self.subscription_handler.create_subscription, **kwargs
         )
 
     def tool_list_event_subscriptions(self, subscription_id: str = None) -> str:
         """List event subscriptions tool implementation."""
         return self._call(
-            "list_event_subscriptions",
+            "List event subscriptions",
             self.subscription_handler.list_subscriptions,
             subscription_id=subscription_id
         )
@@ -472,7 +473,7 @@ class ToolWrappers:
     def tool_delete_event_subscription(self, subscription_id: str) -> str:
         """Delete event subscription tool implementation."""
         return self._call(
-            "delete_event_subscription",
+            "Delete event subscription",
             self.subscription_handler.delete_subscription,
             subscription_id=subscription_id
         )
@@ -480,33 +481,33 @@ class ToolWrappers:
     # Resource wrapper methods
     def resource_list_devices(self) -> str:
         """List all devices resource."""
-        return self._call("resource_list_devices", self.list_handlers.list_all_devices)
+        return self._call("List devices", self.list_handlers.list_all_devices)
 
     def resource_get_device(self, device_id: str) -> str:
         """Get specific device resource."""
         return self._get_by_id(
-            "resource_get_device", self.data_provider.get_device,
+            "Look up device", self.data_provider.get_device,
             device_id, f"Device {device_id} not found"
         )
 
     def resource_list_variables(self) -> str:
         """List all variables resource."""
-        return self._call("resource_list_variables", self.list_handlers.list_all_variables)
+        return self._call("List variables", self.list_handlers.list_all_variables)
 
     def resource_get_variable(self, variable_id: str) -> str:
         """Get specific variable resource."""
         return self._get_by_id(
-            "resource_get_variable", self.data_provider.get_variable,
+            "Look up variable", self.data_provider.get_variable,
             variable_id, f"Variable {variable_id} not found"
         )
 
     def resource_list_actions(self) -> str:
         """List all action groups resource."""
-        return self._call("resource_list_actions", self.list_handlers.list_all_action_groups)
+        return self._call("List action groups", self.list_handlers.list_all_action_groups)
 
     def resource_get_action(self, action_id: str) -> str:
         """Get specific action group resource."""
         return self._get_by_id(
-            "resource_get_action", self.data_provider.get_action_group,
+            "Look up action group", self.data_provider.get_action_group,
             action_id, f"Action group {action_id} not found"
         )

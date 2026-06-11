@@ -31,18 +31,9 @@ def _setup_events_modules():
     """
     base = PLUGIN_SRC / "mcp_server"
 
-    # 1. Load standalone dependencies first (these only use stdlib)
-    _load_module_from_file(
-        "mcp_server.common.state_filter",
-        base / "common" / "state_filter.py",
-    )
-    _load_module_from_file(
-        "mcp_server.tools.base_handler",
-        base / "tools" / "base_handler.py",
-    )
-
-    # 2. Create minimal package stubs so relative imports work
-    # (the events modules use `from ..common.state_filter import ...`)
+    # 1. Create minimal package stubs so relative imports work
+    # (modules below use `from ..common.state_filter import ...` etc., which
+    # needs the parent packages present in sys.modules)
     for pkg_name in [
         "mcp_server",
         "mcp_server.common",
@@ -56,8 +47,23 @@ def _setup_events_modules():
             mod.__package__ = pkg_name
             sys.modules[pkg_name] = mod
 
+    # 2. Load standalone dependencies (these only use stdlib + each other)
+    _load_module_from_file(
+        "mcp_server.common.state_filter",
+        base / "common" / "state_filter.py",
+    )
+    _load_module_from_file(
+        "mcp_server.common.log_style",
+        base / "common" / "log_style.py",
+    )
+    _load_module_from_file(
+        "mcp_server.tools.base_handler",
+        base / "tools" / "base_handler.py",
+    )
+
     # Attach the real modules to their parent stubs
     sys.modules["mcp_server.common"].state_filter = sys.modules["mcp_server.common.state_filter"]
+    sys.modules["mcp_server.common"].log_style = sys.modules["mcp_server.common.log_style"]
     sys.modules["mcp_server.tools"].base_handler = sys.modules["mcp_server.tools.base_handler"]
 
     # 3. Load events modules in dependency order

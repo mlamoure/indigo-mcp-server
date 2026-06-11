@@ -410,7 +410,7 @@ def perform_completion(
         template = _env.get_template("summarize_context.jinja2")
         for i, chunk in enumerate(chunks):
             logger.debug(
-                f"📝 Summarizing chunk {i+1}/{len(chunks)} ({len(chunk)} items)"
+                f"Summarizing chunk {i+1}/{len(chunks)} ({len(chunk)} items)"
             )
             prompt_content = template.render(context=chunk)
             summary = perform_completion(
@@ -423,7 +423,7 @@ def perform_completion(
 
         # merge summaries
         merged = "\n\n".join(summaries)
-        logger.debug(f"📝 Merged {len(summaries)} summaries into final context")
+        logger.debug(f"Merged {len(summaries)} summaries into final context")
 
         # build final messages
         msgs = [
