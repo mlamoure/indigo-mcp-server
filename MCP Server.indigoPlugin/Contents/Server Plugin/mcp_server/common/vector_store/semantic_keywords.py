@@ -501,7 +501,7 @@ def _generate_llm_keywords_batch_with_fallback(entities: List[Dict[str, Any]], e
     success_rate = len(result) / max(expected_count, 1)
     
     if success_rate >= 0.5:
-        logger.debug(f"✅ Batch processing succeeded with {len(result)}/{expected_count} entities")
+        logger.debug(f"Batch processing succeeded with {len(result)}/{expected_count} entities")
         return result
     
     # If batch processing failed, try fallback strategies
@@ -526,7 +526,7 @@ def _generate_llm_keywords_batch_with_fallback(entities: List[Dict[str, Any]], e
         # Check if fallback worked better
         fallback_success_rate = len(all_results) / max(expected_count, 1)
         if fallback_success_rate > success_rate:
-            logger.debug(f"✅ Fallback batch size {fallback_size} worked better: {len(all_results)}/{expected_count}")
+            logger.debug(f"Fallback batch size {fallback_size} worked better: {len(all_results)}/{expected_count}")
             return all_results
     
     # If all batch strategies failed, fall back to individual processing
@@ -634,14 +634,14 @@ Return the results as a structured JSON response with device numbers (1-based) a
             return {}
         
         # Process structured response directly
-        logger.debug(f"✅ Received structured response of type: {type(response).__name__}")
+        logger.debug(f"Received structured response of type: {type(response).__name__}")
         keywords_map = _process_structured_response(response, entity_ids, cache_keys, entities)
 
         # Merge cached results with newly generated results
         keywords_map.update(cached_results)
 
         cache_note = f" ({len(cached_results)} from cache)" if cached_results else ""
-        logger.debug(f"✅ Batch processed {len(keywords_map)} devices{cache_note}, generated {sum(len(kw) for kw in keywords_map.values())} total keywords")
+        logger.debug(f"Batch processed {len(keywords_map)} devices{cache_note}, generated {sum(len(kw) for kw in keywords_map.values())} total keywords")
 
         return keywords_map
         
@@ -677,7 +677,7 @@ def _process_structured_response(response, entity_ids: List[str], cache_keys: Li
                 import json
                 json_data = json.loads(response)
                 parsed_response = BatchKeywordsResponse(**json_data)
-                logger.debug("✅ Successfully parsed JSON string into BatchKeywordsResponse")
+                logger.debug("Successfully parsed JSON string into BatchKeywordsResponse")
             except (json.JSONDecodeError, TypeError, ValueError) as e:
                 logger.error(f"❌ Failed to parse JSON response: {e}")
                 logger.debug(f"Response content: {response}")
@@ -685,7 +685,7 @@ def _process_structured_response(response, entity_ids: List[str], cache_keys: Li
         elif hasattr(response, 'devices'):
             # Already a parsed BatchKeywordsResponse object
             parsed_response = response
-            logger.debug("✅ Using already parsed BatchKeywordsResponse object")
+            logger.debug("Using already parsed BatchKeywordsResponse object")
         else:
             # Unknown response type
             logger.error(f"❌ Unknown response type: {type(response)}")
@@ -732,7 +732,7 @@ def _process_structured_response(response, entity_ids: List[str], cache_keys: Li
                     if len(cleaned_keywords) > 6:
                         keyword_preview += f" (+{len(cleaned_keywords) - 6} more)"
                     
-                    logger.debug(f"✅ Mapped device {device_keywords.device_number} \"{entity_name}\" to entity {entity_id}: [{keyword_preview}]")
+                    logger.debug(f"Mapped device {device_keywords.device_number} \"{entity_name}\" to entity {entity_id}: [{keyword_preview}]")
                 else:
                     logger.warning(f"⚠️ No valid keywords for device {device_keywords.device_number} \"{entity_name}\"")
             else:
@@ -783,7 +783,7 @@ def _parse_batch_keywords_response(response_text: str, entity_ids: List[str], ca
             if line.lower().startswith('device ') and ':' in line:
                 keywords_part = line.split(':', 1)[1].strip()
                 device_responses.append(keywords_part)
-                logger.debug(f"✅ Found device response {len(device_responses)}: {keywords_part[:50]}...")
+                logger.debug(f"Found device response {len(device_responses)}: {keywords_part[:50]}...")
                 continue
             
             # Strategy 2: Alternative formats (numbered lists, bullets, etc.)
@@ -802,13 +802,13 @@ def _parse_batch_keywords_response(response_text: str, entity_ids: List[str], ca
                 
                 if cleaned_line and ',' in cleaned_line:  # Only if it looks like a keyword list
                     device_responses.append(cleaned_line)
-                    logger.debug(f"✅ Found alternative format response {len(device_responses)}: {cleaned_line[:50]}...")
+                    logger.debug(f"Found alternative format response {len(device_responses)}: {cleaned_line[:50]}...")
                     continue
             
             # Strategy 3: If line contains multiple comma-separated words, might be keywords
             if ',' in line and len(line.split(',')) >= 3:  # At least 3 comma-separated items
                 device_responses.append(line)
-                logger.debug(f"✅ Found comma-separated response {len(device_responses)}: {line[:50]}...")
+                logger.debug(f"Found comma-separated response {len(device_responses)}: {line[:50]}...")
                 continue
         
         logger.debug(f"📊 Extracted {len(device_responses)} device responses from {len(lines)} lines")
@@ -839,7 +839,7 @@ def _parse_batch_keywords_response(response_text: str, entity_ids: List[str], ca
                     # Cache the results
                     _llm_keyword_cache[cache_key] = keywords
                     successful_mappings += 1
-                    logger.debug(f"✅ Parsed {len(keywords)} batch keywords for entity {entity_id}: {', '.join(keywords[:3])}{' (+more)' if len(keywords) > 3 else ''}")
+                    logger.debug(f"Parsed {len(keywords)} batch keywords for entity {entity_id}: {', '.join(keywords[:3])}{' (+more)' if len(keywords) > 3 else ''}")
                 else:
                     logger.warning(f"⚠️ No valid keywords parsed for entity {entity_id} from: {keywords_text[:100]}...")
             else:

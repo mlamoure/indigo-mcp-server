@@ -139,10 +139,17 @@ class VectorStoreManager:
                 actions=entities["actions"]
             )
 
+            first_sync = self._last_update_time == 0
             self._last_update_time = time.time()
             elapsed = self._last_update_time - update_start
 
-            self.logger.info(f"📊 Search index up to date — {device_count} devices, {variable_count} variables, {action_count} actions")
+            # One INFO summary at startup; the 5-minute background re-syncs
+            # repeat this line verbatim, so they stay at DEBUG.
+            summary = f"📊 Search index up to date — {device_count} devices, {variable_count} variables, {action_count} actions"
+            if first_sync:
+                self.logger.info(summary)
+            else:
+                self.logger.debug(summary)
             self.logger.debug(f"Vector store: synchronized {total_entities} entities in {elapsed:.1f}s")
 
         except Exception as e:

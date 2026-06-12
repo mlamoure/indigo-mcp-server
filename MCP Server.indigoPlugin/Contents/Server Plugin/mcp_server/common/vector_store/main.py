@@ -151,7 +151,7 @@ class VectorStore(VectorStoreInterface):
                 self.logger.info("📊 Embedding model changed — rebuilding the search index (one-time, may take several minutes)")
                 self._rebuild_vector_store_for_new_model(current_model)
             else:
-                self.logger.debug(f"✅ Embedding model verified: {current_model}")
+                self.logger.debug(f"Embedding model verified: {current_model}")
     
     def _create_metadata_table(self) -> None:
         """Create metadata table for storing embedding model information."""
@@ -428,24 +428,49 @@ class VectorStore(VectorStoreInterface):
                     entities_needing_update.update(priority_updates.get("high", []))
                     entities_needing_update.update(priority_updates.get("medium", []))
                     
-                    # Filter entities to only those needing updates
+                    # Filter entities to only those needing updates. Flagged ids
+                    # absent from the current entity list are orphans (removed
+                    # below), not refreshable work — log what will actually be
+                    # processed.
                     entities_to_process = [e for e in valid_entities if e["id"] in entities_needing_update]
-                    
-                    # Log what's being refreshed
-                    total_to_refresh = len(entities_needing_update)
-                    if total_to_refresh < 20:
-                        # List specific entity names when small number
-                        entity_names = []
-                        for e in entities_to_process[:20]:
-                            entity_names.append(e.get("name", f"ID:{e.get('id')}"))
+
+                    total_to_refresh = len(entities_to_process)
+                    if total_to_refresh:
                         self.logger.info(f"📊 Updating search index for {total_to_refresh} changed {table_name}")
-                        self.logger.debug(f"Refreshing embeddings: {', '.join(entity_names)}")
-                    else:
-                        # Just show count for larger updates
-                        self.logger.info(f"📊 Updating search index for {total_to_refresh} changed {table_name}")
-            
+                        if total_to_refresh < 20:
+                            entity_names = [
+                                e.get("name", f"ID:{e.get('id')}")
+                                for e in entities_to_process[:20]
+                            ]
+                            self.logger.debug(f"Refreshing embeddings: {', '.join(entity_names)}")
+                    orphan_flagged = entities_needing_update - {e["id"] for e in entities_to_process}
+                    if orphan_flagged:
+                        self.logger.debug(
+                            f"{len(orphan_flagged)} flagged {table_name} id(s) not in current entities "
+                            f"(orphaned records): {sorted(orphan_flagged)}"
+                        )
+
+            # Remove orphaned records (entities no longer in Indigo) BEFORE the
+            # no-work early return — otherwise orphans survive forever and
+            # re-flag on every sync cycle.
+            if validation_data:
+                current_ids = {e["id"] for e in valid_entities}
+                orphaned_ids = set(validation_data.keys()) - current_ids
+                if orphaned_ids:
+                    try:
+                        orphaned_list = list(orphaned_ids)
+                        if len(orphaned_list) == 1:
+                            delete_condition = f"id = {orphaned_list[0]}"
+                        else:
+                            id_list = ", ".join(map(str, orphaned_list))
+                            delete_condition = f"id IN ({id_list})"
+                        table.delete(delete_condition)
+                        self.logger.debug(f"Removed {len(orphaned_list)} orphaned {table_name} record(s)")
+                    except Exception as e:
+                        self.logger.error(f"Error removing orphaned {table_name} records: {e}")
+
             total_updates = len(entities_to_process)
-            
+
             if total_updates == 0:
                 # All embeddings are up to date
                 return
@@ -593,25 +618,6 @@ class VectorStore(VectorStoreInterface):
                     return
             else:
                 progress.complete("no records to add")
-            
-            # Handle orphaned records (entities no longer exist in Indigo)
-            if validation_data:
-                current_ids = {e["id"] for e in valid_entities}
-                existing_ids = set(validation_data.keys())
-                orphaned_ids = existing_ids - current_ids
-                
-                if orphaned_ids:
-                    try:
-                        orphaned_list = list(orphaned_ids)
-                        if len(orphaned_list) == 1:
-                            delete_condition = f"id = {orphaned_list[0]}"
-                        else:
-                            id_list = ", ".join(map(str, orphaned_list))
-                            delete_condition = f"id IN ({id_list})"
-                        table.delete(delete_condition)
-                        # Removed orphaned records
-                    except Exception as e:
-                        self.logger.error(f"Error removing orphaned {table_name} records: {e}")
             
             # Final summary
             success_count = len(records_to_add)

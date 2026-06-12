@@ -192,7 +192,7 @@ class Plugin(indigo.PluginBase):
 
         # Apple Silicon Macs are always compatible
         if machine == 'arm64':
-            self.logger.debug("✅ Apple Silicon detected (M1/M2/M3/M4)")
+            self.logger.debug("Apple Silicon detected (M1/M2/M3/M4)")
             return True
 
         # Log info for Intel Macs
