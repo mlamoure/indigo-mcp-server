@@ -14,7 +14,6 @@ plugin_path = Path(__file__).parent.parent / "MCP Server.indigoPlugin/Contents/S
 sys.path.insert(0, str(plugin_path))
 
 from mcp_server.events.subscription_manager import SubscriptionManager
-from mcp_server.events.subscription_model import Subscription
 from mcp_server.events.subscription_store import SubscriptionStore
 
 

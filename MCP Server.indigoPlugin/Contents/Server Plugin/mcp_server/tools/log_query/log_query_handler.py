@@ -3,7 +3,7 @@ Log query handler for MCP server.
 """
 
 import logging
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional
 
 from ...adapters.data_provider import DataProvider
 from ..base_handler import BaseToolHandler
@@ -86,4 +86,4 @@ class LogQueryHandler(BaseToolHandler):
             return result
 
         except Exception as e:
-            return self.handle_exception(e, f"querying event log")
+            return self.handle_exception(e, "querying event log")

@@ -7,7 +7,7 @@ import os
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Optional, Callable
+from typing import List, Callable
 
 logger = logging.getLogger("Plugin")
 
@@ -72,7 +72,7 @@ def emb_texts_batch_parallel(texts: List[str], entity_names: List[str] = None, p
     # Start parallel embedding processing
     
     # Progress tracking for concurrent operations
-    progress_lock = threading.Lock()
+    threading.Lock()
     
     def process_batch(batch_job):
         """Process a single batch of embeddings."""
@@ -118,7 +118,7 @@ def emb_texts_batch_parallel(texts: List[str], entity_names: List[str] = None, p
                 else:
                     batch_results.append((original_index, embedding))
             
-            batch_time = time.time() - batch_start_time
+            time.time() - batch_start_time
             # Batch completed
             
             return {'success': True, 'batch_num': batch_num, 'results': batch_results}

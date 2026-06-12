@@ -7,7 +7,7 @@ resource_registry, tool_wrappers) produces the same functionality as the origina
 
 import json
 import pytest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 import sys
 from pathlib import Path
 

@@ -7,7 +7,6 @@ as JSON fixtures that can be used for regression testing.
 """
 
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -17,9 +16,6 @@ sys.path.insert(0, str(plugin_path))
 
 from mcp_server.adapters.indigo_data_provider import IndigoDataProvider
 from mcp_server.handlers.list_handlers import ListHandlers
-from mcp_server.tools.search_entities import SearchEntitiesHandler
-from mcp_server.common.vector_store.main import VectorStore
-from mcp_server.common.json_encoder import safe_json_dumps
 import logging
 
 # Configure logging

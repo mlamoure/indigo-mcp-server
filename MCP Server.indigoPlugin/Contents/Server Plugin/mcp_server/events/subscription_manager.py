@@ -8,11 +8,10 @@ matching (eq, ne, gt, gte, lt, lte, contains, regex operators).
 
 import logging
 import threading
-from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..common.state_filter import StateFilter
-from .event_model import Event, generate_ulid
+from .event_model import Event
 from ..common.log_style import host_only
 from .subscription_model import Subscription
 from .subscription_store import SubscriptionStore

@@ -1,0 +1,9 @@
+# Minimal lint: syntax errors (E9) and pyflakes (F) only — no style enforcement.
+# The plugin bundle layout has spaces in paths; ruff handles that fine.
+
+[lint]
+select = ["E9", "F"]
+
+# `indigo` is injected by the Indigo plugin host at runtime
+[lint.per-file-ignores]
+"MCP Server.indigoPlugin/Contents/Server Plugin/plugin.py" = ["F821"]

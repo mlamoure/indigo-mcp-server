@@ -60,7 +60,7 @@ def generate_keywords_parallel(
         })
     
     # Progress tracking for concurrent operations
-    progress_lock = threading.Lock()
+    threading.Lock()
     all_keywords = {}
     
     def process_keyword_batch(batch_job):
@@ -79,7 +79,7 @@ def generate_keywords_parallel(
             # Generate LLM keywords for this batch with fallback
             batch_keywords = _generate_llm_keywords_batch_with_fallback(batch_entities, collection_name, batch_size)
             
-            batch_time = time.time() - batch_start_time
+            time.time() - batch_start_time
             success_count = len(batch_keywords)
             # Batch completed
             

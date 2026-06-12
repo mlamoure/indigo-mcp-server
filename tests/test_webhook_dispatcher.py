@@ -12,7 +12,6 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from unittest.mock import Mock
 
-import pytest
 
 # Add plugin to path
 plugin_path = Path(__file__).parent.parent / "MCP Server.indigoPlugin/Contents/Server Plugin"

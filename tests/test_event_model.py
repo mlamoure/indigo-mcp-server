@@ -6,7 +6,6 @@ import sys
 import time
 from pathlib import Path
 
-import pytest
 
 # Add plugin to path
 plugin_path = Path(__file__).parent.parent / "MCP Server.indigoPlugin/Contents/Server Plugin"
