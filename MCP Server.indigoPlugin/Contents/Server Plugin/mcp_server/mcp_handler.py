@@ -8,10 +8,12 @@ import logging
 import os
 import secrets
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .events.subscription_handler import SubscriptionHandler
 
 from .adapters.data_provider import DataProvider
-from .common.indigo_device_types import IndigoDeviceType, IndigoEntityType, DeviceTypeResolver
 from .common.json_encoder import safe_json_dumps
 from .common.vector_store.vector_store_manager import VectorStoreManager
 from .handlers.list_handlers import ListHandlers
@@ -317,7 +319,7 @@ class MCPHandler:
                 "content": json.dumps(resp)
             }
                 
-        except Exception as e:
+        except Exception:
             self.logger.exception("Unhandled MCP error")
             return self._json_response(
                 self._json_error(None, -32603, "Internal error"),
@@ -341,7 +343,7 @@ class MCPHandler:
         """
         # Validate JSON-RPC structure
         if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0" or "method" not in msg:
-            self.logger.debug(f"Invalid JSON-RPC message structure")
+            self.logger.debug("Invalid JSON-RPC message structure")
             return self._json_error(msg.get("id"), -32600, "Invalid Request")
 
         msg_id = msg.get("id")  # May be None for notifications

@@ -8,7 +8,6 @@ and 405 responses for GET/other methods (with corrected Allow header).
 import json
 import os
 import time
-import pytest
 from unittest.mock import Mock, patch
 import sys
 from pathlib import Path

@@ -182,10 +182,10 @@ class VectorStore(VectorStoreInterface):
         
         # Check if embedding_model key already exists
         try:
-            existing_records = metadata_table.search().where(f"key = 'embedding_model'").to_list()
+            existing_records = metadata_table.search().where("key = 'embedding_model'").to_list()
             if existing_records:
                 # Update existing record
-                metadata_table.delete(f"key = 'embedding_model'")
+                metadata_table.delete("key = 'embedding_model'")
         except Exception:
             # Table might be empty, continue with insert
             pass
@@ -204,7 +204,7 @@ class VectorStore(VectorStoreInterface):
         """Get the stored embedding model from metadata."""
         try:
             metadata_table = self.db.open_table("metadata")
-            records = metadata_table.search().where(f"key = 'embedding_model'").to_list()
+            records = metadata_table.search().where("key = 'embedding_model'").to_list()
             if records:
                 return records[0]['value']
         except Exception as e:

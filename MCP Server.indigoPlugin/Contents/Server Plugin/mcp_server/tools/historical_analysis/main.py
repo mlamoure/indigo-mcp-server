@@ -5,7 +5,7 @@ Main handler for historical data analysis.
 import logging
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
@@ -952,7 +952,6 @@ Recommend 1-3 most relevant properties:"""
         # Add time-based analysis if we have results
         if results:
             # Parse timestamps from results to get activity patterns
-            activity_hours = {}
             for result in results:
                 # Extract time patterns (simplified for now)
                 if "from" in result and "to" in result:
@@ -983,7 +982,7 @@ Recommend 1-3 most relevant properties:"""
         
         # Header
         report_lines.append("=" * 60)
-        report_lines.append(f"HISTORICAL DATA ANALYSIS REPORT")
+        report_lines.append("HISTORICAL DATA ANALYSIS REPORT")
         report_lines.append("=" * 60)
         report_lines.append(f"Analysis Period: Last {days} days")
         

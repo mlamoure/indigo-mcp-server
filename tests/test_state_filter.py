@@ -10,7 +10,6 @@ guards proving already-typed device states still behave.
 import sys
 from pathlib import Path
 
-import pytest
 
 plugin_path = Path(__file__).parent.parent / "MCP Server.indigoPlugin/Contents/Server Plugin"
 sys.path.insert(0, str(plugin_path))

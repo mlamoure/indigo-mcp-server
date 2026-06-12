@@ -281,7 +281,7 @@ def _emb_texts_batch_sequential(texts: list, entity_names: list = None, progress
                         embeddings_result[original_index] = embedding
                 
                 processed_count += len(batch_texts)
-                batch_time = time.time() - batch_start_time
+                time.time() - batch_start_time
                 
                 # Debug log after successful API call
                 # Batch completed
