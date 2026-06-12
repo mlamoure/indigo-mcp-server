@@ -32,4 +32,7 @@ jobs:
         run: ruff check .
 
       - name: Run tests
-        run: pytest tests/ -q
+        # PYTHONPATH shadows lancedb with .gitea/ci_stubs/lancedb.py: the real
+        # native extension needs AVX2 and SIGILLs on this runner's CPU, and the
+        # suite mocks VectorStoreManager everywhere — only the import must work.
+        run: PYTHONPATH=.gitea/ci_stubs pytest tests/ -q
