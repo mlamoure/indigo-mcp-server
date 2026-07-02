@@ -73,6 +73,7 @@ class Plugin(indigo.PluginBase):
 
         # Automation write-safety gates (checked at call time — no restart needed)
         self.enable_automation_delete = plugin_prefs.get("enable_automation_delete", False)
+        self.enable_automation_editing = plugin_prefs.get("enable_automation_editing", False)
 
         # Component instances
         self.data_provider = None
@@ -425,6 +426,7 @@ class Plugin(indigo.PluginBase):
                 subscription_handler=subscription_handler,
                 server_version=self.pluginVersion,
                 automation_delete_supplier=lambda: self.enable_automation_delete,
+                automation_editing_supplier=lambda: self.enable_automation_editing,
             )
 
             # Log MCP client connection information (full list in the menu action)
@@ -1031,12 +1033,18 @@ class Plugin(indigo.PluginBase):
                     f"- plugin restart required for MCP tool changes to take effect"
                 )
 
-            # Automation delete gate (takes effect immediately — checked per call)
+            # Automation write gates (take effect immediately — checked per call)
             new_delete_gate = values_dict.get("enable_automation_delete", False)
             if new_delete_gate != self.enable_automation_delete:
                 self.enable_automation_delete = new_delete_gate
                 self.logger.info(
                     f"Automation delete via MCP {'enabled' if new_delete_gate else 'disabled'}"
+                )
+            new_editing_gate = values_dict.get("enable_automation_editing", False)
+            if new_editing_gate != self.enable_automation_editing:
+                self.enable_automation_editing = new_editing_gate
+                self.logger.info(
+                    f"Automation editing via MCP {'enabled' if new_editing_gate else 'disabled'}"
                 )
 
             # Apply configuration to environment (same as startup)

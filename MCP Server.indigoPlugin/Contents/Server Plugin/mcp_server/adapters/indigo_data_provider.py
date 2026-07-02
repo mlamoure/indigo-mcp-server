@@ -826,6 +826,151 @@ class IndigoDataProvider(DataProvider):
             )
             return {"error": str(e), "success": False}
 
+    # Editable-field maps: normalized field name -> IOM attribute, with an
+    # optional enum class name for values that need conversion. enabled and
+    # folderId are deliberately absent (the enable / moveToFolder commands
+    # handle those).
+    _TRIGGER_EDIT_ATTRS = {
+        "name": ("name", None),
+        "description": ("description", None),
+        "device_id": ("deviceId", None),
+        "state_selector": ("stateSelector", None),
+        "state_selector_index": ("stateSelectorIndex", None),
+        "state_change_type": ("stateChangeType", "kStateChange"),
+        "state_value": ("stateValue", None),
+        "variable_id": ("variableId", None),
+        "variable_change_type": ("variableChangeType", "kVarChange"),
+        "variable_value": ("variableValue", None),
+    }
+    _SCHEDULE_EDIT_ATTRS = {
+        "name": ("name", None),
+        "description": ("description", None),
+        "date_type": ("dateType", "kDateType"),
+        "time_type": ("timeType", "kTimeType"),
+        "absolute_time": ("absoluteTime", None),  # "HH:MM[:SS]" string
+        "sun_delta_seconds": ("sunDelta", None),
+        "randomize_by_seconds": ("randomizeBy", None),
+        "auto_delete": ("autoDelete", None),
+    }
+    _ACTION_GROUP_EDIT_ATTRS = {
+        "name": ("name", None),
+        "description": ("description", None),
+    }
+    _EDIT_ATTRS_BY_TYPE = {
+        "trigger": _TRIGGER_EDIT_ATTRS,
+        "schedule": _SCHEDULE_EDIT_ATTRS,
+        "action_group": _ACTION_GROUP_EDIT_ATTRS,
+    }
+
+    @staticmethod
+    def _to_indigo_enum(enum_name: str, value: str):
+        """'becomes_true' -> indigo.kStateChange.BecomesTrue (etc.)."""
+        enum_cls = getattr(indigo, enum_name)
+        camel = "".join(part.capitalize() for part in str(value).split("_"))
+        if not hasattr(enum_cls, camel):
+            valid = [n for n in dir(enum_cls) if n[0].isupper()]
+            raise ValueError(f"Invalid {enum_name} value {value!r}; valid: {valid}")
+        return getattr(enum_cls, camel)
+
+    @staticmethod
+    def _parse_absolute_time(value: str):
+        import datetime as _dt
+
+        parts = str(value).split(":")
+        if len(parts) not in (2, 3):
+            raise ValueError(f"absolute_time must be HH:MM or HH:MM:SS, got {value!r}")
+        hour, minute = int(parts[0]), int(parts[1])
+        second = int(parts[2]) if len(parts) == 3 else 0
+        # Indigo stores schedule times on a year-2000 base date.
+        return _dt.datetime(2000, 1, 1, hour, minute, second)
+
+    def _snapshot_fields(self, elem, entity_type: str, field_names) -> Dict[str, Any]:
+        attr_map = self._EDIT_ATTRS_BY_TYPE[entity_type]
+        snapshot = {}
+        for field in field_names:
+            attr, enum_name = attr_map[field]
+            value = getattr(elem, attr, None)
+            if enum_name is not None:
+                value = self._enum_label(value)
+            elif field == "absolute_time":
+                value = (
+                    value.strftime("%H:%M:%S")
+                    if value is not None and getattr(value, "year", 1) != 1
+                    else None
+                )
+            snapshot[field] = value
+        return snapshot
+
+    def update_automation_fields(
+        self, entity_type: str, entity_id: int, fields: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Update whitelisted basic fields via replaceOnServer().
+        """
+        collections = {
+            "trigger": "triggers",
+            "schedule": "schedules",
+            "action_group": "actionGroups",
+        }
+        collection_name = collections.get(entity_type)
+        attr_map = self._EDIT_ATTRS_BY_TYPE.get(entity_type)
+        if collection_name is None or attr_map is None:
+            return {"error": f"Unsupported entity_type: {entity_type}"}
+
+        unknown = [f for f in fields if f not in attr_map]
+        if unknown:
+            return {
+                "error": f"Field(s) not editable for {entity_type}: {unknown}. "
+                f"Editable: {sorted(attr_map)}"
+            }
+        if not fields:
+            return {"error": "No fields provided"}
+
+        try:
+            collection = getattr(indigo, collection_name)
+            if entity_id not in collection:
+                return {"error": f"{entity_type} {entity_id} not found"}
+            elem = collection[entity_id]
+
+            before = self._snapshot_fields(elem, entity_type, fields.keys())
+
+            for field, value in fields.items():
+                attr, enum_name = attr_map[field]
+                if enum_name is not None:
+                    value = self._to_indigo_enum(enum_name, value)
+                elif field == "absolute_time":
+                    value = self._parse_absolute_time(value)
+                setattr(elem, attr, value)
+
+            elem.replaceOnServer()
+
+            refreshed = collection[entity_id]
+            after = self._snapshot_fields(refreshed, entity_type, fields.keys())
+
+            not_applied = {
+                field: fields[field]
+                for field in fields
+                if before.get(field) == after.get(field)
+                and str(fields[field]) != str(before.get(field))
+            }
+            result = {
+                "success": True,
+                "entity_type": entity_type,
+                "id": entity_id,
+                "before": before,
+                "after": after,
+            }
+            if not_applied:
+                result["warning"] = (
+                    f"Some fields did not change on the server: {sorted(not_applied)}"
+                )
+            return result
+        except Exception as e:
+            self.logger.debug(
+                f"Error updating {entity_type} {entity_id}: {e}", exc_info=True
+            )
+            return {"error": str(e), "success": False}
+
     def get_db_file_path(self) -> Optional[str]:
         """
         Get the filesystem path of Indigo's active database file.

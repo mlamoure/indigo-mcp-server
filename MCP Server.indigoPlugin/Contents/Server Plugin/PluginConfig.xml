@@ -106,6 +106,14 @@
             Enable/disable, execute, and duplicate are always available.</Description>
     </Field>
 
+    <Field type="checkbox" id="enable_automation_editing" defaultValue="false">
+        <Label>Allow AI to edit automations (experimental):</Label>
+        <Description>Allow MCP clients to modify basic fields of triggers, schedules,
+            and action groups (names, descriptions, trigger event settings, schedule
+            timing). Uses Indigo's replaceOnServer() scripting call. Action steps and
+            conditions can never be modified.</Description>
+    </Field>
+
     <Field id="separator_automation" type="separator"/>
 
     <!-- Debug Settings -->
