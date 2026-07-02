@@ -28,7 +28,7 @@ def _parse_iso(value: Optional[str], field_name: str):
 
 
 class LogSearchHandler(BaseToolHandler):
-    """Handler for search_event_log and investigate_event."""
+    """Handler for query_event_log and investigate_event."""
 
     def __init__(
         self,
@@ -44,16 +44,26 @@ class LogSearchHandler(BaseToolHandler):
         )
         self.correlator = CauseCorrelator(self.reader, structure_store, data_provider)
 
-    def search_event_log(
+    def query_event_log(
         self,
         query: Optional[str] = None,
         regex: bool = False,
         types: Optional[List[str]] = None,
         start_time: Optional[str] = None,
         end_time: Optional[str] = None,
-        limit: int = 100,
+        limit: int = 50,
         offset: int = 0,
     ) -> Dict[str, Any]:
+        """
+        Read the Indigo event log, newest first.
+
+        With no filters (query/types/time range) this returns the most recent
+        entries straight from Indigo's live event log via the Object Model —
+        cheap and independent of the log files on disk. Supplying any filter
+        switches to a scan of the daily "YYYY-MM-DD Events.txt" files, which
+        reaches full history and supports text/regex matching, type filters,
+        and time ranges. Either way the output shape is identical.
+        """
         try:
             start, error = _parse_iso(start_time, "start_time")
             if error:
@@ -62,17 +72,22 @@ class LogSearchHandler(BaseToolHandler):
             if error:
                 return error
 
-            result = self.reader.search(
-                query=query,
-                regex=regex,
-                types=types,
-                start_time=start,
-                end_time=end,
-                limit=limit,
-                offset=offset,
-            )
-            if "error" in result:
-                return {**result, "success": False}
+            has_filter = bool(query or types or start or end)
+            if has_filter:
+                result = self.reader.search(
+                    query=query,
+                    regex=regex,
+                    types=types,
+                    start_time=start,
+                    end_time=end,
+                    limit=limit,
+                    offset=offset,
+                )
+                if "error" in result:
+                    return {**result, "success": False}
+                result["source"] = "log_files"
+            else:
+                result = self._recent_tail(limit, offset)
 
             result["parameters"] = {
                 "query": query,
@@ -83,14 +98,47 @@ class LogSearchHandler(BaseToolHandler):
                 "offset": offset,
             }
             self.log_tool_outcome(
-                "search_event_log",
+                "query_event_log",
                 True,
                 count=result["count"],
                 query_info={"search_query": query} if query else None,
             )
             return result
         except Exception as e:
-            return self.handle_exception(e, "searching event log")
+            return self.handle_exception(e, "querying event log")
+
+    def _recent_tail(self, limit: int, offset: int) -> Dict[str, Any]:
+        """Most-recent entries from the live IOM event log (no filters)."""
+        raw = self.data_provider.get_event_log_list(line_count=limit + offset)
+        entries = [self._normalize_iom_entry(e) for e in raw]
+        # Present newest-first, consistent with the file-scan path.
+        entries.sort(
+            key=lambda e: (e["timestamp"] is not None, e["timestamp"]), reverse=True
+        )
+        page = entries[offset:offset + limit]
+        return {
+            "entries": page,
+            "count": len(page),
+            "source": "live",
+            # Whether older entries exist beyond what the live log returned.
+            "truncated": len(raw) >= (limit + offset) and len(raw) > 0,
+        }
+
+    @staticmethod
+    def _normalize_iom_entry(entry: Any) -> Dict[str, Any]:
+        """Map an indigo.server.getEventLogList dict to the common shape.
+
+        Falls back gracefully if a future Indigo returns plain strings."""
+        if isinstance(entry, dict):
+            timestamp = entry.get("TimeStamp")
+            return {
+                "timestamp": timestamp.isoformat()
+                if hasattr(timestamp, "isoformat")
+                else None,
+                "type": entry.get("TypeStr"),
+                "message": (entry.get("Message") or "").strip(),
+            }
+        return {"timestamp": None, "type": None, "message": str(entry).strip()}
 
     def investigate_event(
         self,

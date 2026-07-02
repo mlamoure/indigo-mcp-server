@@ -107,14 +107,40 @@ class TestInvestigateEvent:
         assert "searched_for" in result
 
 
-class TestSearchEventLogHandler:
-    def test_search_with_parameters_echo(self, handler):
-        result = handler.search_event_log(query="Porch Light", types=["Z-Wave"], limit=10)
+class TestQueryEventLogHandler:
+    def test_filtered_search_scans_files(self, handler):
+        result = handler.query_event_log(query="Porch Light", types=["Z-Wave"], limit=10)
         assert result["count"] == 3
+        assert result["source"] == "log_files"
         assert result["parameters"]["query"] == "Porch Light"
 
     def test_bad_time_is_error(self, handler):
-        assert "error" in handler.search_event_log(start_time="not-a-time")
+        assert "error" in handler.query_event_log(start_time="not-a-time")
+
+    def test_no_filters_uses_live_iom_tail(self, handler):
+        # No filters → live path via get_event_log_list, normalized + newest-first.
+        import datetime as _dt
+
+        handler.data_provider.get_event_log_list.return_value = [
+            {"TimeStamp": _dt.datetime(2026, 7, 2, 10, 0, 0), "TypeStr": "Trigger",
+             "Message": "\t\tolder line"},
+            {"TimeStamp": _dt.datetime(2026, 7, 2, 10, 0, 5), "TypeStr": "Schedule",
+             "Message": "newer line"},
+        ]
+        result = handler.query_event_log(limit=10)
+        assert result["source"] == "live"
+        assert result["count"] == 2
+        # newest first
+        assert result["entries"][0]["type"] == "Schedule"
+        assert result["entries"][0]["timestamp"] == "2026-07-02T10:00:05"
+        # leading indentation tabs stripped
+        assert result["entries"][1]["message"] == "older line"
+
+    def test_live_path_handles_string_fallback(self, handler):
+        handler.data_provider.get_event_log_list.return_value = ["a raw line"]
+        result = handler.query_event_log()
+        assert result["source"] == "live"
+        assert result["entries"][0]["message"] == "a raw line"
 
 
 class TestOccurrence:

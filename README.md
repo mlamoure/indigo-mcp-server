@@ -302,8 +302,9 @@ changes).
 
 *Added in v2026.6.0.*
 
-- **search_event_log**: Search the historical daily event-log files with text/regex matching, type filters (`Trigger`, `Schedule`, `Action Group`, `Z-Wave`, ...), time ranges, and pagination
 - **investigate_event**: "What caused this?" — finds a device's state-change line in the log, collects the automations that fired around it, and ranks candidate causes by structural evidence (does it actually act on that device, directly or through action-group chains?) plus temporal proximity
+
+`query_event_log` (below) gained historical search in this release — see the System section.
 
 ### Automation Control
 
@@ -348,7 +349,7 @@ changes).
 
 ### System
 
-- **query_event_log**: Query recent Indigo server event log entries
+- **query_event_log**: Read the event log, newest first. With no filters it returns the most recent entries from Indigo's live log; add `query`/`regex`/`types`/`start_time`/`end_time` and it scans the historical daily log files instead (full history, text/regex, type and time-range filters, pagination). Each entry is `{timestamp, type, message}`; the response `source` is `live` or `log_files`. *(v2026.6.0 folded the former `search_event_log` into this tool.)*
 - **list_plugins**: List all installed Indigo plugins
 - **get_plugin_by_id**: Get specific plugin information by ID
 - **restart_plugin**: Restart an Indigo plugin

@@ -26,7 +26,6 @@ from .tools.automation import AutomationHandler
 from .tools.device_control import DeviceControlHandler
 from .tools.get_devices_by_type import GetDevicesByTypeHandler
 from .tools.historical_analysis import HistoricalAnalysisHandler
-from .tools.log_query import LogQueryHandler
 from .tools.log_search import LogSearchHandler
 from .tools.plugin_control import PluginControlHandler
 from .tools.rgb_control import RGBControlHandler
@@ -151,10 +150,6 @@ class MCPHandler:
             data_provider=self.data_provider,
             logger=self.logger
         )
-        self.log_query_handler = LogQueryHandler(
-            data_provider=self.data_provider,
-            logger=self.logger
-        )
         self.plugin_control_handler = PluginControlHandler(
             data_provider=self.data_provider,
             logger=self.logger
@@ -191,7 +186,6 @@ class MCPHandler:
             action_control_handler=self.action_control_handler,
             historical_analysis_handler=self.historical_analysis_handler,
             list_handlers=self.list_handlers,
-            log_query_handler=self.log_query_handler,
             plugin_control_handler=self.plugin_control_handler,
             automation_handler=self.automation_handler,
             log_search_handler=self.log_search_handler,
@@ -755,7 +749,6 @@ class MCPHandler:
             "list_schedules": self.tool_wrappers.tool_list_schedules,
             "get_automation_details": self.tool_wrappers.tool_get_automation_details,
             "find_automation_references": self.tool_wrappers.tool_find_automation_references,
-            "search_event_log": self.tool_wrappers.tool_search_event_log,
             "investigate_event": self.tool_wrappers.tool_investigate_event,
             "automation_control": self.tool_wrappers.tool_automation_control,
             "update_automation": self.tool_wrappers.tool_update_automation,
