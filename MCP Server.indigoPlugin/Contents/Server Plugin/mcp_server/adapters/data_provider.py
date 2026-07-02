@@ -334,6 +334,37 @@ class DataProvider(ABC):
         pass
 
     @abstractmethod
+    def automation_command(
+        self,
+        entity_type: str,
+        entity_id: int,
+        command: str,
+        value: Optional[bool] = None,
+        delay: Optional[int] = None,
+        duration: Optional[int] = None,
+        duplicate_name: Optional[str] = None,
+        folder_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Run a lifecycle command against a trigger, schedule, or action group.
+
+        Args:
+            entity_type: trigger | schedule | action_group
+            entity_id: The element ID
+            command: enable | execute | duplicate | move_to_folder |
+                remove_delayed_actions | delete
+            value: For enable: True to enable, False to disable
+            delay: Optional delay in seconds (enable, execute)
+            duration: For enable: auto-revert after this many seconds
+            duplicate_name: For duplicate: name of the copy
+            folder_id: For move_to_folder: destination folder
+
+        Returns:
+            Dictionary with success/result fields, or {"error": ...}
+        """
+        pass
+
+    @abstractmethod
     def get_db_file_path(self) -> Optional[str]:
         """
         Get the filesystem path of Indigo's active database file (.indiDb).

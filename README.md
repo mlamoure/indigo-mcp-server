@@ -305,6 +305,12 @@ changes).
 - **search_event_log**: Search the historical daily event-log files with text/regex matching, type filters (`Trigger`, `Schedule`, `Action Group`, `Z-Wave`, ...), time ranges, and pagination
 - **investigate_event**: "What caused this?" — finds a device's state-change line in the log, collects the automations that fired around it, and ranks candidate causes by structural evidence (does it actually act on that device, directly or through action-group chains?) plus temporal proximity
 
+### Automation Control
+
+*Added in v2026.6.0.*
+
+- **automation_control**: Lifecycle control for triggers, schedules, and action groups — `enable`/`disable` (with optional `duration_seconds` auto-revert: "disable this trigger for 2 hours"), `execute`, `duplicate` (the supported way to create a variant, since Indigo has no API to author actions/conditions from scratch), `move_to_folder`, `remove_delayed_actions`, and `delete`. Deletion is double-gated: it requires `confirm=true` **and** the *Allow AI to delete automations* plugin preference (off by default).
+
 ### Device Control
 
 - **device_turn_on/off**: Control device power state

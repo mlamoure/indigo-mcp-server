@@ -535,6 +535,26 @@ class ToolWrappers:
             lookback_seconds=lookback_seconds, lookahead_seconds=lookahead_seconds
         )
 
+    def tool_automation_control(
+        self,
+        entity_type: str,
+        entity_id: int,
+        action: str,
+        duration_seconds: int = None,
+        delay_seconds: int = None,
+        duplicate_name: str = None,
+        folder_id: int = None,
+        confirm: bool = False
+    ) -> str:
+        """Automation control tool implementation."""
+        return self._call(
+            "Control automation",
+            self.automation_handler.control,
+            entity_type=entity_type, entity_id=entity_id, action=action,
+            duration_seconds=duration_seconds, delay_seconds=delay_seconds,
+            duplicate_name=duplicate_name, folder_id=folder_id, confirm=confirm
+        )
+
     def tool_list_plugins(self, include_disabled: bool = False) -> str:
         """List plugins tool implementation."""
         return self._call(

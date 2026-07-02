@@ -98,6 +98,16 @@
 
     <Field id="separator_webhooks" type="separator"/>
 
+    <!-- Automation Control Safety -->
+    <Field type="checkbox" id="enable_automation_delete" defaultValue="false">
+        <Label>Allow AI to delete automations:</Label>
+        <Description>Allow MCP clients to delete triggers, schedules, and action groups
+            (deletion is irreversible; each call also requires confirm=true).
+            Enable/disable, execute, and duplicate are always available.</Description>
+    </Field>
+
+    <Field id="separator_automation" type="separator"/>
+
     <!-- Debug Settings -->
 
     <Field id="log_level" type="menu" defaultValue="20">

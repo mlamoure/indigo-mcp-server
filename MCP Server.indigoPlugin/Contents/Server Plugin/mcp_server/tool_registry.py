@@ -27,6 +27,7 @@ WRITE_TOOLS = frozenset({
     "restart_plugin",
     "create_event_subscription",
     "delete_event_subscription",
+    "automation_control",
 })
 
 
@@ -898,6 +899,58 @@ def get_tool_schemas(tool_functions):
             }
         },
         "function": tool_functions["investigate_event"]
+    }
+
+    # ------------------------------------------------------------------
+    # Automation control (writes)
+    # ------------------------------------------------------------------
+
+    tools["automation_control"] = {
+        "description": "Control a trigger, schedule, or action group: enable/disable (optionally with duration_seconds to auto-revert — e.g. 'disable this trigger for 2 hours'), execute now, duplicate (the supported way to 'create a variant' — duplicate then adjust), move_to_folder, remove_delayed_actions, or delete. Deleting is irreversible: it requires confirm=true AND the 'Allow AI to delete automations' plugin preference. Note: Indigo has no API to author a trigger's actions or conditions from scratch, so duplicate-and-modify is the creation path. Action groups only support execute/duplicate/move_to_folder/delete.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "entity_type": {
+                    "type": "string",
+                    "enum": ["trigger", "schedule", "action_group"],
+                    "description": "The kind of automation element"
+                },
+                "entity_id": {
+                    "type": "integer",
+                    "description": "The element ID"
+                },
+                "action": {
+                    "type": "string",
+                    "enum": ["enable", "disable", "execute", "duplicate",
+                             "move_to_folder", "remove_delayed_actions", "delete"],
+                    "description": "What to do"
+                },
+                "duration_seconds": {
+                    "type": "integer",
+                    "description": "For enable/disable: automatically revert after this many seconds",
+                    "minimum": 1
+                },
+                "delay_seconds": {
+                    "type": "integer",
+                    "description": "For enable/disable/execute: apply after this many seconds",
+                    "minimum": 1
+                },
+                "duplicate_name": {
+                    "type": "string",
+                    "description": "For duplicate: name for the copy"
+                },
+                "folder_id": {
+                    "type": "integer",
+                    "description": "For move_to_folder: destination folder ID"
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Required true for delete (irreversible)"
+                }
+            },
+            "required": ["entity_type", "entity_id", "action"]
+        },
+        "function": tool_functions["automation_control"]
     }
 
     # Plugin control tools

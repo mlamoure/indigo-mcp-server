@@ -14,6 +14,16 @@ from .explain_renderer import ExplainRenderer
 AUTOMATION_ENTITY_TYPES = ("trigger", "schedule", "action_group")
 REFERENCE_ENTITY_TYPES = ("device", "variable", "action_group")
 
+# Which control actions are valid for which entity type. Action groups have
+# no enabled flag and no delayed-action queue of their own in the IOM.
+CONTROL_ACTIONS = {
+    "trigger": {"enable", "disable", "execute", "duplicate", "move_to_folder",
+                "remove_delayed_actions", "delete"},
+    "schedule": {"enable", "disable", "execute", "duplicate", "move_to_folder",
+                 "remove_delayed_actions", "delete"},
+    "action_group": {"execute", "duplicate", "move_to_folder", "delete"},
+}
+
 
 class AutomationHandler(BaseToolHandler):
     """Handler for trigger/schedule/action-group introspection tools."""
@@ -23,11 +33,13 @@ class AutomationHandler(BaseToolHandler):
         data_provider: DataProvider,
         structure_store: IndiDbStructureStore,
         logger: Optional[logging.Logger] = None,
+        delete_enabled_supplier=None,
     ):
         super().__init__(tool_name="automation", logger=logger)
         self.data_provider = data_provider
         self.structure_store = structure_store
         self.renderer = ExplainRenderer(data_provider, structure_store, logger=logger)
+        self.delete_enabled_supplier = delete_enabled_supplier or (lambda: False)
 
     # ------------------------------------------------------------------
     # list_triggers
@@ -245,6 +257,97 @@ class AutomationHandler(BaseToolHandler):
             }
         except Exception as e:
             return self.handle_exception(e, f"finding references to {entity_type} {entity_id}")
+
+    # ------------------------------------------------------------------
+    # automation_control
+    # ------------------------------------------------------------------
+
+    def control(
+        self,
+        entity_type: str,
+        entity_id: int,
+        action: str,
+        duration_seconds: Optional[int] = None,
+        delay_seconds: Optional[int] = None,
+        duplicate_name: Optional[str] = None,
+        folder_id: Optional[int] = None,
+        confirm: bool = False,
+    ) -> Dict[str, Any]:
+        try:
+            if entity_type not in CONTROL_ACTIONS:
+                return {
+                    "error": f"Invalid entity_type: {entity_type!r}. "
+                    f"Valid types: {', '.join(sorted(CONTROL_ACTIONS))}",
+                    "success": False,
+                }
+            valid_actions = CONTROL_ACTIONS[entity_type]
+            if action not in valid_actions:
+                return {
+                    "error": f"Invalid action {action!r} for {entity_type}. "
+                    f"Valid actions: {', '.join(sorted(valid_actions))}",
+                    "success": False,
+                }
+            entity_id = int(entity_id)
+
+            if action == "delete":
+                if not self.delete_enabled_supplier():
+                    return {
+                        "error": "Deleting automations via MCP is disabled. Enable "
+                        "'Allow AI to delete automations' in the MCP Server plugin "
+                        "preferences to permit it.",
+                        "success": False,
+                    }
+                if not confirm:
+                    name = self._entity_name(entity_type, entity_id)
+                    return {
+                        "error": f"Deletion is irreversible. Call again with "
+                        f"confirm=true to delete {entity_type} '{name}' ({entity_id}).",
+                        "success": False,
+                        "requires_confirmation": True,
+                    }
+
+            if action == "move_to_folder" and folder_id is None:
+                return {"error": "move_to_folder requires folder_id", "success": False}
+
+            name = self._entity_name(entity_type, entity_id)
+            command = action
+            value = None
+            if action in ("enable", "disable"):
+                command = "enable"
+                value = action == "enable"
+
+            result = self.data_provider.automation_command(
+                entity_type,
+                entity_id,
+                command,
+                value=value,
+                delay=delay_seconds,
+                duration=duration_seconds,
+                duplicate_name=duplicate_name,
+                folder_id=folder_id,
+            )
+
+            if result.get("error"):
+                self.error_log(
+                    f"{action} {entity_type} '{name}' failed: {result['error']}"
+                )
+                return result
+
+            result["action"] = action
+            result["name"] = name
+            summary = f"{entity_type.replace('_', ' ')} '{name}' {action}"
+            if action in ("enable", "disable") and duration_seconds:
+                summary += f" (auto-reverts in {duration_seconds}s)"
+            if action == "duplicate":
+                summary += f" → '{result.get('new_name')}' ({result.get('new_id')})"
+            if action == "execute" and delay_seconds:
+                summary += f" (in {delay_seconds}s)"
+            self.activity_log(summary)
+            return result
+        except Exception as e:
+            return self.handle_exception(
+                e, f"running {action} on {entity_type} {entity_id}"
+            )
 
     def _merge_server_dependencies(
         self,
