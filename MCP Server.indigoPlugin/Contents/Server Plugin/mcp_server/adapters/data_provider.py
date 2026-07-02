@@ -365,6 +365,20 @@ class DataProvider(ABC):
         pass
 
     @abstractmethod
+    def update_automation_fields(
+        self, entity_type: str, entity_id: int, fields: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Update whitelisted basic fields on a trigger, schedule, or action
+        group via replaceOnServer(). Fields use the same normalized names the
+        read APIs return (e.g. state_change_type: "becomes_true").
+
+        Returns:
+            {"success": True, "before": {...}, "after": {...}} or {"error": ...}
+        """
+        pass
+
+    @abstractmethod
     def get_db_file_path(self) -> Optional[str]:
         """
         Get the filesystem path of Indigo's active database file (.indiDb).

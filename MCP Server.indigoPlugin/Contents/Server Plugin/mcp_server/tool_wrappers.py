@@ -555,6 +555,19 @@ class ToolWrappers:
             duplicate_name=duplicate_name, folder_id=folder_id, confirm=confirm
         )
 
+    def tool_update_automation(
+        self,
+        entity_type: str,
+        entity_id: int,
+        fields: Dict = None
+    ) -> str:
+        """Update automation fields tool implementation."""
+        return self._call(
+            "Update automation",
+            self.automation_handler.update,
+            entity_type=entity_type, entity_id=entity_id, fields=fields
+        )
+
     def tool_list_plugins(self, include_disabled: bool = False) -> str:
         """List plugins tool implementation."""
         return self._call(

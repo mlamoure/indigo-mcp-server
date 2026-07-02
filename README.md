@@ -310,6 +310,7 @@ changes).
 *Added in v2026.6.0.*
 
 - **automation_control**: Lifecycle control for triggers, schedules, and action groups — `enable`/`disable` (with optional `duration_seconds` auto-revert: "disable this trigger for 2 hours"), `execute`, `duplicate` (the supported way to create a variant, since Indigo has no API to author actions/conditions from scratch), `move_to_folder`, `remove_delayed_actions`, and `delete`. Deletion is double-gated: it requires `confirm=true` **and** the *Allow AI to delete automations* plugin preference (off by default).
+- **update_automation**: Modify basic fields — names/descriptions, trigger event settings (watched device/variable, state, comparison, value), schedule timing (date/time type, time, sunrise/sunset offset). Gated behind the *Allow AI to edit automations (experimental)* plugin preference (off by default); returns a before/after diff. Action steps and conditions can never be modified — Indigo provides no API for that; edit those in the Indigo UI.
 
 ### Device Control
 

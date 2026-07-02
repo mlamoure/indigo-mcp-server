@@ -34,12 +34,14 @@ class AutomationHandler(BaseToolHandler):
         structure_store: IndiDbStructureStore,
         logger: Optional[logging.Logger] = None,
         delete_enabled_supplier=None,
+        editing_enabled_supplier=None,
     ):
         super().__init__(tool_name="automation", logger=logger)
         self.data_provider = data_provider
         self.structure_store = structure_store
         self.renderer = ExplainRenderer(data_provider, structure_store, logger=logger)
         self.delete_enabled_supplier = delete_enabled_supplier or (lambda: False)
+        self.editing_enabled_supplier = editing_enabled_supplier or (lambda: False)
 
     # ------------------------------------------------------------------
     # list_triggers
@@ -348,6 +350,88 @@ class AutomationHandler(BaseToolHandler):
             return self.handle_exception(
                 e, f"running {action} on {entity_type} {entity_id}"
             )
+
+    # ------------------------------------------------------------------
+    # update_automation (experimental field editing)
+    # ------------------------------------------------------------------
+
+    # Fields whose values must reference an existing entity.
+    _REFERENCE_FIELDS = {"device_id": "device", "variable_id": "variable"}
+
+    def update(
+        self,
+        entity_type: str,
+        entity_id: int,
+        fields: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        try:
+            if not self.editing_enabled_supplier():
+                return {
+                    "error": "Editing automations via MCP is disabled. Enable "
+                    "'Allow AI to edit automations (experimental)' in the MCP "
+                    "Server plugin preferences to permit it.",
+                    "success": False,
+                }
+            if entity_type not in AUTOMATION_ENTITY_TYPES:
+                return {
+                    "error": f"Invalid entity_type: {entity_type!r}. "
+                    f"Valid types: {', '.join(AUTOMATION_ENTITY_TYPES)}",
+                    "success": False,
+                }
+            if not fields or not isinstance(fields, dict):
+                return {"error": "fields must be a non-empty object", "success": False}
+            entity_id = int(entity_id)
+
+            # Referenced entities must exist — a typo'd device id would
+            # otherwise silently retarget the trigger at nothing.
+            for field, kind in self._REFERENCE_FIELDS.items():
+                if field in fields:
+                    target_id = fields[field]
+                    if not isinstance(target_id, int) or (
+                        self.structure_store.lookup_name(kind, target_id) is None
+                        and self._live_entity_missing(kind, target_id)
+                    ):
+                        return {
+                            "error": f"{field}={target_id!r} does not match an "
+                            f"existing {kind}",
+                            "success": False,
+                        }
+
+            name = self._entity_name(entity_type, entity_id)
+            result = self.data_provider.update_automation_fields(
+                entity_type, entity_id, fields
+            )
+            if result.get("error"):
+                self.error_log(f"update {entity_type} '{name}' failed: {result['error']}")
+                return result
+
+            changed = [
+                field
+                for field in fields
+                if result["before"].get(field) != result["after"].get(field)
+            ]
+            self.activity_log(
+                f"{entity_type.replace('_', ' ')} '{name}' updated: "
+                f"{', '.join(changed) if changed else 'no effective change'}"
+            )
+            result["note"] = (
+                "Field editing uses Indigo's replaceOnServer(), which does not "
+                "touch the element's action steps or conditions. Verify with "
+                "get_automation_details if in doubt."
+            )
+            return result
+        except Exception as e:
+            return self.handle_exception(e, f"updating {entity_type} {entity_id}")
+
+    def _live_entity_missing(self, kind: str, entity_id: int) -> bool:
+        try:
+            if kind == "device":
+                return self.data_provider.get_device(entity_id) is None
+            if kind == "variable":
+                return self.data_provider.get_variable(entity_id) is None
+        except Exception:
+            pass
+        return True
 
     def _merge_server_dependencies(
         self,

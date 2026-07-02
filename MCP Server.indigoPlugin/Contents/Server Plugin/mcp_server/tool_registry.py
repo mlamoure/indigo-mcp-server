@@ -28,6 +28,7 @@ WRITE_TOOLS = frozenset({
     "create_event_subscription",
     "delete_event_subscription",
     "automation_control",
+    "update_automation",
 })
 
 
@@ -951,6 +952,30 @@ def get_tool_schemas(tool_functions):
             "required": ["entity_type", "entity_id", "action"]
         },
         "function": tool_functions["automation_control"]
+    }
+
+    tools["update_automation"] = {
+        "description": "Modify basic fields of a trigger, schedule, or action group. Editable: names/descriptions (all); trigger event settings (device_id, state_selector, state_change_type, state_value; variable_id, variable_change_type, variable_value); schedule timing (date_type, time_type, absolute_time 'HH:MM', sun_delta_seconds, randomize_by_seconds, auto_delete). Action steps and conditions can NEVER be modified (Indigo has no API); to change what an automation does, edit it in the Indigo UI. Combined with automation_control's duplicate, this is the supported way to create variants. Requires the 'Allow AI to edit automations (experimental)' plugin preference. Returns a before/after diff. Use enable/disable and move_to_folder via automation_control, not here.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "entity_type": {
+                    "type": "string",
+                    "enum": ["trigger", "schedule", "action_group"],
+                    "description": "The kind of automation element"
+                },
+                "entity_id": {
+                    "type": "integer",
+                    "description": "The element ID"
+                },
+                "fields": {
+                    "type": "object",
+                    "description": "Field name → new value. E.g. {\"name\": \"New name\"}, {\"state_value\": \"PLAYING\"}, {\"time_type\": \"sunset\", \"sun_delta_seconds\": -1200}, {\"absolute_time\": \"21:30\"}. Enum values use the same normalized names the read tools return (becomes_true, becomes_equal, every_day, days_of_week, sunrise, sunset, ...)."
+                }
+            },
+            "required": ["entity_type", "entity_id", "fields"]
+        },
+        "function": tool_functions["update_automation"]
     }
 
     # Plugin control tools

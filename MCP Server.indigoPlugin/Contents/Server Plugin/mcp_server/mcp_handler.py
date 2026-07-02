@@ -53,6 +53,7 @@ class MCPHandler:
         subscription_handler: "Optional[SubscriptionHandler]" = None,
         server_version: str = "unknown",
         automation_delete_supplier=None,
+        automation_editing_supplier=None,
     ):
         """
         Initialize the MCP handler.
@@ -70,6 +71,7 @@ class MCPHandler:
         self.subscription_handler = subscription_handler
         self.server_version = server_version
         self.automation_delete_supplier = automation_delete_supplier or (lambda: False)
+        self.automation_editing_supplier = automation_editing_supplier or (lambda: False)
 
         # Session management
         self._sessions = {}  # session_id -> {created, last_seen, client_info}
@@ -170,6 +172,7 @@ class MCPHandler:
             structure_store=self.structure_store,
             logger=self.logger,
             delete_enabled_supplier=self.automation_delete_supplier,
+            editing_enabled_supplier=self.automation_editing_supplier,
         )
         self.log_search_handler = LogSearchHandler(
             data_provider=self.data_provider,
@@ -755,6 +758,7 @@ class MCPHandler:
             "search_event_log": self.tool_wrappers.tool_search_event_log,
             "investigate_event": self.tool_wrappers.tool_investigate_event,
             "automation_control": self.tool_wrappers.tool_automation_control,
+            "update_automation": self.tool_wrappers.tool_update_automation,
             "list_plugins": self.tool_wrappers.tool_list_plugins,
             "get_plugin_by_id": self.tool_wrappers.tool_get_plugin_by_id,
             "restart_plugin": self.tool_wrappers.tool_restart_plugin,
