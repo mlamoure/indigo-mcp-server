@@ -108,9 +108,13 @@ class ResultFormatter:
                 formatted_entry.update(self._format_variable_fields(entity))
             elif entity_type == "actions":
                 formatted_entry.update(self._format_action_fields(entity))
-            
+            elif entity_type == "triggers":
+                formatted_entry.update(self._format_trigger_fields(entity))
+            elif entity_type == "schedules":
+                formatted_entry.update(self._format_schedule_fields(entity))
+
             formatted_entities.append(formatted_entry)
-        
+
         return formatted_entities
     
     def _format_device_fields(self, device: Dict[str, Any], minimal_fields: bool = False) -> Dict[str, Any]:
@@ -138,4 +142,28 @@ class ResultFormatter:
         return {
             "folder_id": action.get("folderId", 0),
             "description": action.get("description", "")
+        }
+
+    def _format_trigger_fields(self, trigger: Dict[str, Any]) -> Dict[str, Any]:
+        """Format trigger-specific fields."""
+        fields = {
+            "type": trigger.get("type", ""),
+            "enabled": trigger.get("enabled"),
+            "folder_id": trigger.get("folderId", 0),
+            "description": trigger.get("description", "")
+        }
+        for key in ("deviceId", "stateSelector", "stateValue", "variableId", "pluginId"):
+            if trigger.get(key) not in (None, ""):
+                fields[key] = trigger[key]
+        return fields
+
+    def _format_schedule_fields(self, schedule: Dict[str, Any]) -> Dict[str, Any]:
+        """Format schedule-specific fields."""
+        return {
+            "enabled": schedule.get("enabled"),
+            "folder_id": schedule.get("folderId", 0),
+            "description": schedule.get("description", ""),
+            "date_type": schedule.get("date_type"),
+            "time_type": schedule.get("time_type"),
+            "next_execution": schedule.get("next_execution")
         }

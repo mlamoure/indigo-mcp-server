@@ -212,12 +212,15 @@ class IndigoDataProvider(DataProvider):
         Get all entities formatted for vector store updates with complete data.
 
         Returns:
-            Dictionary with 'devices', 'variables', 'actions' keys
+            Dictionary with 'devices', 'variables', 'actions', 'triggers',
+            'schedules' keys
         """
         return {
             "devices": self.get_all_devices_unfiltered(),
             "variables": self.get_all_variables_unfiltered(),
-            "actions": self.get_all_actions()
+            "actions": self.get_all_actions(),
+            "triggers": self.get_all_triggers(),
+            "schedules": self.get_all_schedules()
         }
     
     def turn_on_device(self, device_id: int) -> Dict[str, Any]:
@@ -520,6 +523,256 @@ class IndigoDataProvider(DataProvider):
             self.logger.debug(f"Error getting variable folders: {e}", exc_info=True)
 
         return folders
+
+    # ------------------------------------------------------------------
+    # Triggers and schedules
+    # ------------------------------------------------------------------
+
+    # IOM trigger class name -> normalized kind
+    _TRIGGER_TYPE_MAP = {
+        "DeviceStateChangeTrigger": "device_state_change",
+        "VariableValueChangeTrigger": "variable_change",
+        "PluginEventTrigger": "plugin_event",
+        "ServerStartupTrigger": "server_startup",
+        "ServerShutdownTrigger": "server_shutdown",
+        "EmailReceivedTrigger": "email_received",
+        "PowerFailureTrigger": "power_failure",
+        "InterfaceFailureTrigger": "interface_failure",
+        "InterfaceInitializedTrigger": "interface_initialized",
+        "InsteonCommandReceivedTrigger": "insteon_command_received",
+        "X10CommandReceivedTrigger": "x10_command_received",
+    }
+
+    @staticmethod
+    def _enum_label(value) -> Optional[str]:
+        """'BecomesEqual' -> 'becomes_equal'; None passes through."""
+        if value is None:
+            return None
+        name = str(value).rsplit(".", 1)[-1]
+        out = []
+        for i, ch in enumerate(name):
+            if ch.isupper() and i > 0:
+                out.append("_")
+            out.append(ch.lower())
+        return "".join(out)
+
+    @staticmethod
+    def _iso_or_none(value) -> Optional[str]:
+        """datetime -> ISO string; Indigo's year-1 'unset' sentinel -> None."""
+        if value is None or getattr(value, "year", None) in (None, 1):
+            return None
+        return value.isoformat()
+
+    def _folder_name_map(self, collection) -> Dict[int, str]:
+        folder_map: Dict[int, str] = {}
+        try:
+            for folder in collection.folders:
+                folder_map[folder.id] = folder.name
+        except Exception as e:
+            self.logger.debug(f"Error building folder map: {e}", exc_info=True)
+        return folder_map
+
+    def _trigger_to_dict(self, trigger, include_props: bool = False) -> Dict[str, Any]:
+        """Build a plain dict from a typed IOM trigger object. dict(trigger)
+        only carries base fields, so the event spec is read via getattr."""
+        result = {
+            "id": trigger.id,
+            "name": trigger.name,
+            "description": trigger.description,
+            "enabled": trigger.enabled,
+            "folderId": trigger.folderId,
+            "type": self._TRIGGER_TYPE_MAP.get(
+                type(trigger).__name__, self._enum_label(type(trigger).__name__)
+            ),
+        }
+
+        if hasattr(trigger, "deviceId"):
+            result["deviceId"] = trigger.deviceId
+            result["stateSelector"] = getattr(trigger, "stateSelector", None)
+            result["stateChangeType"] = self._enum_label(getattr(trigger, "stateChangeType", None))
+            result["stateValue"] = getattr(trigger, "stateValue", None)
+        if hasattr(trigger, "variableId"):
+            result["variableId"] = trigger.variableId
+            result["variableChangeType"] = self._enum_label(getattr(trigger, "variableChangeType", None))
+            result["variableValue"] = getattr(trigger, "variableValue", None)
+        if hasattr(trigger, "pluginId"):
+            result["pluginId"] = trigger.pluginId
+            result["pluginTypeId"] = getattr(trigger, "pluginTypeId", None)
+            if include_props:
+                try:
+                    result["pluginProps"] = self._to_plain(trigger.pluginProps)
+                except Exception:
+                    result["pluginProps"] = None
+
+        return result
+
+    def _schedule_to_dict(self, schedule) -> Dict[str, Any]:
+        result = {
+            "id": schedule.id,
+            "name": schedule.name,
+            "description": schedule.description,
+            "enabled": schedule.enabled,
+            "folderId": schedule.folderId,
+            "type": "schedule",
+            "date_type": self._enum_label(getattr(schedule, "dateType", None)),
+            "time_type": self._enum_label(getattr(schedule, "timeType", None)),
+            "sun_delta_seconds": getattr(schedule, "sunDelta", None),
+            "randomize_by_seconds": getattr(schedule, "randomizeBy", None),
+            "auto_delete": getattr(schedule, "autoDelete", None),
+            "next_execution": self._iso_or_none(getattr(schedule, "nextExecution", None)),
+        }
+        # absoluteTime is a datetime on a year-2000 base date; the year-1
+        # sentinel means "unset" (non-absolute time types).
+        absolute_time = getattr(schedule, "absoluteTime", None)
+        result["absolute_time"] = (
+            absolute_time.strftime("%H:%M:%S")
+            if absolute_time is not None and absolute_time.year != 1
+            else None
+        )
+        result["absolute_date"] = self._iso_or_none(getattr(schedule, "absoluteDate", None))
+        return result
+
+    @classmethod
+    def _to_plain(cls, value) -> Any:
+        """Recursively convert indigo.Dict/indigo.List containers to plain
+        Python structures so they serialize to JSON."""
+        try:
+            keys = list(value.keys())
+        except AttributeError:
+            keys = None
+        if keys is not None:
+            return {key: cls._to_plain(value[key]) for key in keys}
+        if isinstance(value, (list, tuple)) or type(value).__name__ == "List":
+            return [cls._to_plain(item) for item in value]
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        return str(value)
+
+    def get_all_triggers(self) -> List[Dict[str, Any]]:
+        """
+        Get all triggers from Indigo with normalized event-spec fields.
+        """
+        triggers = []
+        try:
+            folder_map = self._folder_name_map(indigo.triggers)
+            for trigger in indigo.triggers.iter():
+                entry = self._trigger_to_dict(trigger)
+                if entry["folderId"]:
+                    entry["folderName"] = folder_map.get(
+                        entry["folderId"], f"Unknown Folder ({entry['folderId']})"
+                    )
+                triggers.append(entry)
+        except Exception as e:
+            self.logger.debug(f"Error getting all triggers: {e}", exc_info=True)
+
+        return triggers
+
+    def get_trigger(self, trigger_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific trigger by ID, including plugin props for plugin-event
+        triggers.
+        """
+        try:
+            if trigger_id in indigo.triggers:
+                return self._trigger_to_dict(indigo.triggers[trigger_id], include_props=True)
+        except Exception as e:
+            self.logger.debug(f"Error getting trigger {trigger_id}: {e}", exc_info=True)
+
+        return None
+
+    def get_all_schedules(self) -> List[Dict[str, Any]]:
+        """
+        Get all schedules from Indigo including next execution times.
+        """
+        schedules = []
+        try:
+            folder_map = self._folder_name_map(indigo.schedules)
+            for schedule in indigo.schedules.iter():
+                entry = self._schedule_to_dict(schedule)
+                if entry["folderId"]:
+                    entry["folderName"] = folder_map.get(
+                        entry["folderId"], f"Unknown Folder ({entry['folderId']})"
+                    )
+                schedules.append(entry)
+        except Exception as e:
+            self.logger.debug(f"Error getting all schedules: {e}", exc_info=True)
+
+        return schedules
+
+    def get_schedule(self, schedule_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific schedule by ID.
+        """
+        try:
+            if schedule_id in indigo.schedules:
+                return self._schedule_to_dict(indigo.schedules[schedule_id])
+        except Exception as e:
+            self.logger.debug(f"Error getting schedule {schedule_id}: {e}", exc_info=True)
+
+        return None
+
+    # Namespaces whose getDependencies command serves each entity type.
+    _DEPENDENCY_NAMESPACES = {
+        "device": "device",
+        "variable": "variable",
+        "action_group": "actionGroup",
+        "trigger": "trigger",
+        "schedule": "schedule",
+    }
+
+    def get_dependencies(self, entity_type: str, entity_id: int) -> Dict[str, Any]:
+        """
+        Get the server-computed reverse dependency graph for an element.
+        Slow on the server side — never call in a loop.
+        """
+        namespace_name = self._DEPENDENCY_NAMESPACES.get(entity_type)
+        if namespace_name is None:
+            return {"error": f"Unsupported entity_type: {entity_type}"}
+        try:
+            namespace = getattr(indigo, namespace_name)
+            deps = namespace.getDependencies(entity_id)
+            result: Dict[str, Any] = {}
+            for indigo_key, out_key in (
+                ("triggers", "triggers"),
+                ("schedules", "schedules"),
+                ("actionGroups", "action_groups"),
+                ("devices", "devices"),
+                ("variables", "variables"),
+                ("controlPages", "control_pages"),
+            ):
+                entries = []
+                try:
+                    for item in deps[indigo_key]:
+                        entries.append({"id": item["ID"], "name": item["Name"]})
+                except Exception:
+                    pass
+                result[out_key] = entries
+            return result
+        except Exception as e:
+            self.logger.debug(
+                f"Error getting dependencies for {entity_type} {entity_id}: {e}", exc_info=True
+            )
+            return {"error": str(e)}
+
+    def get_db_file_path(self) -> Optional[str]:
+        """
+        Get the filesystem path of Indigo's active database file.
+        """
+        try:
+            return indigo.server.getDbFilePath()
+        except Exception as e:
+            self.logger.debug(f"Error getting db file path: {e}", exc_info=True)
+            return None
+
+    def get_logs_folder_path(self) -> Optional[str]:
+        """
+        Get the filesystem path of Indigo's Logs folder.
+        """
+        try:
+            return indigo.server.getLogsFolderPath()
+        except Exception as e:
+            self.logger.debug(f"Error getting logs folder path: {e}", exc_info=True)
+            return None
 
     def set_device_color_levels(
         self,

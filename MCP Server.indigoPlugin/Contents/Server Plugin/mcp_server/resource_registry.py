@@ -57,4 +57,30 @@ def get_resource_schemas(resource_functions):
         "function": resource_functions["get_action"]
     }
 
+    # Trigger resources
+    resources["indigo://triggers"] = {
+        "name": "Triggers",
+        "description": "List all Indigo triggers",
+        "function": resource_functions["list_triggers"]
+    }
+
+    resources["indigo://triggers/{trigger_id}"] = {
+        "name": "Trigger",
+        "description": "Get a specific trigger with its conditions and actions",
+        "function": resource_functions["get_trigger"]
+    }
+
+    # Schedule resources
+    resources["indigo://schedules"] = {
+        "name": "Schedules",
+        "description": "List all Indigo schedules",
+        "function": resource_functions["list_schedules"]
+    }
+
+    resources["indigo://schedules/{schedule_id}"] = {
+        "name": "Schedule",
+        "description": "Get a specific schedule with its conditions and actions",
+        "function": resource_functions["get_schedule"]
+    }
+
     return resources

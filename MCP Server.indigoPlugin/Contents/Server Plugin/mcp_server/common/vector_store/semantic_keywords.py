@@ -153,6 +153,10 @@ def generate_batch_device_keywords(
                 keywords.update(_generate_variable_keywords(entity))
             elif collection_name == "actions":
                 keywords.update(_generate_action_keywords(entity))
+            elif collection_name == "triggers":
+                keywords.update(_generate_trigger_keywords(entity))
+            elif collection_name == "schedules":
+                keywords.update(_generate_schedule_keywords(entity))
             
             # Add cached/batch LLM keywords if available
             if entity_id in all_llm_keywords:
@@ -205,6 +209,10 @@ def generate_entity_keywords(entity: Dict[str, Any], entity_type: str) -> List[s
             keywords.update(_generate_variable_keywords(entity))
         elif entity_type == "actions":
             keywords.update(_generate_action_keywords(entity))
+        elif entity_type == "triggers":
+            keywords.update(_generate_trigger_keywords(entity))
+        elif entity_type == "schedules":
+            keywords.update(_generate_schedule_keywords(entity))
         
         # Add LLM-generated contextual keywords (enhanced semantic understanding)
         llm_keywords = _generate_llm_keywords(entity, entity_type)
@@ -349,11 +357,46 @@ def _generate_action_keywords(action: Dict[str, Any]) -> Set[str]:
         keywords.add("time_based")
     if any(word in name for word in ["all", "house", "whole"]):
         keywords.add("global")
-    
+
     # Location keywords from name
     location_keywords = _extract_location_keywords(name)
     keywords.update(location_keywords)
-    
+
+    return keywords
+
+
+def _generate_trigger_keywords(trigger: Dict[str, Any]) -> Set[str]:
+    """Generate semantic keywords for a trigger."""
+    keywords = {"trigger", "automation"}
+
+    trigger_type = trigger.get("type", "")
+    if trigger_type:
+        keywords.add(trigger_type)
+
+    keywords.add("enabled" if trigger.get("enabled", True) else "disabled")
+
+    name = trigger.get("name", "").lower()
+    if any(word in name for word in ["motion", "sensor", "door", "window"]):
+        keywords.add("sensor_driven")
+    if any(word in name for word in ["security", "alarm", "lock"]):
+        keywords.add("security")
+    keywords.update(_extract_location_keywords(name))
+
+    return keywords
+
+
+def _generate_schedule_keywords(schedule: Dict[str, Any]) -> Set[str]:
+    """Generate semantic keywords for a schedule."""
+    keywords = {"schedule", "timer", "automation", "time_based"}
+
+    for field in ("date_type", "time_type"):
+        value = schedule.get(field, "")
+        if value:
+            keywords.add(str(value))
+
+    keywords.add("enabled" if schedule.get("enabled", True) else "disabled")
+    keywords.update(_extract_location_keywords(schedule.get("name", "").lower()))
+
     return keywords
 
 

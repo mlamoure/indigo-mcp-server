@@ -33,6 +33,7 @@ class ToolWrappers:
         log_query_handler,
         plugin_control_handler,
         data_provider,
+        automation_handler=None,
         subscription_handler=None,
         logger: Optional[logging.Logger] = None
     ):
@@ -52,6 +53,7 @@ class ToolWrappers:
             log_query_handler: Log query handler
             plugin_control_handler: Plugin control handler
             data_provider: Data provider for direct entity access
+            automation_handler: Trigger/schedule/action-group introspection handler
             logger: Optional logger instance
         """
         self.search_handler = search_handler
@@ -66,6 +68,7 @@ class ToolWrappers:
         self.log_query_handler = log_query_handler
         self.plugin_control_handler = plugin_control_handler
         self.data_provider = data_provider
+        self.automation_handler = automation_handler
         self.subscription_handler = subscription_handler
         self.logger = logger or logging.getLogger(__name__)
 
@@ -430,6 +433,69 @@ class ToolWrappers:
             line_count=line_count, show_timestamp=show_timestamp
         )
 
+    def tool_list_triggers(
+        self,
+        name_contains: str = None,
+        enabled_only: bool = False,
+        trigger_type: str = None,
+        folder_id: int = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> str:
+        """List triggers tool implementation."""
+        return self._call(
+            "List triggers",
+            self.automation_handler.list_triggers,
+            name_contains=name_contains, enabled_only=enabled_only,
+            trigger_type=trigger_type, folder_id=folder_id,
+            limit=limit, offset=offset
+        )
+
+    def tool_list_schedules(
+        self,
+        name_contains: str = None,
+        enabled_only: bool = False,
+        folder_id: int = None,
+        sort_by: str = "next_execution",
+        limit: int = 50,
+        offset: int = 0
+    ) -> str:
+        """List schedules tool implementation."""
+        return self._call(
+            "List schedules",
+            self.automation_handler.list_schedules,
+            name_contains=name_contains, enabled_only=enabled_only,
+            folder_id=folder_id, sort_by=sort_by, limit=limit, offset=offset
+        )
+
+    def tool_get_automation_details(
+        self,
+        entity_type: str,
+        entity_id: int,
+        include_scripts: bool = True
+    ) -> str:
+        """Get automation details tool implementation."""
+        return self._call(
+            "Explain automation",
+            self.automation_handler.get_details,
+            entity_type=entity_type, entity_id=entity_id,
+            include_scripts=include_scripts
+        )
+
+    def tool_find_automation_references(
+        self,
+        entity_type: str,
+        entity_id: int,
+        include_server_check: bool = True
+    ) -> str:
+        """Find automation references tool implementation."""
+        return self._call(
+            "Find automation references",
+            self.automation_handler.find_references,
+            entity_type=entity_type, entity_id=entity_id,
+            include_server_check=include_server_check
+        )
+
     def tool_list_plugins(self, include_disabled: bool = False) -> str:
         """List plugins tool implementation."""
         return self._call(
@@ -510,4 +576,26 @@ class ToolWrappers:
         return self._get_by_id(
             "Look up action group", self.data_provider.get_action_group,
             action_id, f"Action group {action_id} not found"
+        )
+
+    def resource_list_triggers(self) -> str:
+        """List all triggers resource."""
+        return self._call("List triggers", self.automation_handler.list_triggers, limit=None)
+
+    def resource_get_trigger(self, trigger_id: str) -> str:
+        """Get specific trigger resource (full details)."""
+        return self._call(
+            "Explain trigger", self.automation_handler.get_details,
+            entity_type="trigger", entity_id=trigger_id
+        )
+
+    def resource_list_schedules(self) -> str:
+        """List all schedules resource."""
+        return self._call("List schedules", self.automation_handler.list_schedules, limit=None)
+
+    def resource_get_schedule(self, schedule_id: str) -> str:
+        """Get specific schedule resource (full details)."""
+        return self._call(
+            "Explain schedule", self.automation_handler.get_details,
+            entity_type="schedule", entity_id=schedule_id
         )

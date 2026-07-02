@@ -42,7 +42,7 @@ class QueryParser:
         """
         # Default parameters
         params = {
-            "entity_types": ["devices", "variables", "actions"],
+            "entity_types": ["devices", "variables", "actions", "triggers", "schedules"],
             "device_types": device_types or [],
             "top_k": 10,  # Reasonable default for most searches
             "threshold": 0.15,  # Lower threshold to capture more relevant results
@@ -61,8 +61,10 @@ class QueryParser:
             # Convert singular entity types to plural for vector store compatibility
             plural_mapping = {
                 "device": "devices",
-                "variable": "variables", 
-                "action": "actions"
+                "variable": "variables",
+                "action": "actions",
+                "trigger": "triggers",
+                "schedule": "schedules"
             }
             params["entity_types"] = [plural_mapping.get(et, et) for et in entity_types]
         # Finally, parse from query if no explicit parameters
@@ -89,7 +91,7 @@ class QueryParser:
         """Extract entity types to search from query."""
         # Always search all entity types to ensure comprehensive results
         # This prevents missing relevant actions or variables due to keyword ambiguity
-        return ["devices", "variables", "actions"]
+        return ["devices", "variables", "actions", "triggers", "schedules"]
     
     def _extract_result_count_and_fields(self, query_lower: str) -> tuple[int, bool]:
         """Extract desired result count and whether to use minimal fields from query."""

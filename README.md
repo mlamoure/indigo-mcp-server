@@ -269,13 +269,13 @@ list_devices(limit=50, offset=50)
 search_entities("bedroom lights", limit=20)
 ```
 
-**Tools with Pagination:** `search_entities`, `list_devices`, `list_variables`, `list_action_groups`, `get_devices_by_state`
+**Tools with Pagination:** `search_entities`, `list_devices`, `list_variables`, `list_action_groups`, `get_devices_by_state`, `list_triggers`, `list_schedules`
 
 ## Available Tools
 
 ### Search and Query
 
-- **search_entities**: Natural language search across devices, variables, action groups (pagination supported)
+- **search_entities**: Natural language search across devices, variables, action groups, triggers, and schedules (pagination supported)
 - **list_devices**: Get all devices with optional state filtering (pagination supported)
 - **list_variables**: Get all variables with current values (pagination supported)
 - **list_action_groups**: Get all action groups/scenes (pagination supported)
@@ -285,6 +285,18 @@ search_entities("bedroom lights", limit=20)
 - **get_device_by_id**: Get specific device by exact ID
 - **get_variable_by_id**: Get specific variable by exact ID
 - **get_action_group_by_id**: Get specific action group by exact ID
+
+### Automation Introspection
+
+*Added in v2026.6.0.* Triggers, schedules, and action groups can now be inspected in
+full — including the action steps and condition trees that Indigo's scripting API
+does not expose (read from the server's database file, refreshed within minutes of
+changes).
+
+- **list_triggers**: List triggers with a one-line summary of what each watches; filter by name/type/enabled/folder (pagination supported)
+- **list_schedules**: List schedules including **next execution time** and a timing summary (pagination supported)
+- **get_automation_details**: Explain a trigger, schedule, or action group — its event/timing, condition tree, and every action step (device commands, variable writes, nested action groups, embedded Python scripts, plugin actions with configuration), with entity IDs resolved to names
+- **find_automation_references**: Reverse lookup — which triggers/schedules/action groups watch, act on, set, or condition-read a device, variable, or action group, including indirect paths through nested action groups, cross-checked against the Indigo server's own dependency graph
 
 ### Device Control
 
