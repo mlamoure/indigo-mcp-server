@@ -312,6 +312,14 @@ changes).
 - **automation_control**: Lifecycle control for triggers, schedules, and action groups — `enable`/`disable` (with optional `duration_seconds` auto-revert: "disable this trigger for 2 hours"), `execute`, `duplicate` (the supported way to create a variant, since Indigo has no API to author actions/conditions from scratch), `move_to_folder`, `remove_delayed_actions`, and `delete`. Deletion is double-gated: it requires `confirm=true` **and** the *Allow AI to delete automations* plugin preference (off by default).
 - **update_automation**: Modify basic fields — names/descriptions, trigger event settings (watched device/variable, state, comparison, value), schedule timing (date/time type, time, sunrise/sunset offset). Gated behind the *Allow AI to edit automations (experimental)* plugin preference (off by default); returns a before/after diff. Action steps and conditions can never be modified — Indigo provides no API for that; edit those in the Indigo UI.
 
+> **Headless gate control:** the two write gates are normally toggled in the plugin config UI.
+> For scripted administration you can also create
+> `<install>/Preferences/Plugins/com.vtmikel.mcp_server/automation_gates.json` on the server
+> containing `{"enable_automation_delete": true, "enable_automation_editing": true}` — a gate is
+> open if **either** the preference or the override file enables it (writing that file requires
+> filesystem access to the server, the same trust level as the config UI). Delete the file to
+> fall back to the preferences.
+
 ### Device Control
 
 - **device_turn_on/off**: Control device power state

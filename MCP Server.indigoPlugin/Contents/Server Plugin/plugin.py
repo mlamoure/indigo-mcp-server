@@ -298,6 +298,35 @@ class Plugin(indigo.PluginBase):
         return urls
 
     ########################################
+    def _automation_gate(self, pref_name: str) -> bool:
+        """
+        Whether an automation write gate is open.
+
+        Primary control is the plugin preference checkbox. A JSON override
+        file inside the plugin's support folder can also open a gate for
+        headless administration — writing it requires filesystem access to
+        the server, the same trust level as the config UI:
+
+            <install>/Preferences/Plugins/com.vtmikel.mcp_server/automation_gates.json
+            {"enable_automation_delete": true, "enable_automation_editing": true}
+        """
+        if getattr(self, pref_name, False):
+            return True
+        try:
+            override_path = os.path.join(
+                indigo.server.getInstallFolderPath(),
+                "Preferences/Plugins/com.vtmikel.mcp_server/automation_gates.json",
+            )
+            with open(override_path) as override_file:
+                overrides = json.load(override_file)
+            return bool(overrides.get(pref_name, False))
+        except FileNotFoundError:
+            return False
+        except Exception as e:
+            self.logger.debug(f"automation_gates.json unreadable: {e}")
+            return False
+
+    ########################################
     def _apply_environment(self) -> None:
         """
         Push the current plugin configuration into environment variables for
@@ -425,8 +454,8 @@ class Plugin(indigo.PluginBase):
                 logger=self.logger,
                 subscription_handler=subscription_handler,
                 server_version=self.pluginVersion,
-                automation_delete_supplier=lambda: self.enable_automation_delete,
-                automation_editing_supplier=lambda: self.enable_automation_editing,
+                automation_delete_supplier=lambda: self._automation_gate("enable_automation_delete"),
+                automation_editing_supplier=lambda: self._automation_gate("enable_automation_editing"),
             )
 
             # Log MCP client connection information (full list in the menu action)
