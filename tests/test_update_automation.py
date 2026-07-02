@@ -3,7 +3,6 @@ Tests for update_automation: the editing gate, field whitelists, reference
 validation, and the provider's replaceOnServer flow with enum conversion.
 """
 
-import datetime
 import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -145,19 +144,22 @@ class TestProviderUpdateFields:
         )
 
 
-class TestScheduleTimeParsing:
-    def test_parse_absolute_time(self):
-        parsed = IndigoDataProvider._parse_absolute_time("21:30")
-        assert parsed == datetime.datetime(2000, 1, 1, 21, 30, 0)
-        parsed = IndigoDataProvider._parse_absolute_time("06:15:30")
-        assert parsed == datetime.datetime(2000, 1, 1, 6, 15, 30)
-        with pytest.raises(ValueError):
-            IndigoDataProvider._parse_absolute_time("9pm")
+class TestScheduleWhitelist:
+    def test_schedule_timing_fields_rejected(self):
+        # Schedule timing attrs are read-only on IOM instances (verified live
+        # on Indigo 2025.2) — the whitelist must reject them up front.
+        provider = IndigoDataProvider(logger=Mock())
+        fake = Mock()
+        with patch.object(idp_module, "indigo", fake, create=True):
+            for field in ("date_type", "time_type", "absolute_time",
+                          "sun_delta_seconds", "randomize_by_seconds", "auto_delete"):
+                result = provider.update_automation_fields("schedule", 1, {field: "x"})
+                assert "not editable" in result["error"], field
 
     def test_enum_conversion(self):
         fake = Mock()
-        fake.kDateType = Mock(spec=["EveryDay", "DaysOfWeek"])
-        fake.kDateType.DaysOfWeek = "kDateType.DaysOfWeek"
+        fake.kVarChange = Mock(spec=["Changes", "BecomesTrue"])
+        fake.kVarChange.Changes = "kVarChange.Changes"
         with patch.object(idp_module, "indigo", fake, create=True):
-            value = IndigoDataProvider._to_indigo_enum("kDateType", "days_of_week")
-        assert value == "kDateType.DaysOfWeek"
+            value = IndigoDataProvider._to_indigo_enum("kVarChange", "changes")
+        assert value == "kVarChange.Changes"
