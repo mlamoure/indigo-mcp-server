@@ -842,15 +842,13 @@ class IndigoDataProvider(DataProvider):
         "variable_change_type": ("variableChangeType", "kVarChange"),
         "variable_value": ("variableValue", None),
     }
+    # Schedule timing attributes (dateType, timeType, absoluteTime, sunDelta,
+    # randomizeBy, autoDelete) are READ-ONLY on IOM Schedule instances —
+    # verified live on Indigo 2025.2 ("the attribute X is read-only on this
+    # instance"). Only identity fields can be edited.
     _SCHEDULE_EDIT_ATTRS = {
         "name": ("name", None),
         "description": ("description", None),
-        "date_type": ("dateType", "kDateType"),
-        "time_type": ("timeType", "kTimeType"),
-        "absolute_time": ("absoluteTime", None),  # "HH:MM[:SS]" string
-        "sun_delta_seconds": ("sunDelta", None),
-        "randomize_by_seconds": ("randomizeBy", None),
-        "auto_delete": ("autoDelete", None),
     }
     _ACTION_GROUP_EDIT_ATTRS = {
         "name": ("name", None),
@@ -872,18 +870,6 @@ class IndigoDataProvider(DataProvider):
             raise ValueError(f"Invalid {enum_name} value {value!r}; valid: {valid}")
         return getattr(enum_cls, camel)
 
-    @staticmethod
-    def _parse_absolute_time(value: str):
-        import datetime as _dt
-
-        parts = str(value).split(":")
-        if len(parts) not in (2, 3):
-            raise ValueError(f"absolute_time must be HH:MM or HH:MM:SS, got {value!r}")
-        hour, minute = int(parts[0]), int(parts[1])
-        second = int(parts[2]) if len(parts) == 3 else 0
-        # Indigo stores schedule times on a year-2000 base date.
-        return _dt.datetime(2000, 1, 1, hour, minute, second)
-
     def _snapshot_fields(self, elem, entity_type: str, field_names) -> Dict[str, Any]:
         attr_map = self._EDIT_ATTRS_BY_TYPE[entity_type]
         snapshot = {}
@@ -892,12 +878,6 @@ class IndigoDataProvider(DataProvider):
             value = getattr(elem, attr, None)
             if enum_name is not None:
                 value = self._enum_label(value)
-            elif field == "absolute_time":
-                value = (
-                    value.strftime("%H:%M:%S")
-                    if value is not None and getattr(value, "year", 1) != 1
-                    else None
-                )
             snapshot[field] = value
         return snapshot
 
@@ -938,8 +918,6 @@ class IndigoDataProvider(DataProvider):
                 attr, enum_name = attr_map[field]
                 if enum_name is not None:
                     value = self._to_indigo_enum(enum_name, value)
-                elif field == "absolute_time":
-                    value = self._parse_absolute_time(value)
                 setattr(elem, attr, value)
 
             elem.replaceOnServer()

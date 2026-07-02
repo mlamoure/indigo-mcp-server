@@ -108,7 +108,28 @@ class AutomationHandler(BaseToolHandler):
         if not isinstance(entity_id, int):
             return "?"
         name = self.structure_store.lookup_name(entity_kind, entity_id)
+        if name is None:
+            # Freshly created elements aren't in the database file yet.
+            name = self._live_entity_name(entity_kind, entity_id)
         return name if name is not None else str(entity_id)
+
+    def _live_entity_name(self, entity_kind: str, entity_id: int) -> Optional[str]:
+        try:
+            if entity_kind == "trigger":
+                entity = self.data_provider.get_trigger(entity_id)
+            elif entity_kind == "schedule":
+                entity = self.data_provider.get_schedule(entity_id)
+            elif entity_kind == "action_group":
+                entity = self.data_provider.get_action(entity_id)
+            elif entity_kind == "device":
+                entity = self.data_provider.get_device(entity_id)
+            elif entity_kind == "variable":
+                entity = self.data_provider.get_variable(entity_id)
+            else:
+                entity = None
+        except Exception:
+            entity = None
+        return entity.get("name") if entity else None
 
     # ------------------------------------------------------------------
     # list_schedules
