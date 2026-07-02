@@ -662,19 +662,45 @@ def get_tool_schemas(tool_functions):
         "function": tool_functions["get_action_group_by_id"]
     }
 
-    # Log query tool
+    # Event log tool — recent tail by default, historical search when filtered
     tools["query_event_log"] = {
-        "description": "Query recent Indigo server event log entries",
+        "description": "Read the Indigo event log, newest first. Called with no filters it returns the most recent entries from Indigo's live event log (fast). Add any of query/types/start_time/end_time and it scans the daily log files instead, reaching full history with text/regex matching, type filters, and time ranges. Each entry is {timestamp, type, message}; line types include 'Trigger' (a trigger fired), 'Schedule' (a schedule executed), 'Action Group' (an action group ran), 'Z-Wave' and plugin names (device updates), and error types. The response 'source' field is 'live' or 'log_files'.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "line_count": {
-                    "type": "integer",
-                    "description": "Number of log entries to return (default: 20)"
+                "query": {
+                    "type": "string",
+                    "description": "Case-insensitive substring to match (or a regular expression when regex=true). Supplying this scans the historical log files."
                 },
-                "show_timestamp": {
+                "regex": {
                     "type": "boolean",
-                    "description": "Include timestamps in log entries (default: true)"
+                    "description": "Treat query as a regular expression (default: false)"
+                },
+                "types": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Only entries of these types, e.g. [\"Trigger\", \"Schedule\", \"Action Group\", \"Z-Wave\"]. Supplying this scans the historical log files."
+                },
+                "start_time": {
+                    "type": "string",
+                    "description": "ISO datetime lower bound, e.g. 2026-07-01T00:00:00. Supplying this scans the historical log files."
+                },
+                "end_time": {
+                    "type": "string",
+                    "description": "ISO datetime upper bound"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum entries to return (default: 50)",
+                    "default": 50,
+                    "minimum": 1,
+                    "maximum": 1000
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Number of entries to skip (default: 0)",
+                    "default": 0,
+                    "minimum": 0
                 }
             }
         },
@@ -815,50 +841,6 @@ def get_tool_schemas(tool_functions):
     # ------------------------------------------------------------------
     # Event-log investigation tools
     # ------------------------------------------------------------------
-
-    tools["search_event_log"] = {
-        "description": "Search Indigo's historical event-log files (one per day) with text/regex matching, type filters, and time ranges. Log line types include 'Trigger' (a trigger fired), 'Schedule' (a schedule executed), 'Action Group' (an action group ran), 'Z-Wave' and plugin names (device updates), and error types. Complements query_event_log (which only returns the most recent lines).",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Case-insensitive substring to match in the log line (or a regular expression when regex=true)"
-                },
-                "regex": {
-                    "type": "boolean",
-                    "description": "Treat query as a regular expression (default: false)"
-                },
-                "types": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Only lines of these types, e.g. [\"Trigger\", \"Schedule\", \"Action Group\", \"Z-Wave\"]"
-                },
-                "start_time": {
-                    "type": "string",
-                    "description": "ISO datetime lower bound, e.g. 2026-07-01T00:00:00"
-                },
-                "end_time": {
-                    "type": "string",
-                    "description": "ISO datetime upper bound"
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum matches to return (default: 100)",
-                    "default": 100,
-                    "minimum": 1,
-                    "maximum": 1000
-                },
-                "offset": {
-                    "type": "integer",
-                    "description": "Number of matches to skip (default: 0)",
-                    "default": 0,
-                    "minimum": 0
-                }
-            }
-        },
-        "function": tool_functions["search_event_log"]
-    }
 
     tools["investigate_event"] = {
         "description": "Answer 'what caused this?' for a device change: locates the device's state-change line in the event log, collects the triggers/schedules/action groups that fired in a window around it, and ranks them as candidate causes using structural evidence (does the automation actually act on this device, directly or through action-group chains?) plus temporal proximity. Returns evidence per candidate — follow up with get_automation_details on the top candidate. An empty candidate list means the change was likely manual, external, or plugin-internal.",

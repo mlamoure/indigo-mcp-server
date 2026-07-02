@@ -36,9 +36,10 @@ def make_wrappers(**overrides):
         action_control_handler=Mock(),
         historical_analysis_handler=Mock(),
         list_handlers=Mock(),
-        log_query_handler=Mock(),
         plugin_control_handler=Mock(),
         data_provider=Mock(),
+        automation_handler=Mock(),
+        log_search_handler=Mock(),
         subscription_handler=Mock(),
         logger=Mock(),
     )

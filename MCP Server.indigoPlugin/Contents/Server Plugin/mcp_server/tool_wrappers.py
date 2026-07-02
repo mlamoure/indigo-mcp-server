@@ -30,7 +30,6 @@ class ToolWrappers:
         action_control_handler,
         historical_analysis_handler,
         list_handlers,
-        log_query_handler,
         plugin_control_handler,
         data_provider,
         automation_handler=None,
@@ -51,7 +50,6 @@ class ToolWrappers:
             action_control_handler: Action control handler
             historical_analysis_handler: Historical analysis handler
             list_handlers: List handlers instance
-            log_query_handler: Log query handler
             plugin_control_handler: Plugin control handler
             data_provider: Data provider for direct entity access
             automation_handler: Trigger/schedule/action-group introspection handler
@@ -66,7 +64,6 @@ class ToolWrappers:
         self.action_control_handler = action_control_handler
         self.historical_analysis_handler = historical_analysis_handler
         self.list_handlers = list_handlers
-        self.log_query_handler = log_query_handler
         self.plugin_control_handler = plugin_control_handler
         self.data_provider = data_provider
         self.automation_handler = automation_handler
@@ -425,14 +422,21 @@ class ToolWrappers:
 
     def tool_query_event_log(
         self,
-        line_count: int = 20,
-        show_timestamp: bool = True
+        query: str = None,
+        regex: bool = False,
+        types: List[str] = None,
+        start_time: str = None,
+        end_time: str = None,
+        limit: int = 50,
+        offset: int = 0
     ) -> str:
-        """Query event log tool implementation."""
+        """Query event log tool implementation (recent tail or filtered search)."""
         return self._call(
             "Read event log",
-            self.log_query_handler.query,
-            line_count=line_count, show_timestamp=show_timestamp
+            self.log_search_handler.query_event_log,
+            query=query, regex=regex, types=types,
+            start_time=start_time, end_time=end_time,
+            limit=limit, offset=offset
         )
 
     def tool_list_triggers(
@@ -496,25 +500,6 @@ class ToolWrappers:
             self.automation_handler.find_references,
             entity_type=entity_type, entity_id=entity_id,
             include_server_check=include_server_check
-        )
-
-    def tool_search_event_log(
-        self,
-        query: str = None,
-        regex: bool = False,
-        types: List[str] = None,
-        start_time: str = None,
-        end_time: str = None,
-        limit: int = 100,
-        offset: int = 0
-    ) -> str:
-        """Search event log tool implementation."""
-        return self._call(
-            "Search event log",
-            self.log_search_handler.search_event_log,
-            query=query, regex=regex, types=types,
-            start_time=start_time, end_time=end_time,
-            limit=limit, offset=offset
         )
 
     def tool_investigate_event(
