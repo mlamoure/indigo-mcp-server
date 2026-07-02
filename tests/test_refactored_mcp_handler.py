@@ -81,8 +81,8 @@ class TestRefactoredMCPHandler:
         }))
         return store
 
-    def test_tool_registry_returns_all_31_tools(self):
-        """Test that tool_registry.get_tool_schemas() returns all 31 tools."""
+    def test_tool_registry_returns_all_35_tools(self):
+        """Test that tool_registry.get_tool_schemas() returns all 35 tools."""
         tool_functions = {name: Mock() for name in [
             "search_entities", "get_devices_by_type", "device_turn_on",
             "device_turn_off", "device_set_brightness", "device_set_rgb_color",
@@ -95,13 +95,15 @@ class TestRefactoredMCPHandler:
             "list_action_groups", "list_variable_folders",
             "get_devices_by_state", "get_device_by_id",
             "get_variable_by_id", "get_action_group_by_id",
-            "query_event_log", "list_plugins", "get_plugin_by_id",
+            "query_event_log", "list_triggers", "list_schedules",
+            "get_automation_details", "find_automation_references",
+            "list_plugins", "get_plugin_by_id",
             "restart_plugin", "get_plugin_status"
         ]}
 
         tools = get_tool_schemas(tool_functions)
 
-        assert len(tools) == 31, f"Expected 31 tools, got {len(tools)}"
+        assert len(tools) == 35, f"Expected 35 tools, got {len(tools)}"
         assert "search_entities" in tools
         assert "list_devices" in tools
         assert "device_turn_on" in tools
@@ -112,22 +114,25 @@ class TestRefactoredMCPHandler:
             assert "function" in tool_def
             assert tool_def["function"] is not None
 
-    def test_resource_registry_returns_all_6_resources(self):
-        """Test that resource_registry.get_resource_schemas() returns all 6 resources."""
+    def test_resource_registry_returns_all_10_resources(self):
+        """Test that resource_registry.get_resource_schemas() returns all 10 resources."""
         resource_functions = {name: Mock() for name in [
             "list_devices", "get_device", "list_variables",
-            "get_variable", "list_actions", "get_action"
+            "get_variable", "list_actions", "get_action",
+            "list_triggers", "get_trigger", "list_schedules", "get_schedule"
         ]}
 
         resources = get_resource_schemas(resource_functions)
 
-        assert len(resources) == 6, f"Expected 6 resources, got {len(resources)}"
+        assert len(resources) == 10, f"Expected 10 resources, got {len(resources)}"
         assert "indigo://devices" in resources
         assert "indigo://devices/{device_id}" in resources
         assert "indigo://variables" in resources
         assert "indigo://variables/{variable_id}" in resources
         assert "indigo://actions" in resources
         assert "indigo://actions/{action_id}" in resources
+        assert "indigo://triggers" in resources
+        assert "indigo://schedules/{schedule_id}" in resources
         # Verify structure
         for uri, resource_def in resources.items():
             assert "name" in resource_def
@@ -190,12 +195,12 @@ class TestRefactoredMCPHandler:
         handler = MCPHandler(data_provider=mock_data_provider, logger=mock_logger)
 
         # Verify tools registered
-        assert len(handler._tools) == 31
+        assert len(handler._tools) == 35
         assert "search_entities" in handler._tools
         assert "list_devices" in handler._tools
 
         # Verify resources registered
-        assert len(handler._resources) == 6
+        assert len(handler._resources) == 10
         assert "indigo://devices" in handler._resources
 
         # Verify tool structure
@@ -234,7 +239,7 @@ class TestRefactoredMCPHandler:
         assert response["id"] == 1
         assert "result" in response
         assert "tools" in response["result"]
-        assert len(response["result"]["tools"]) == 31
+        assert len(response["result"]["tools"]) == 35
 
         # Verify tool entries have correct structure
         for tool in response["result"]["tools"]:
@@ -264,7 +269,7 @@ class TestRefactoredMCPHandler:
         assert response["id"] == 1
         assert "result" in response
         assert "resources" in response["result"]
-        assert len(response["result"]["resources"]) == 6
+        assert len(response["result"]["resources"]) == 10
 
         # Verify resource entries have correct structure
         for resource in response["result"]["resources"]:
@@ -318,7 +323,9 @@ class TestRefactoredMCPHandler:
             "list_action_groups", "list_variable_folders",
             "get_devices_by_state", "get_device_by_id",
             "get_variable_by_id", "get_action_group_by_id",
-            "query_event_log", "list_plugins", "get_plugin_by_id",
+            "query_event_log", "list_triggers", "list_schedules",
+            "get_automation_details", "find_automation_references",
+            "list_plugins", "get_plugin_by_id",
             "restart_plugin", "get_plugin_status"
         ]
         tool_functions = {name: Mock() for name in all_tool_names}
@@ -327,15 +334,15 @@ class TestRefactoredMCPHandler:
 
         paginated_tools = [
             "search_entities", "list_devices", "list_variables",
-            "list_action_groups", "get_devices_by_state", "get_devices_by_type"
+            "list_action_groups", "get_devices_by_state", "get_devices_by_type",
+            "list_triggers", "list_schedules"
         ]
 
         for tool_name in paginated_tools:
             tool = tools[tool_name]
             properties = tool["inputSchema"]["properties"]
 
-            if tool_name in ["search_entities", "list_devices", "list_variables",
-                            "list_action_groups", "get_devices_by_state", "get_devices_by_type"]:
+            if tool_name in paginated_tools:
                 assert "limit" in properties, f"{tool_name} missing limit parameter"
                 assert "offset" in properties, f"{tool_name} missing offset parameter"
 
@@ -364,7 +371,9 @@ class TestBackwardCompatibility:
             "list_action_groups", "list_variable_folders",
             "get_devices_by_state", "get_device_by_id",
             "get_variable_by_id", "get_action_group_by_id",
-            "query_event_log", "list_plugins", "get_plugin_by_id",
+            "query_event_log", "list_triggers", "list_schedules",
+            "get_automation_details", "find_automation_references",
+            "list_plugins", "get_plugin_by_id",
             "restart_plugin", "get_plugin_status"
         }
 
@@ -381,12 +390,17 @@ class TestBackwardCompatibility:
             "indigo://variables",
             "indigo://variables/{variable_id}",
             "indigo://actions",
-            "indigo://actions/{action_id}"
+            "indigo://actions/{action_id}",
+            "indigo://triggers",
+            "indigo://triggers/{trigger_id}",
+            "indigo://schedules",
+            "indigo://schedules/{schedule_id}"
         }
 
         resource_functions = {name: Mock() for name in [
             "list_devices", "get_device", "list_variables",
-            "get_variable", "list_actions", "get_action"
+            "get_variable", "list_actions", "get_action",
+            "list_triggers", "get_trigger", "list_schedules", "get_schedule"
         ]}
         resources = get_resource_schemas(resource_functions)
 

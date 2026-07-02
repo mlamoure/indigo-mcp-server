@@ -130,13 +130,20 @@ class VectorStoreManager:
             device_count = len(entities["devices"])
             variable_count = len(entities["variables"])
             action_count = len(entities["actions"])
-            total_entities = device_count + variable_count + action_count
+            trigger_count = len(entities.get("triggers", []))
+            schedule_count = len(entities.get("schedules", []))
+            total_entities = (
+                device_count + variable_count + action_count
+                + trigger_count + schedule_count
+            )
 
             # Update vector store
             self.vector_store.update_embeddings(
                 devices=entities["devices"],
                 variables=entities["variables"],
-                actions=entities["actions"]
+                actions=entities["actions"],
+                triggers=entities.get("triggers"),
+                schedules=entities.get("schedules")
             )
 
             first_sync = self._last_update_time == 0
@@ -145,7 +152,11 @@ class VectorStoreManager:
 
             # One INFO summary at startup; the 5-minute background re-syncs
             # repeat this line verbatim, so they stay at DEBUG.
-            summary = f"📊 Search index up to date — {device_count} devices, {variable_count} variables, {action_count} actions"
+            summary = (
+                f"📊 Search index up to date — {device_count} devices, "
+                f"{variable_count} variables, {action_count} actions, "
+                f"{trigger_count} triggers, {schedule_count} schedules"
+            )
             if first_sync:
                 self.logger.info(summary)
             else:

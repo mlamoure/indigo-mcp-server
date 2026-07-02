@@ -1,6 +1,6 @@
 """
 Simplified LanceDB vector store for semantic search of Indigo entities.
-Only handles embeddings for devices, variables, and actions.
+Handles embeddings for devices, variables, actions, triggers, and schedules.
 """
 
 import datetime
@@ -19,11 +19,17 @@ from .progress_tracker import create_progress_tracker
 from .semantic_keywords import generate_batch_device_keywords
 
 
+# Entity tables managed by the vector store
+ENTITY_TABLES = ["devices", "variables", "actions", "triggers", "schedules"]
+
 # Field classification constants - define which fields are static vs dynamic
 STATIC_FIELDS = {
     "devices": {"id", "name", "description", "model", "deviceTypeId", "pluginId", "address", "protocol"},
     "variables": {"id", "name", "description", "folderId"},
     "actions": {"id", "name", "description", "folderId"},
+    "triggers": {"id", "name", "description", "folderId", "type", "deviceId",
+                 "stateSelector", "stateValue", "variableId", "pluginId", "pluginTypeId"},
+    "schedules": {"id", "name", "description", "folderId", "date_type", "time_type", "absolute_time"},
 }
 
 # Fields for embedding text generation (subset of static fields)
@@ -31,6 +37,8 @@ EMBEDDING_FIELDS = {
     "devices": {"name", "description", "model", "deviceTypeId", "address"},
     "variables": {"name", "description"},
     "actions": {"name", "description"},
+    "triggers": {"name", "description", "type"},
+    "schedules": {"name", "description"},
 }
 
 
@@ -89,7 +97,7 @@ class VectorStore(VectorStoreInterface):
             # Check existing tables
             
             # Initialize tables for each entity type
-            for table_name in ["devices", "variables", "actions"]:
+            for table_name in ENTITY_TABLES:
                 if table_name not in existing_tables:
                     # Create new table
                     self._create_table(table_name)
@@ -216,7 +224,7 @@ class VectorStore(VectorStoreInterface):
         self.logger.debug("Rebuilding vector store for new embedding model...")
         
         # Drop all entity tables
-        for table_name in ["devices", "variables", "actions"]:
+        for table_name in ENTITY_TABLES:
             try:
                 self.db.drop_table(table_name)
                 self.logger.debug(f"Dropped table: {table_name}")
@@ -224,7 +232,7 @@ class VectorStore(VectorStoreInterface):
                 self.logger.debug(f"Could not drop table {table_name}: {e}")
         
         # Recreate tables
-        for table_name in ["devices", "variables", "actions"]:
+        for table_name in ENTITY_TABLES:
             self._create_table(table_name)
         
         # Update metadata with new model
@@ -362,20 +370,28 @@ class VectorStore(VectorStoreInterface):
         self,
         devices: List[Dict[str, Any]],
         variables: List[Dict[str, Any]],
-        actions: List[Dict[str, Any]]
+        actions: List[Dict[str, Any]],
+        triggers: Optional[List[Dict[str, Any]]] = None,
+        schedules: Optional[List[Dict[str, Any]]] = None
     ) -> None:
         """
         Update embeddings for all entity types.
-        
+
         Args:
             devices: List of device dictionaries
             variables: List of variable dictionaries
             actions: List of action dictionaries
+            triggers: Optional list of trigger dictionaries
+            schedules: Optional list of schedule dictionaries
         """
         # Update each entity type
         self._update_entity_embeddings("devices", devices)
         self._update_entity_embeddings("variables", variables)
         self._update_entity_embeddings("actions", actions)
+        if triggers is not None:
+            self._update_entity_embeddings("triggers", triggers)
+        if schedules is not None:
+            self._update_entity_embeddings("schedules", schedules)
     
     def _update_entity_embeddings(
         self,
@@ -652,7 +668,7 @@ class VectorStore(VectorStoreInterface):
             Metadata includes: total_found, total_returned, truncated
         """
         if entity_types is None:
-            entity_types = ["devices", "variables", "actions"]
+            entity_types = list(ENTITY_TABLES)
         
         # Generate query embedding
         try:
@@ -664,7 +680,7 @@ class VectorStore(VectorStoreInterface):
         all_results = []
         
         for entity_type in entity_types:
-            if entity_type not in ["devices", "variables", "actions"]:
+            if entity_type not in ENTITY_TABLES:
                 continue
                 
             try:
@@ -754,7 +770,7 @@ class VectorStore(VectorStoreInterface):
         # Convert singular to plural for table name
         table_name = entity_type + "s" if not entity_type.endswith("s") else entity_type
         
-        if table_name not in ["devices", "variables", "actions"]:
+        if table_name not in ENTITY_TABLES:
             self.logger.debug(f"Invalid entity type: {entity_type}")
             return
         
@@ -793,7 +809,7 @@ class VectorStore(VectorStoreInterface):
         # Convert singular to plural for table name
         table_name = entity_type + "s" if not entity_type.endswith("s") else entity_type
         
-        if table_name not in ["devices", "variables", "actions"]:
+        if table_name not in ENTITY_TABLES:
             self.logger.error(f"Invalid entity type: {entity_type}")
             return
         
@@ -815,7 +831,7 @@ class VectorStore(VectorStoreInterface):
             "tables": {}
         }
         
-        for table_name in ["devices", "variables", "actions"]:
+        for table_name in ENTITY_TABLES:
             try:
                 table = self.db.open_table(table_name)
                 # IMPORTANT: Must specify a large limit to get all records, otherwise LanceDB defaults to 10

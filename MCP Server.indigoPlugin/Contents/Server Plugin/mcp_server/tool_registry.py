@@ -60,7 +60,7 @@ def get_tool_schemas(tool_functions):
                 "entity_types": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Optional entity types to search"
+                    "description": "Optional entity types to search: device, variable, action, trigger, schedule (default: all)"
                 },
                 "state_filter": {
                     "type": "object",
@@ -677,6 +677,137 @@ def get_tool_schemas(tool_functions):
             }
         },
         "function": tool_functions["query_event_log"]
+    }
+
+    # ------------------------------------------------------------------
+    # Automation introspection tools (triggers, schedules, action groups)
+    # ------------------------------------------------------------------
+
+    tools["list_triggers"] = {
+        "description": "List Indigo triggers with a one-line summary of what each one watches (device state, variable, plugin event, ...). Filter by name, enabled state, type, or folder. Use get_automation_details for a trigger's conditions and actions.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name_contains": {
+                    "type": "string",
+                    "description": "Case-insensitive substring filter on the trigger name"
+                },
+                "enabled_only": {
+                    "type": "boolean",
+                    "description": "Only return enabled triggers (default: false)"
+                },
+                "trigger_type": {
+                    "type": "string",
+                    "description": "Filter by trigger type: device_state_change, variable_change, plugin_event, server_startup, email_received, power_failure, interface_failure, interface_initialized"
+                },
+                "folder_id": {
+                    "type": "integer",
+                    "description": "Only triggers in this folder"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of triggers to return (default: 50)",
+                    "default": 50,
+                    "minimum": 1,
+                    "maximum": 500
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Number of triggers to skip (default: 0)",
+                    "default": 0,
+                    "minimum": 0
+                }
+            }
+        },
+        "function": tool_functions["list_triggers"]
+    }
+
+    tools["list_schedules"] = {
+        "description": "List Indigo schedules (time/date events) including each schedule's next execution time and a human-readable timing summary. Sorted by next execution by default. Use get_automation_details for a schedule's conditions and actions.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name_contains": {
+                    "type": "string",
+                    "description": "Case-insensitive substring filter on the schedule name"
+                },
+                "enabled_only": {
+                    "type": "boolean",
+                    "description": "Only return enabled schedules (default: false)"
+                },
+                "folder_id": {
+                    "type": "integer",
+                    "description": "Only schedules in this folder"
+                },
+                "sort_by": {
+                    "type": "string",
+                    "enum": ["next_execution", "name"],
+                    "description": "Sort order (default: next_execution; schedules without one sort last)"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of schedules to return (default: 50)",
+                    "default": 50,
+                    "minimum": 1,
+                    "maximum": 500
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Number of schedules to skip (default: 0)",
+                    "default": 0,
+                    "minimum": 0
+                }
+            }
+        },
+        "function": tool_functions["list_schedules"]
+    }
+
+    tools["get_automation_details"] = {
+        "description": "Explain a trigger, schedule, or action group in full: the event or timing that fires it, its condition tree, and every action step it executes (device commands, variable writes, nested action groups, embedded Python scripts, plugin actions with their configuration). Entity IDs are resolved to names. Action steps and conditions come from Indigo's database file, which can lag live edits by a few minutes (see meta.structure_source).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "entity_type": {
+                    "type": "string",
+                    "enum": ["trigger", "schedule", "action_group"],
+                    "description": "The kind of automation element"
+                },
+                "entity_id": {
+                    "type": "integer",
+                    "description": "The element ID"
+                },
+                "include_scripts": {
+                    "type": "boolean",
+                    "description": "Include embedded Python script source in action steps (default: true; scripts over 4000 chars are truncated)"
+                }
+            },
+            "required": ["entity_type", "entity_id"]
+        },
+        "function": tool_functions["get_automation_details"]
+    }
+
+    tools["find_automation_references"] = {
+        "description": "Reverse lookup: find every trigger, schedule, and action group that references a device, variable, or action group — tagged by role (watches = trigger fires on it, acts_on = an action commands it, sets = an action writes it, condition_reads = a condition checks it, executes = runs the action group), including indirect paths through nested action-group chains (via_action_groups). Answers 'what could change this device?' and 'what watches this variable?'.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "entity_type": {
+                    "type": "string",
+                    "enum": ["device", "variable", "action_group"],
+                    "description": "The kind of entity to find references to"
+                },
+                "entity_id": {
+                    "type": "integer",
+                    "description": "The entity ID"
+                },
+                "include_server_check": {
+                    "type": "boolean",
+                    "description": "Also cross-check with the Indigo server's own dependency graph (slower but catches control pages and very recent edits; default: true)"
+                }
+            },
+            "required": ["entity_type", "entity_id"]
+        },
+        "function": tool_functions["find_automation_references"]
     }
 
     # Plugin control tools

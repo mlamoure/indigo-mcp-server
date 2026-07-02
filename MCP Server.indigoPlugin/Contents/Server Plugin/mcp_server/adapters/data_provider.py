@@ -263,3 +263,92 @@ class DataProvider(ABC):
             - description: Folder description
         """
         pass
+
+    @abstractmethod
+    def get_all_triggers(self) -> List[Dict[str, Any]]:
+        """
+        Get all triggers.
+
+        Returns:
+            List of trigger dictionaries with:
+            - id, name, description, enabled, folderId (+ folderName when not root)
+            - type: normalized kind (device_state_change, variable_change,
+              plugin_event, server_startup, ...)
+            - event-spec fields per type (deviceId/stateSelector/stateChangeType/
+              stateValue; variableId/variableChangeType/variableValue;
+              pluginId/pluginTypeId)
+        """
+        pass
+
+    @abstractmethod
+    def get_trigger(self, trigger_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific trigger by ID (same shape as get_all_triggers entries,
+        plus pluginProps for plugin-event triggers).
+
+        Returns:
+            Trigger dictionary or None if not found
+        """
+        pass
+
+    @abstractmethod
+    def get_all_schedules(self) -> List[Dict[str, Any]]:
+        """
+        Get all schedules.
+
+        Returns:
+            List of schedule dictionaries with:
+            - id, name, description, enabled, folderId (+ folderName when not root)
+            - date_type, time_type (normalized), absolute_time, sun_delta_seconds,
+              randomize_by_seconds, auto_delete
+            - next_execution: ISO datetime of the next fire time, or None
+        """
+        pass
+
+    @abstractmethod
+    def get_schedule(self, schedule_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific schedule by ID.
+
+        Returns:
+            Schedule dictionary or None if not found
+        """
+        pass
+
+    @abstractmethod
+    def get_dependencies(self, entity_type: str, entity_id: int) -> Dict[str, Any]:
+        """
+        Get the server-computed reverse dependency graph for an element:
+        which triggers/schedules/action groups/devices/variables/control
+        pages reference it. Slow on the server side — never call in a loop.
+
+        Args:
+            entity_type: One of device, variable, action_group, trigger, schedule
+            entity_id: The element ID
+
+        Returns:
+            Dictionary of reference lists keyed by kind (triggers, schedules,
+            action_groups, devices, variables, control_pages), each entry
+            {id, name}; or {"error": ...} on failure.
+        """
+        pass
+
+    @abstractmethod
+    def get_db_file_path(self) -> Optional[str]:
+        """
+        Get the filesystem path of Indigo's active database file (.indiDb).
+
+        Returns:
+            Path string, or None when unavailable
+        """
+        pass
+
+    @abstractmethod
+    def get_logs_folder_path(self) -> Optional[str]:
+        """
+        Get the filesystem path of Indigo's Logs folder.
+
+        Returns:
+            Path string, or None when unavailable
+        """
+        pass

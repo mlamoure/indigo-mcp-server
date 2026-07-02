@@ -1,0 +1,289 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Database type="dict">
+	<AppVers type="string">2025.2.0</AppVers>
+	<DatabaseVers type="integer">51</DatabaseVers>
+	<UploadDirty2 type="bool">true</UploadDirty2>
+	<ActionGroupList type="vector">
+		<ActionGroup type="dict">
+			<ActionSteps type="vector">
+				<Action type="dict">
+					<Class type="integer">1</Class>
+					<DeviceAction type="integer">4</DeviceAction>
+					<DeviceActionValue type="integer">0</DeviceActionValue>
+					<DeviceID type="integer">1000111</DeviceID>
+					<ObjVers type="integer">14</ObjVers>
+				</Action>
+				<Action type="dict">
+					<Class type="integer">999</Class>
+					<DeviceID type="integer">0</DeviceID>
+					<MetaProps type="dict">
+						<com.example.sonos type="dict">
+							<mode type="string">Play Now</mode>
+							<targetDevice type="string">1000333</targetDevice>
+							<volume type="integer">25</volume>
+						</com.example.sonos>
+					</MetaProps>
+					<ObjVers type="integer">14</ObjVers>
+					<PluginID type="string">com.example.sonos</PluginID>
+					<TypeIdPlugin type="string">actionPlay</TypeIdPlugin>
+					<TypeLabelPlugin type="string">Sonos: Play</TypeLabelPlugin>
+				</Action>
+				<Action type="dict">
+					<Class type="integer">101</Class>
+					<ObjVers type="integer">14</ObjVers>
+					<ScriptSource type="string">indigo.server.log("evening scene ran")</ScriptSource>
+					<ScriptType type="integer">0</ScriptType>
+				</Action>
+			</ActionSteps>
+			<ID type="integer">3000001</ID>
+			<Name type="string">Evening Scene</Name>
+			<ObjVers type="integer">2</ObjVers>
+		</ActionGroup>
+		<ActionGroup type="dict">
+			<ActionSteps type="vector">
+				<Action type="dict">
+					<ActionGroupID type="integer">3000001</ActionGroupID>
+					<Class type="integer">100</Class>
+					<DelayAction type="bool">true</DelayAction>
+					<DelayAmount type="integer">30</DelayAmount>
+					<ObjVers type="integer">14</ObjVers>
+					<ReplaceExistingDelayedAction type="bool">true</ReplaceExistingDelayedAction>
+				</Action>
+				<Action type="dict">
+					<Class type="integer">47</Class>
+					<MysteryField type="string">future format</MysteryField>
+					<ObjVers type="integer">14</ObjVers>
+				</Action>
+			</ActionSteps>
+			<ID type="integer">3000002</ID>
+			<Name type="string">Goodnight</Name>
+			<ObjVers type="integer">2</ObjVers>
+		</ActionGroup>
+	</ActionGroupList>
+	<ActionGroupFolderList type="vector">
+	</ActionGroupFolderList>
+	<DeviceList type="vector">
+		<Device type="dict">
+			<ID type="integer">1000111</ID>
+			<Name type="string">Porch Light</Name>
+			<ObjVers type="integer">3</ObjVers>
+		</Device>
+		<Device type="dict">
+			<ID type="integer">1000222</ID>
+			<Name type="string">Front Door Sensor</Name>
+			<ObjVers type="integer">3</ObjVers>
+		</Device>
+		<Device type="dict">
+			<ID type="integer">1000333</ID>
+			<Name type="string">Living Room Sonos</Name>
+			<ObjVers type="integer">3</ObjVers>
+		</Device>
+	</DeviceList>
+	<DeviceFolderList type="vector">
+	</DeviceFolderList>
+	<TDTriggerList type="vector">
+		<TDTrigger type="dict">
+			<ActionGroup type="dict">
+				<ActionSteps type="vector">
+					<Action type="dict">
+						<ActionGroupID type="integer">3000002</ActionGroupID>
+						<Class type="integer">100</Class>
+						<ObjVers type="integer">14</ObjVers>
+					</Action>
+				</ActionSteps>
+				<ObjVers type="integer">2</ObjVers>
+			</ActionGroup>
+			<AutoDelete type="bool">false</AutoDelete>
+			<Class type="integer">100</Class>
+			<Condition type="dict">
+				<ConditionList type="dict">
+					<Conditions type="vector">
+						<Condition type="dict">
+							<CompareVarToValue type="bool">true</CompareVarToValue>
+							<ObjVers type="integer">6</ObjVers>
+							<Type type="integer">3</Type>
+							<VarID type="integer">2000888</VarID>
+							<VarID2 type="integer">0</VarID2>
+							<VarState type="integer">1</VarState>
+							<VarValue type="string" />
+							<VarValue2 type="string" />
+						</Condition>
+					</Conditions>
+					<Logic type="integer">1</Logic>
+					<ObjVers type="integer">1</ObjVers>
+				</ConditionList>
+				<ObjVers type="integer">6</ObjVers>
+				<Type type="integer">100</Type>
+			</Condition>
+			<DateType type="integer">0</DateType>
+			<Enabled type="bool">true</Enabled>
+			<ID type="integer">5000001</ID>
+			<Name type="string">Run Goodnight at Sunset</Name>
+			<ObjVers type="integer">7</ObjVers>
+			<RandomizeAmount type="integer">0</RandomizeAmount>
+			<RepeatInterval type="integer">1</RepeatInterval>
+			<TimeType type="integer">2</TimeType>
+			<Type type="integer">0</Type>
+			<UploadToInterface type="bool">true</UploadToInterface>
+		</TDTrigger>
+	</TDTriggerList>
+	<TDTriggerFolderList type="vector">
+	</TDTriggerFolderList>
+	<TriggerList type="vector">
+		<Trigger type="dict">
+			<ActionGroup type="dict">
+				<ActionSteps type="vector">
+					<Action type="dict">
+						<Class type="integer">1</Class>
+						<DeviceAction type="integer">4</DeviceAction>
+						<DeviceActionValue type="integer">0</DeviceActionValue>
+						<DeviceID type="integer">1000111</DeviceID>
+						<ObjVers type="integer">14</ObjVers>
+					</Action>
+					<Action type="dict">
+						<Class type="integer">201</Class>
+						<DelayAction type="bool">true</DelayAction>
+						<DelayAmount type="integer">5</DelayAmount>
+						<ObjVers type="integer">14</ObjVers>
+						<ReplaceExistingDelayedAction type="bool">true</ReplaceExistingDelayedAction>
+						<VarAction type="integer">0</VarAction>
+						<VarID type="integer">2000999</VarID>
+						<VarValue type="string">true</VarValue>
+					</Action>
+					<Action type="dict">
+						<ActionGroupID type="integer">3000002</ActionGroupID>
+						<Class type="integer">100</Class>
+						<ObjVers type="integer">14</ObjVers>
+					</Action>
+				</ActionSteps>
+				<ObjVers type="integer">2</ObjVers>
+			</ActionGroup>
+			<Class type="integer">501</Class>
+			<Condition type="dict">
+				<ConditionList type="dict">
+					<Conditions type="vector">
+						<Condition type="dict">
+							<CompareVarToValue type="bool">true</CompareVarToValue>
+							<ObjVers type="integer">6</ObjVers>
+							<Type type="integer">3</Type>
+							<VarID type="integer">2000888</VarID>
+							<VarID2 type="integer">0</VarID2>
+							<VarState type="integer">1</VarState>
+							<VarValue type="string" />
+							<VarValue2 type="string" />
+						</Condition>
+						<Condition type="dict">
+							<EndTimeDate type="integer">21600</EndTimeDate>
+							<ObjVers type="integer">6</ObjVers>
+							<StartTimeDate type="integer">79200</StartTimeDate>
+							<TimeDateCompareOperator type="integer">5</TimeDateCompareOperator>
+							<Type type="integer">5</Type>
+						</Condition>
+						<Condition type="dict">
+							<DevComp type="integer">0</DevComp>
+							<DevID type="integer">1000111</DevID>
+							<DevState type="string">onOffState</DevState>
+							<DevValue type="string" />
+							<DevValue2 type="string" />
+							<ObjVers type="integer">6</ObjVers>
+							<Type type="integer">7</Type>
+						</Condition>
+						<Condition type="dict">
+							<ObjVers type="integer">6</ObjVers>
+							<SomethingNew type="string">x</SomethingNew>
+							<Type type="integer">12</Type>
+						</Condition>
+					</Conditions>
+					<Logic type="integer">1</Logic>
+					<ObjVers type="integer">1</ObjVers>
+				</ConditionList>
+				<ObjVers type="integer">6</ObjVers>
+				<Type type="integer">100</Type>
+			</Condition>
+			<DeviceID type="integer">1000222</DeviceID>
+			<DeviceStateChange type="integer">110</DeviceStateChange>
+			<DeviceStateSelector type="string">onOffState</DeviceStateSelector>
+			<Enabled type="bool">true</Enabled>
+			<FolderID type="integer">7000001</FolderID>
+			<ID type="integer">4000001</ID>
+			<Name type="string">Front door opens at night</Name>
+			<ObjVers type="integer">7</ObjVers>
+			<UploadToInterface type="bool">true</UploadToInterface>
+		</Trigger>
+		<Trigger type="dict">
+			<ActionGroup type="dict">
+				<ActionSteps type="vector">
+					<Action type="dict">
+						<Class type="integer">0</Class>
+						<ObjVers type="integer">14</ObjVers>
+					</Action>
+				</ActionSteps>
+				<ObjVers type="integer">2</ObjVers>
+			</ActionGroup>
+			<Class type="integer">598</Class>
+			<Condition type="dict">
+				<ObjVers type="integer">6</ObjVers>
+				<Type type="integer">0</Type>
+			</Condition>
+			<Enabled type="bool">false</Enabled>
+			<ID type="integer">4000002</ID>
+			<MetaProps type="dict">
+				<com.example.camera type="dict">
+					<cameraDevice type="string">1000333</cameraDevice>
+					<sensitivity type="integer">7</sensitivity>
+				</com.example.camera>
+			</MetaProps>
+			<Name type="string">Camera sees a person</Name>
+			<ObjVers type="integer">7</ObjVers>
+			<PluginID type="string">com.example.camera</PluginID>
+			<PluginUiName type="string">Example Camera</PluginUiName>
+			<TypeIdPlugin type="string">cameramotion</TypeIdPlugin>
+			<TypeLabelPlugin type="string">Camera Motion</TypeLabelPlugin>
+			<UploadToInterface type="bool">true</UploadToInterface>
+		</Trigger>
+		<Trigger type="dict">
+			<ActionGroup type="dict">
+				<ActionSteps type="vector">
+					<Action type="dict">
+						<Class type="integer">101</Class>
+						<ObjVers type="integer">14</ObjVers>
+						<ScriptSource type="string">import time
+indigo.server.log("startup")</ScriptSource>
+						<ScriptType type="integer">0</ScriptType>
+					</Action>
+				</ActionSteps>
+				<ObjVers type="integer">2</ObjVers>
+			</ActionGroup>
+			<Class type="integer">509</Class>
+			<Condition type="dict">
+				<ObjVers type="integer">6</ObjVers>
+				<Type type="integer">0</Type>
+			</Condition>
+			<Enabled type="bool">true</Enabled>
+			<ID type="integer">4000003</ID>
+			<Name type="string">Server startup housekeeping</Name>
+			<ObjVers type="integer">7</ObjVers>
+			<UploadToInterface type="bool">true</UploadToInterface>
+		</Trigger>
+	</TriggerList>
+	<TriggerFolderList type="vector">
+	</TriggerFolderList>
+	<VariableList type="vector">
+		<Variable type="dict">
+			<ID type="integer">2000888</ID>
+			<Name type="string">isDaytime</Name>
+			<ObjVers type="integer">2</ObjVers>
+			<Value type="string">false</Value>
+		</Variable>
+		<Variable type="dict">
+			<ID type="integer">2000999</ID>
+			<Name type="string">houseMode</Name>
+			<ObjVers type="integer">2</ObjVers>
+			<Value type="string">home</Value>
+		</Variable>
+	</VariableList>
+	<VariableFolderList type="vector">
+	</VariableFolderList>
+	<ControlPageList type="vector">
+	</ControlPageList>
+</Database>

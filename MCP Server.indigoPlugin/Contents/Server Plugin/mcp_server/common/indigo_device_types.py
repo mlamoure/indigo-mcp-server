@@ -39,6 +39,8 @@ class IndigoEntityType(str, Enum):
     DEVICE = "device"
     VARIABLE = "variable"
     ACTION = "action"
+    TRIGGER = "trigger"
+    SCHEDULE = "schedule"
     
     @classmethod
     def get_all_types(cls) -> List[str]:

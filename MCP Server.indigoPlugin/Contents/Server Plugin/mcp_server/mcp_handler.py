@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from .events.subscription_handler import SubscriptionHandler
 
 from .adapters.data_provider import DataProvider
+from .adapters.indidb import IndiDbStructureStore
 from .common.json_encoder import safe_json_dumps
 from .common.vector_store.vector_store_manager import VectorStoreManager
 from .handlers.list_handlers import ListHandlers
@@ -21,6 +22,7 @@ from .resource_registry import get_resource_schemas
 from .tool_registry import get_tool_schemas
 from .tool_wrappers import ToolWrappers
 from .tools.action_control import ActionControlHandler
+from .tools.automation import AutomationHandler
 from .tools.device_control import DeviceControlHandler
 from .tools.get_devices_by_type import GetDevicesByTypeHandler
 from .tools.historical_analysis import HistoricalAnalysisHandler
@@ -151,6 +153,19 @@ class MCPHandler:
             logger=self.logger
         )
 
+        # Structure store over Indigo's database file (action steps and
+        # condition trees the IOM does not expose), plus the automation
+        # introspection handler built on it.
+        self.structure_store = IndiDbStructureStore(
+            db_path_supplier=self.data_provider.get_db_file_path,
+            logger=self.logger,
+        )
+        self.automation_handler = AutomationHandler(
+            data_provider=self.data_provider,
+            structure_store=self.structure_store,
+            logger=self.logger,
+        )
+
         # Initialize tool wrappers with all handlers
         self.tool_wrappers = ToolWrappers(
             search_handler=self.search_handler,
@@ -164,6 +179,7 @@ class MCPHandler:
             list_handlers=self.list_handlers,
             log_query_handler=self.log_query_handler,
             plugin_control_handler=self.plugin_control_handler,
+            automation_handler=self.automation_handler,
             data_provider=self.data_provider,
             subscription_handler=self.subscription_handler,
             logger=self.logger
@@ -720,6 +736,10 @@ class MCPHandler:
             "get_variable_by_id": self.tool_wrappers.tool_get_variable_by_id,
             "get_action_group_by_id": self.tool_wrappers.tool_get_action_group_by_id,
             "query_event_log": self.tool_wrappers.tool_query_event_log,
+            "list_triggers": self.tool_wrappers.tool_list_triggers,
+            "list_schedules": self.tool_wrappers.tool_list_schedules,
+            "get_automation_details": self.tool_wrappers.tool_get_automation_details,
+            "find_automation_references": self.tool_wrappers.tool_find_automation_references,
             "list_plugins": self.tool_wrappers.tool_list_plugins,
             "get_plugin_by_id": self.tool_wrappers.tool_get_plugin_by_id,
             "restart_plugin": self.tool_wrappers.tool_restart_plugin,
@@ -745,6 +765,10 @@ class MCPHandler:
             "get_variable": self.tool_wrappers.resource_get_variable,
             "list_actions": self.tool_wrappers.resource_list_actions,
             "get_action": self.tool_wrappers.resource_get_action,
+            "list_triggers": self.tool_wrappers.resource_list_triggers,
+            "get_trigger": self.tool_wrappers.resource_get_trigger,
+            "list_schedules": self.tool_wrappers.resource_list_schedules,
+            "get_schedule": self.tool_wrappers.resource_get_schedule,
         }
 
         # Get resource schemas from registry

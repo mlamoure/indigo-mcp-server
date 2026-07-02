@@ -96,7 +96,12 @@ class SearchEntitiesHandler(BaseToolHandler):
             device_count = len(grouped_results.get("devices", []))
             variable_count = len(grouped_results.get("variables", []))
             action_count = len(grouped_results.get("actions", []))
-            total_count = device_count + variable_count + action_count
+            trigger_count = len(grouped_results.get("triggers", []))
+            schedule_count = len(grouped_results.get("schedules", []))
+            total_count = (
+                device_count + variable_count + action_count
+                + trigger_count + schedule_count
+            )
 
             # Apply pagination across all result types
             paginated_results = grouped_results
@@ -107,15 +112,23 @@ class SearchEntitiesHandler(BaseToolHandler):
                 )
 
             # Single line consolidated result summary
-            paginated_device_count = len(paginated_results.get("devices", []))
-            paginated_variable_count = len(paginated_results.get("variables", []))
-            paginated_action_count = len(paginated_results.get("actions", []))
-
-            returned_count = paginated_device_count + paginated_variable_count + paginated_action_count
+            returned_count = sum(
+                len(paginated_results.get(key, []))
+                for key in ("devices", "variables", "actions", "triggers", "schedules")
+            )
             if limit:
                 self.activity_log(f"Search '{query_short}' → {returned_count} of {total_count} results", write=False)
             else:
-                self.activity_log(f"Search '{query_short}' → {device_count} devices, {variable_count} variables, {action_count} actions", write=False)
+                summary_parts = [
+                    f"{device_count} devices",
+                    f"{variable_count} variables",
+                    f"{action_count} actions",
+                ]
+                if trigger_count:
+                    summary_parts.append(f"{trigger_count} triggers")
+                if schedule_count:
+                    summary_parts.append(f"{schedule_count} schedules")
+                self.activity_log(f"Search '{query_short}' → {', '.join(summary_parts)}", write=False)
 
             # Format results
             formatted_results = self.result_formatter.format_search_results(
@@ -132,7 +145,7 @@ class SearchEntitiesHandler(BaseToolHandler):
                     "offset": offset,
                     "limit": limit,
                     "total_count": total_count,
-                    "returned_count": paginated_device_count + paginated_variable_count + paginated_action_count,
+                    "returned_count": returned_count,
                     "has_more": has_more
                 }
 
@@ -154,24 +167,31 @@ class SearchEntitiesHandler(BaseToolHandler):
         grouped = {
             "devices": [],
             "variables": [],
-            "actions": []
+            "actions": [],
+            "triggers": [],
+            "schedules": []
         }
-        
+
+        # Map singular to plural
+        singular_to_plural = {
+            "device": "devices",
+            "variable": "variables",
+            "action": "actions",
+            "trigger": "triggers",
+            "schedule": "schedules",
+        }
+
         for result in raw_results:
             # Extract entity type from result
             entity_type = result.pop("_entity_type", "")
-            
-            # Map singular to plural
-            if entity_type == "device":
-                grouped["devices"].append(result)
-            elif entity_type == "variable":
-                grouped["variables"].append(result)
-            elif entity_type == "action":
-                grouped["actions"].append(result)
+
+            plural = singular_to_plural.get(entity_type)
+            if plural:
+                grouped[plural].append(result)
             else:
                 # Log unknown entity type but don't fail
                 self.warning_log(f"Unknown entity type: {entity_type}")
-        
+
         return grouped
     
     def _apply_pagination(
@@ -195,7 +215,7 @@ class SearchEntitiesHandler(BaseToolHandler):
         """
         # Flatten results while maintaining order
         flat_results = []
-        for entity_type in ["devices", "variables", "actions"]:
+        for entity_type in ["devices", "variables", "actions", "triggers", "schedules"]:
             for entity in grouped_results.get(entity_type, []):
                 flat_results.append((entity_type, entity))
 
@@ -214,7 +234,9 @@ class SearchEntitiesHandler(BaseToolHandler):
         paginated = {
             "devices": [],
             "variables": [],
-            "actions": []
+            "actions": [],
+            "triggers": [],
+            "schedules": []
         }
         for entity_type, entity in flat_results:
             paginated[entity_type].append(entity)
