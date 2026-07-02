@@ -1,0 +1,3 @@
+2026-07-01 06:00:00.000	Trigger	Front door opens at night
+2026-07-01 06:00:01.200	Z-Wave	received "Porch Light" status update is on
+2026-07-01 08:00:00.000	Schedule	schedule "Run Goodnight at Sunset" (delayed action)

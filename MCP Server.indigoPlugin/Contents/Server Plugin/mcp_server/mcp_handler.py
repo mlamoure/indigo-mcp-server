@@ -27,6 +27,7 @@ from .tools.device_control import DeviceControlHandler
 from .tools.get_devices_by_type import GetDevicesByTypeHandler
 from .tools.historical_analysis import HistoricalAnalysisHandler
 from .tools.log_query import LogQueryHandler
+from .tools.log_search import LogSearchHandler
 from .tools.plugin_control import PluginControlHandler
 from .tools.rgb_control import RGBControlHandler
 from .tools.search_entities import SearchEntitiesHandler
@@ -51,6 +52,7 @@ class MCPHandler:
         logger: Optional[logging.Logger] = None,
         subscription_handler: "Optional[SubscriptionHandler]" = None,
         server_version: str = "unknown",
+        automation_delete_supplier=None,
     ):
         """
         Initialize the MCP handler.
@@ -60,11 +62,14 @@ class MCPHandler:
             logger: Optional logger instance
             subscription_handler: Optional event subscription handler (when webhooks enabled)
             server_version: Plugin version reported in the MCP initialize response
+            automation_delete_supplier: Callable returning whether the
+                "allow AI to delete automations" preference is on (checked per call)
         """
         self.data_provider = data_provider
         self.logger = logger or logging.getLogger("Plugin")
         self.subscription_handler = subscription_handler
         self.server_version = server_version
+        self.automation_delete_supplier = automation_delete_supplier or (lambda: False)
 
         # Session management
         self._sessions = {}  # session_id -> {created, last_seen, client_info}
@@ -164,6 +169,12 @@ class MCPHandler:
             data_provider=self.data_provider,
             structure_store=self.structure_store,
             logger=self.logger,
+            delete_enabled_supplier=self.automation_delete_supplier,
+        )
+        self.log_search_handler = LogSearchHandler(
+            data_provider=self.data_provider,
+            structure_store=self.structure_store,
+            logger=self.logger,
         )
 
         # Initialize tool wrappers with all handlers
@@ -180,6 +191,7 @@ class MCPHandler:
             log_query_handler=self.log_query_handler,
             plugin_control_handler=self.plugin_control_handler,
             automation_handler=self.automation_handler,
+            log_search_handler=self.log_search_handler,
             data_provider=self.data_provider,
             subscription_handler=self.subscription_handler,
             logger=self.logger
@@ -740,6 +752,9 @@ class MCPHandler:
             "list_schedules": self.tool_wrappers.tool_list_schedules,
             "get_automation_details": self.tool_wrappers.tool_get_automation_details,
             "find_automation_references": self.tool_wrappers.tool_find_automation_references,
+            "search_event_log": self.tool_wrappers.tool_search_event_log,
+            "investigate_event": self.tool_wrappers.tool_investigate_event,
+            "automation_control": self.tool_wrappers.tool_automation_control,
             "list_plugins": self.tool_wrappers.tool_list_plugins,
             "get_plugin_by_id": self.tool_wrappers.tool_get_plugin_by_id,
             "restart_plugin": self.tool_wrappers.tool_restart_plugin,

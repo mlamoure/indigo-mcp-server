@@ -27,6 +27,7 @@ WRITE_TOOLS = frozenset({
     "restart_plugin",
     "create_event_subscription",
     "delete_event_subscription",
+    "automation_control",
 })
 
 
@@ -808,6 +809,148 @@ def get_tool_schemas(tool_functions):
             "required": ["entity_type", "entity_id"]
         },
         "function": tool_functions["find_automation_references"]
+    }
+
+    # ------------------------------------------------------------------
+    # Event-log investigation tools
+    # ------------------------------------------------------------------
+
+    tools["search_event_log"] = {
+        "description": "Search Indigo's historical event-log files (one per day) with text/regex matching, type filters, and time ranges. Log line types include 'Trigger' (a trigger fired), 'Schedule' (a schedule executed), 'Action Group' (an action group ran), 'Z-Wave' and plugin names (device updates), and error types. Complements query_event_log (which only returns the most recent lines).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Case-insensitive substring to match in the log line (or a regular expression when regex=true)"
+                },
+                "regex": {
+                    "type": "boolean",
+                    "description": "Treat query as a regular expression (default: false)"
+                },
+                "types": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Only lines of these types, e.g. [\"Trigger\", \"Schedule\", \"Action Group\", \"Z-Wave\"]"
+                },
+                "start_time": {
+                    "type": "string",
+                    "description": "ISO datetime lower bound, e.g. 2026-07-01T00:00:00"
+                },
+                "end_time": {
+                    "type": "string",
+                    "description": "ISO datetime upper bound"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum matches to return (default: 100)",
+                    "default": 100,
+                    "minimum": 1,
+                    "maximum": 1000
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Number of matches to skip (default: 0)",
+                    "default": 0,
+                    "minimum": 0
+                }
+            }
+        },
+        "function": tool_functions["search_event_log"]
+    }
+
+    tools["investigate_event"] = {
+        "description": "Answer 'what caused this?' for a device change: locates the device's state-change line in the event log, collects the triggers/schedules/action groups that fired in a window around it, and ranks them as candidate causes using structural evidence (does the automation actually act on this device, directly or through action-group chains?) plus temporal proximity. Returns evidence per candidate — follow up with get_automation_details on the top candidate. An empty candidate list means the change was likely manual, external, or plugin-internal.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "device_id": {
+                    "type": "integer",
+                    "description": "The device whose change to investigate (preferred — enables structural ranking)"
+                },
+                "search_text": {
+                    "type": "string",
+                    "description": "Alternative: locate the target log line by text instead of device id"
+                },
+                "around_time": {
+                    "type": "string",
+                    "description": "ISO datetime near the event; defaults to the most recent match"
+                },
+                "occurrence": {
+                    "type": "integer",
+                    "description": "When around_time is not given: investigate the Nth most recent match (default: 1)",
+                    "default": 1,
+                    "minimum": 1
+                },
+                "lookback_seconds": {
+                    "type": "integer",
+                    "description": "How far before the event to look for causes (default: 60)",
+                    "default": 60,
+                    "minimum": 1,
+                    "maximum": 3600
+                },
+                "lookahead_seconds": {
+                    "type": "integer",
+                    "description": "How far after the event to look (default: 5; status updates often log after the command)",
+                    "default": 5,
+                    "minimum": 0,
+                    "maximum": 600
+                }
+            }
+        },
+        "function": tool_functions["investigate_event"]
+    }
+
+    # ------------------------------------------------------------------
+    # Automation control (writes)
+    # ------------------------------------------------------------------
+
+    tools["automation_control"] = {
+        "description": "Control a trigger, schedule, or action group: enable/disable (optionally with duration_seconds to auto-revert — e.g. 'disable this trigger for 2 hours'), execute now, duplicate (the supported way to 'create a variant' — duplicate then adjust), move_to_folder, remove_delayed_actions, or delete. Deleting is irreversible: it requires confirm=true AND the 'Allow AI to delete automations' plugin preference. Note: Indigo has no API to author a trigger's actions or conditions from scratch, so duplicate-and-modify is the creation path. Action groups only support execute/duplicate/move_to_folder/delete.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "entity_type": {
+                    "type": "string",
+                    "enum": ["trigger", "schedule", "action_group"],
+                    "description": "The kind of automation element"
+                },
+                "entity_id": {
+                    "type": "integer",
+                    "description": "The element ID"
+                },
+                "action": {
+                    "type": "string",
+                    "enum": ["enable", "disable", "execute", "duplicate",
+                             "move_to_folder", "remove_delayed_actions", "delete"],
+                    "description": "What to do"
+                },
+                "duration_seconds": {
+                    "type": "integer",
+                    "description": "For enable/disable: automatically revert after this many seconds",
+                    "minimum": 1
+                },
+                "delay_seconds": {
+                    "type": "integer",
+                    "description": "For enable/disable/execute: apply after this many seconds",
+                    "minimum": 1
+                },
+                "duplicate_name": {
+                    "type": "string",
+                    "description": "For duplicate: name for the copy"
+                },
+                "folder_id": {
+                    "type": "integer",
+                    "description": "For move_to_folder: destination folder ID"
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Required true for delete (irreversible)"
+                }
+            },
+            "required": ["entity_type", "entity_id", "action"]
+        },
+        "function": tool_functions["automation_control"]
     }
 
     # Plugin control tools

@@ -754,6 +754,78 @@ class IndigoDataProvider(DataProvider):
             )
             return {"error": str(e)}
 
+    # Command namespaces per automation entity type.
+    _AUTOMATION_NAMESPACES = {
+        "trigger": "trigger",
+        "schedule": "schedule",
+        "action_group": "actionGroup",
+    }
+
+    def automation_command(
+        self,
+        entity_type: str,
+        entity_id: int,
+        command: str,
+        value: Optional[bool] = None,
+        delay: Optional[int] = None,
+        duration: Optional[int] = None,
+        duplicate_name: Optional[str] = None,
+        folder_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Run a lifecycle command against a trigger, schedule, or action group.
+        """
+        namespace_name = self._AUTOMATION_NAMESPACES.get(entity_type)
+        if namespace_name is None:
+            return {"error": f"Unsupported entity_type: {entity_type}"}
+        try:
+            namespace = getattr(indigo, namespace_name)
+            result: Dict[str, Any] = {
+                "success": True,
+                "entity_type": entity_type,
+                "id": entity_id,
+                "command": command,
+            }
+
+            if command == "enable":
+                kwargs = {"value": bool(value)}
+                if delay:
+                    kwargs["delay"] = int(delay)
+                if duration:
+                    kwargs["duration"] = int(duration)
+                namespace.enable(entity_id, **kwargs)
+                result["enabled"] = bool(value)
+                if duration:
+                    result["auto_reverts_after_seconds"] = int(duration)
+            elif command == "execute":
+                if delay:
+                    namespace.execute(entity_id, delay=int(delay))
+                else:
+                    namespace.execute(entity_id)
+            elif command == "duplicate":
+                if duplicate_name:
+                    duplicate = namespace.duplicate(entity_id, duplicateName=duplicate_name)
+                else:
+                    duplicate = namespace.duplicate(entity_id)
+                result["new_id"] = duplicate.id
+                result["new_name"] = duplicate.name
+            elif command == "move_to_folder":
+                namespace.moveToFolder(entity_id, value=int(folder_id or 0))
+                result["folder_id"] = int(folder_id or 0)
+            elif command == "remove_delayed_actions":
+                namespace.removeDelayedActions(entity_id)
+            elif command == "delete":
+                namespace.delete(entity_id)
+            else:
+                return {"error": f"Unsupported command: {command}"}
+
+            return result
+        except Exception as e:
+            self.logger.debug(
+                f"Error running {command} on {entity_type} {entity_id}: {e}", exc_info=True
+            )
+            return {"error": str(e), "success": False}
+
     def get_db_file_path(self) -> Optional[str]:
         """
         Get the filesystem path of Indigo's active database file.
