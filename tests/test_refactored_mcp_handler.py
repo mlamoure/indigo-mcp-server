@@ -81,8 +81,8 @@ class TestRefactoredMCPHandler:
         }))
         return store
 
-    def test_tool_registry_returns_all_35_tools(self):
-        """Test that tool_registry.get_tool_schemas() returns all 35 tools."""
+    def test_tool_registry_returns_all_37_tools(self):
+        """Test that tool_registry.get_tool_schemas() returns all 37 tools."""
         tool_functions = {name: Mock() for name in [
             "search_entities", "get_devices_by_type", "device_turn_on",
             "device_turn_off", "device_set_brightness", "device_set_rgb_color",
@@ -97,13 +97,14 @@ class TestRefactoredMCPHandler:
             "get_variable_by_id", "get_action_group_by_id",
             "query_event_log", "list_triggers", "list_schedules",
             "get_automation_details", "find_automation_references",
+            "search_event_log", "investigate_event",
             "list_plugins", "get_plugin_by_id",
             "restart_plugin", "get_plugin_status"
         ]}
 
         tools = get_tool_schemas(tool_functions)
 
-        assert len(tools) == 35, f"Expected 35 tools, got {len(tools)}"
+        assert len(tools) == 37, f"Expected 37 tools, got {len(tools)}"
         assert "search_entities" in tools
         assert "list_devices" in tools
         assert "device_turn_on" in tools
@@ -195,7 +196,7 @@ class TestRefactoredMCPHandler:
         handler = MCPHandler(data_provider=mock_data_provider, logger=mock_logger)
 
         # Verify tools registered
-        assert len(handler._tools) == 35
+        assert len(handler._tools) == 37
         assert "search_entities" in handler._tools
         assert "list_devices" in handler._tools
 
@@ -239,7 +240,7 @@ class TestRefactoredMCPHandler:
         assert response["id"] == 1
         assert "result" in response
         assert "tools" in response["result"]
-        assert len(response["result"]["tools"]) == 35
+        assert len(response["result"]["tools"]) == 37
 
         # Verify tool entries have correct structure
         for tool in response["result"]["tools"]:
@@ -325,6 +326,7 @@ class TestRefactoredMCPHandler:
             "get_variable_by_id", "get_action_group_by_id",
             "query_event_log", "list_triggers", "list_schedules",
             "get_automation_details", "find_automation_references",
+            "search_event_log", "investigate_event",
             "list_plugins", "get_plugin_by_id",
             "restart_plugin", "get_plugin_status"
         ]
@@ -373,6 +375,7 @@ class TestBackwardCompatibility:
             "get_variable_by_id", "get_action_group_by_id",
             "query_event_log", "list_triggers", "list_schedules",
             "get_automation_details", "find_automation_references",
+            "search_event_log", "investigate_event",
             "list_plugins", "get_plugin_by_id",
             "restart_plugin", "get_plugin_status"
         }

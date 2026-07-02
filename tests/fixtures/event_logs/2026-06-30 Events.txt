@@ -1,0 +1,9 @@
+2026-06-30 21:59:30.100	Schedule	Run Goodnight at Sunset
+2026-06-30 21:59:31.000	Action Group	Goodnight
+2026-06-30 21:59:31.500	Action Group	Evening Scene
+2026-06-30 21:59:33.400	Z-Wave	received "Porch Light" status update is on
+2026-06-30 22:10:00.000	Trigger	Camera sees a person
+2026-06-30 22:30:00.000	Example Plugin Error	something failed
+Traceback (most recent call last):
+  File "plugin.py", line 1
+2026-06-30 23:00:00.000	Z-Wave	received "Porch Light" status update is off

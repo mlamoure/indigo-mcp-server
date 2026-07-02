@@ -34,6 +34,7 @@ class ToolWrappers:
         plugin_control_handler,
         data_provider,
         automation_handler=None,
+        log_search_handler=None,
         subscription_handler=None,
         logger: Optional[logging.Logger] = None
     ):
@@ -69,6 +70,7 @@ class ToolWrappers:
         self.plugin_control_handler = plugin_control_handler
         self.data_provider = data_provider
         self.automation_handler = automation_handler
+        self.log_search_handler = log_search_handler
         self.subscription_handler = subscription_handler
         self.logger = logger or logging.getLogger(__name__)
 
@@ -494,6 +496,43 @@ class ToolWrappers:
             self.automation_handler.find_references,
             entity_type=entity_type, entity_id=entity_id,
             include_server_check=include_server_check
+        )
+
+    def tool_search_event_log(
+        self,
+        query: str = None,
+        regex: bool = False,
+        types: List[str] = None,
+        start_time: str = None,
+        end_time: str = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> str:
+        """Search event log tool implementation."""
+        return self._call(
+            "Search event log",
+            self.log_search_handler.search_event_log,
+            query=query, regex=regex, types=types,
+            start_time=start_time, end_time=end_time,
+            limit=limit, offset=offset
+        )
+
+    def tool_investigate_event(
+        self,
+        device_id: int = None,
+        search_text: str = None,
+        around_time: str = None,
+        occurrence: int = 1,
+        lookback_seconds: int = 60,
+        lookahead_seconds: int = 5
+    ) -> str:
+        """Investigate event tool implementation."""
+        return self._call(
+            "Investigate event",
+            self.log_search_handler.investigate_event,
+            device_id=device_id, search_text=search_text,
+            around_time=around_time, occurrence=occurrence,
+            lookback_seconds=lookback_seconds, lookahead_seconds=lookahead_seconds
         )
 
     def tool_list_plugins(self, include_disabled: bool = False) -> str:

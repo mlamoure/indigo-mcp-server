@@ -298,6 +298,13 @@ changes).
 - **get_automation_details**: Explain a trigger, schedule, or action group — its event/timing, condition tree, and every action step (device commands, variable writes, nested action groups, embedded Python scripts, plugin actions with configuration), with entity IDs resolved to names
 - **find_automation_references**: Reverse lookup — which triggers/schedules/action groups watch, act on, set, or condition-read a device, variable, or action group, including indirect paths through nested action groups, cross-checked against the Indigo server's own dependency graph
 
+### Investigation
+
+*Added in v2026.6.0.*
+
+- **search_event_log**: Search the historical daily event-log files with text/regex matching, type filters (`Trigger`, `Schedule`, `Action Group`, `Z-Wave`, ...), time ranges, and pagination
+- **investigate_event**: "What caused this?" — finds a device's state-change line in the log, collects the automations that fired around it, and ranks candidate causes by structural evidence (does it actually act on that device, directly or through action-group chains?) plus temporal proximity
+
 ### Device Control
 
 - **device_turn_on/off**: Control device power state

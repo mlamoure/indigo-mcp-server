@@ -27,6 +27,7 @@ from .tools.device_control import DeviceControlHandler
 from .tools.get_devices_by_type import GetDevicesByTypeHandler
 from .tools.historical_analysis import HistoricalAnalysisHandler
 from .tools.log_query import LogQueryHandler
+from .tools.log_search import LogSearchHandler
 from .tools.plugin_control import PluginControlHandler
 from .tools.rgb_control import RGBControlHandler
 from .tools.search_entities import SearchEntitiesHandler
@@ -165,6 +166,11 @@ class MCPHandler:
             structure_store=self.structure_store,
             logger=self.logger,
         )
+        self.log_search_handler = LogSearchHandler(
+            data_provider=self.data_provider,
+            structure_store=self.structure_store,
+            logger=self.logger,
+        )
 
         # Initialize tool wrappers with all handlers
         self.tool_wrappers = ToolWrappers(
@@ -180,6 +186,7 @@ class MCPHandler:
             log_query_handler=self.log_query_handler,
             plugin_control_handler=self.plugin_control_handler,
             automation_handler=self.automation_handler,
+            log_search_handler=self.log_search_handler,
             data_provider=self.data_provider,
             subscription_handler=self.subscription_handler,
             logger=self.logger
@@ -740,6 +747,8 @@ class MCPHandler:
             "list_schedules": self.tool_wrappers.tool_list_schedules,
             "get_automation_details": self.tool_wrappers.tool_get_automation_details,
             "find_automation_references": self.tool_wrappers.tool_find_automation_references,
+            "search_event_log": self.tool_wrappers.tool_search_event_log,
+            "investigate_event": self.tool_wrappers.tool_investigate_event,
             "list_plugins": self.tool_wrappers.tool_list_plugins,
             "get_plugin_by_id": self.tool_wrappers.tool_get_plugin_by_id,
             "restart_plugin": self.tool_wrappers.tool_restart_plugin,
