@@ -20,7 +20,7 @@ from mcp_server.tools.automation.automation_handler import AutomationHandler  # 
 DB_FIXTURE = Path(__file__).parent / "fixtures" / "sample_indidb.xml"
 
 
-def make_handler(editing_enabled=True):
+def make_handler():
     provider = Mock()
     provider.update_automation_fields.return_value = {
         "success": True,
@@ -32,18 +32,11 @@ def make_handler(editing_enabled=True):
         data_provider=provider,
         structure_store=store,
         logger=Mock(),
-        editing_enabled_supplier=lambda: editing_enabled,
     )
     return handler, provider
 
 
-class TestUpdateGate:
-    def test_blocked_when_pref_off(self):
-        handler, provider = make_handler(editing_enabled=False)
-        result = handler.update("trigger", 4000001, {"name": "X"})
-        assert "error" in result and "disabled" in result["error"]
-        provider.update_automation_fields.assert_not_called()
-
+class TestUpdate:
     def test_requires_fields(self):
         handler, _ = make_handler()
         assert "error" in handler.update("trigger", 4000001, {})

@@ -71,9 +71,9 @@ class Plugin(indigo.PluginBase):
         # Webhook configuration
         self.enable_webhooks = plugin_prefs.get("enable_webhooks", False)
 
-        # Automation write-safety gates (checked at call time — no restart needed)
+        # Automation delete gate (checked at call time — no restart needed).
+        # Editing (names/descriptions/trigger event settings) is not gated.
         self.enable_automation_delete = plugin_prefs.get("enable_automation_delete", False)
-        self.enable_automation_editing = plugin_prefs.get("enable_automation_editing", False)
 
         # Component instances
         self.data_provider = None
@@ -300,15 +300,15 @@ class Plugin(indigo.PluginBase):
     ########################################
     def _automation_gate(self, pref_name: str) -> bool:
         """
-        Whether an automation write gate is open.
+        Whether the automation delete gate is open.
 
         Primary control is the plugin preference checkbox. A JSON override
-        file inside the plugin's support folder can also open a gate for
+        file inside the plugin's support folder can also open the gate for
         headless administration — writing it requires filesystem access to
         the server, the same trust level as the config UI:
 
             <install>/Preferences/Plugins/com.vtmikel.mcp_server/automation_gates.json
-            {"enable_automation_delete": true, "enable_automation_editing": true}
+            {"enable_automation_delete": true}
         """
         if getattr(self, pref_name, False):
             return True
@@ -455,7 +455,6 @@ class Plugin(indigo.PluginBase):
                 subscription_handler=subscription_handler,
                 server_version=self.pluginVersion,
                 automation_delete_supplier=lambda: self._automation_gate("enable_automation_delete"),
-                automation_editing_supplier=lambda: self._automation_gate("enable_automation_editing"),
             )
 
             # Log MCP client connection information (full list in the menu action)
@@ -1062,18 +1061,12 @@ class Plugin(indigo.PluginBase):
                     f"- plugin restart required for MCP tool changes to take effect"
                 )
 
-            # Automation write gates (take effect immediately — checked per call)
+            # Automation delete gate (takes effect immediately — checked per call)
             new_delete_gate = values_dict.get("enable_automation_delete", False)
             if new_delete_gate != self.enable_automation_delete:
                 self.enable_automation_delete = new_delete_gate
                 self.logger.info(
                     f"Automation delete via MCP {'enabled' if new_delete_gate else 'disabled'}"
-                )
-            new_editing_gate = values_dict.get("enable_automation_editing", False)
-            if new_editing_gate != self.enable_automation_editing:
-                self.enable_automation_editing = new_editing_gate
-                self.logger.info(
-                    f"Automation editing via MCP {'enabled' if new_editing_gate else 'disabled'}"
                 )
 
             # Apply configuration to environment (same as startup)

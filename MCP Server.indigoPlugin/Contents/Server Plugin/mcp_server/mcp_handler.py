@@ -52,7 +52,6 @@ class MCPHandler:
         subscription_handler: "Optional[SubscriptionHandler]" = None,
         server_version: str = "unknown",
         automation_delete_supplier=None,
-        automation_editing_supplier=None,
     ):
         """
         Initialize the MCP handler.
@@ -70,7 +69,6 @@ class MCPHandler:
         self.subscription_handler = subscription_handler
         self.server_version = server_version
         self.automation_delete_supplier = automation_delete_supplier or (lambda: False)
-        self.automation_editing_supplier = automation_editing_supplier or (lambda: False)
 
         # Session management
         self._sessions = {}  # session_id -> {created, last_seen, client_info}
@@ -167,7 +165,6 @@ class MCPHandler:
             structure_store=self.structure_store,
             logger=self.logger,
             delete_enabled_supplier=self.automation_delete_supplier,
-            editing_enabled_supplier=self.automation_editing_supplier,
         )
         self.log_search_handler = LogSearchHandler(
             data_provider=self.data_provider,
@@ -747,11 +744,17 @@ class MCPHandler:
             "query_event_log": self.tool_wrappers.tool_query_event_log,
             "list_triggers": self.tool_wrappers.tool_list_triggers,
             "list_schedules": self.tool_wrappers.tool_list_schedules,
-            "get_automation_details": self.tool_wrappers.tool_get_automation_details,
+            "get_trigger_details": self.tool_wrappers.tool_get_trigger_details,
+            "get_schedule_details": self.tool_wrappers.tool_get_schedule_details,
+            "get_action_group_details": self.tool_wrappers.tool_get_action_group_details,
             "find_automation_references": self.tool_wrappers.tool_find_automation_references,
             "investigate_event": self.tool_wrappers.tool_investigate_event,
-            "automation_control": self.tool_wrappers.tool_automation_control,
-            "update_automation": self.tool_wrappers.tool_update_automation,
+            "control_trigger": self.tool_wrappers.tool_control_trigger,
+            "control_schedule": self.tool_wrappers.tool_control_schedule,
+            "control_action_group": self.tool_wrappers.tool_control_action_group,
+            "update_trigger": self.tool_wrappers.tool_update_trigger,
+            "update_schedule": self.tool_wrappers.tool_update_schedule,
+            "update_action_group": self.tool_wrappers.tool_update_action_group,
             "list_plugins": self.tool_wrappers.tool_list_plugins,
             "get_plugin_by_id": self.tool_wrappers.tool_get_plugin_by_id,
             "restart_plugin": self.tool_wrappers.tool_restart_plugin,

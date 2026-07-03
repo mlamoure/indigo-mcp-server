@@ -34,14 +34,12 @@ class AutomationHandler(BaseToolHandler):
         structure_store: IndiDbStructureStore,
         logger: Optional[logging.Logger] = None,
         delete_enabled_supplier=None,
-        editing_enabled_supplier=None,
     ):
         super().__init__(tool_name="automation", logger=logger)
         self.data_provider = data_provider
         self.structure_store = structure_store
         self.renderer = ExplainRenderer(data_provider, structure_store, logger=logger)
         self.delete_enabled_supplier = delete_enabled_supplier or (lambda: False)
-        self.editing_enabled_supplier = editing_enabled_supplier or (lambda: False)
 
     # ------------------------------------------------------------------
     # list_triggers
@@ -204,7 +202,7 @@ class AutomationHandler(BaseToolHandler):
         return summary
 
     # ------------------------------------------------------------------
-    # get_automation_details
+    # get_{trigger,schedule,action_group}_details
     # ------------------------------------------------------------------
 
     def get_details(
@@ -226,7 +224,7 @@ class AutomationHandler(BaseToolHandler):
             if document is None:
                 return {"error": f"{entity_type} {entity_id} not found"}
             self.log_tool_outcome(
-                f"get_automation_details({entity_type} {entity_id})", True
+                f"get_{entity_type}_details({entity_id})", True
             )
             return document
         except Exception as e:
@@ -282,7 +280,7 @@ class AutomationHandler(BaseToolHandler):
             return self.handle_exception(e, f"finding references to {entity_type} {entity_id}")
 
     # ------------------------------------------------------------------
-    # automation_control
+    # control_{trigger,schedule,action_group}
     # ------------------------------------------------------------------
 
     def control(
@@ -373,7 +371,7 @@ class AutomationHandler(BaseToolHandler):
             )
 
     # ------------------------------------------------------------------
-    # update_automation (experimental field editing)
+    # update_{trigger,schedule,action_group} (field editing)
     # ------------------------------------------------------------------
 
     # Fields whose values must reference an existing entity.
@@ -386,13 +384,6 @@ class AutomationHandler(BaseToolHandler):
         fields: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         try:
-            if not self.editing_enabled_supplier():
-                return {
-                    "error": "Editing automations via MCP is disabled. Enable "
-                    "'Allow AI to edit automations (experimental)' in the MCP "
-                    "Server plugin preferences to permit it.",
-                    "success": False,
-                }
             if entity_type not in AUTOMATION_ENTITY_TYPES:
                 return {
                     "error": f"Invalid entity_type: {entity_type!r}. "
@@ -438,7 +429,7 @@ class AutomationHandler(BaseToolHandler):
             result["note"] = (
                 "Field editing uses Indigo's replaceOnServer(), which does not "
                 "touch the element's action steps or conditions. Verify with "
-                "get_automation_details if in doubt."
+                "the matching get_*_details tool if in doubt."
             )
             return result
         except Exception as e:

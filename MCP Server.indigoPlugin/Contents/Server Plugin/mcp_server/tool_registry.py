@@ -27,8 +27,12 @@ WRITE_TOOLS = frozenset({
     "restart_plugin",
     "create_event_subscription",
     "delete_event_subscription",
-    "automation_control",
-    "update_automation",
+    "control_trigger",
+    "control_schedule",
+    "control_action_group",
+    "update_trigger",
+    "update_schedule",
+    "update_action_group",
 })
 
 
@@ -712,7 +716,7 @@ def get_tool_schemas(tool_functions):
     # ------------------------------------------------------------------
 
     tools["list_triggers"] = {
-        "description": "List Indigo triggers with a one-line summary of what each one watches (device state, variable, plugin event, ...). Filter by name, enabled state, type, or folder. Use get_automation_details for a trigger's conditions and actions.",
+        "description": "List Indigo triggers with a one-line summary of what each one watches (device state, variable, plugin event, ...). Filter by name, enabled state, type, or folder. Use get_trigger_details for a trigger's conditions and actions.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -751,7 +755,7 @@ def get_tool_schemas(tool_functions):
     }
 
     tools["list_schedules"] = {
-        "description": "List Indigo schedules (time/date events) including each schedule's next execution time and a human-readable timing summary. Sorted by next execution by default. Use get_automation_details for a schedule's conditions and actions.",
+        "description": "List Indigo schedules (time/date events) including each schedule's next execution time and a human-readable timing summary. Sorted by next execution by default. Use get_schedule_details for a schedule's conditions and actions.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -790,32 +794,57 @@ def get_tool_schemas(tool_functions):
         "function": tool_functions["list_schedules"]
     }
 
-    tools["get_automation_details"] = {
-        "description": "Explain a trigger, schedule, or action group in full: the event or timing that fires it, its condition tree, and every action step it executes (device commands, variable writes, nested action groups, embedded Python scripts, plugin actions with their configuration). Entity IDs are resolved to names. Action steps and conditions come from Indigo's database file, which can lag live edits by a few minutes (see meta.structure_source).",
+    _DETAILS_COMMON = (
+        " Action steps and conditions come from Indigo's database file, which can lag "
+        "live edits by a few minutes (see meta.structure_source). Entity IDs are "
+        "resolved to names."
+    )
+    _include_scripts_prop = {
+        "type": "boolean",
+        "description": "Include embedded Python script source in action steps (default: true; scripts over 4000 chars are truncated)"
+    }
+
+    tools["get_trigger_details"] = {
+        "description": "Explain a trigger in full: the event that fires it, its condition tree, and every action step it executes (device commands, variable writes, nested action groups, embedded Python, plugin actions with their configuration)." + _DETAILS_COMMON,
         "inputSchema": {
             "type": "object",
             "properties": {
-                "entity_type": {
-                    "type": "string",
-                    "enum": ["trigger", "schedule", "action_group"],
-                    "description": "The kind of automation element"
-                },
-                "entity_id": {
-                    "type": "integer",
-                    "description": "The element ID"
-                },
-                "include_scripts": {
-                    "type": "boolean",
-                    "description": "Include embedded Python script source in action steps (default: true; scripts over 4000 chars are truncated)"
-                }
+                "trigger_id": {"type": "integer", "description": "The trigger ID"},
+                "include_scripts": _include_scripts_prop,
             },
-            "required": ["entity_type", "entity_id"]
+            "required": ["trigger_id"]
         },
-        "function": tool_functions["get_automation_details"]
+        "function": tool_functions["get_trigger_details"]
+    }
+
+    tools["get_schedule_details"] = {
+        "description": "Explain a schedule in full: its timing, its condition tree, and every action step it executes." + _DETAILS_COMMON,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "schedule_id": {"type": "integer", "description": "The schedule ID"},
+                "include_scripts": _include_scripts_prop,
+            },
+            "required": ["schedule_id"]
+        },
+        "function": tool_functions["get_schedule_details"]
+    }
+
+    tools["get_action_group_details"] = {
+        "description": "Explain an action group in full: every action step it executes (device commands, variable writes, nested action groups, embedded Python, plugin actions with their configuration)." + _DETAILS_COMMON,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action_group_id": {"type": "integer", "description": "The action group ID"},
+                "include_scripts": _include_scripts_prop,
+            },
+            "required": ["action_group_id"]
+        },
+        "function": tool_functions["get_action_group_details"]
     }
 
     tools["find_automation_references"] = {
-        "description": "Reverse lookup: find every trigger, schedule, and action group that references a device, variable, or action group — tagged by role (watches = trigger fires on it, acts_on = an action commands it, sets = an action writes it, condition_reads = a condition checks it, executes = runs the action group), including indirect paths through nested action-group chains (via_action_groups). Answers 'what could change this device?' and 'what watches this variable?'.",
+        "description": "Reverse lookup: find every trigger, schedule, and action group that references a device, variable, or action group — tagged by role (watches = trigger fires on it, acts_on = an action commands it, sets = an action writes it, condition_reads = a condition checks it, executes = runs the action group), including indirect paths through nested action-group chains (via_action_groups). Answers 'what could change this device?' and 'what watches this variable?'. Follow up with get_trigger_details / get_schedule_details / get_action_group_details.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -843,7 +872,7 @@ def get_tool_schemas(tool_functions):
     # ------------------------------------------------------------------
 
     tools["investigate_event"] = {
-        "description": "Answer 'what caused this?' for a device change: locates the device's state-change line in the event log, collects the triggers/schedules/action groups that fired in a window around it, and ranks them as candidate causes using structural evidence (does the automation actually act on this device, directly or through action-group chains?) plus temporal proximity. Returns evidence per candidate — follow up with get_automation_details on the top candidate. An empty candidate list means the change was likely manual, external, or plugin-internal.",
+        "description": "Answer 'what caused this?' for a device change: locates the device's state-change line in the event log, collects the triggers/schedules/action groups that fired in a window around it, and ranks them as candidate causes using structural evidence (does the automation actually act on this device, directly or through action-group chains?) plus temporal proximity. Returns evidence per candidate — follow up with the matching get_*_details tool on the top candidate. An empty candidate list means the change was likely manual, external, or plugin-internal.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -888,76 +917,108 @@ def get_tool_schemas(tool_functions):
     # Automation control (writes)
     # ------------------------------------------------------------------
 
-    tools["automation_control"] = {
-        "description": "Control a trigger, schedule, or action group: enable/disable (optionally with duration_seconds to auto-revert — e.g. 'disable this trigger for 2 hours'), execute now, duplicate (the supported way to 'create a variant' — duplicate then adjust), move_to_folder, remove_delayed_actions, or delete. Deleting is irreversible: it requires confirm=true AND the 'Allow AI to delete automations' plugin preference. Note: Indigo has no API to author a trigger's actions or conditions from scratch, so duplicate-and-modify is the creation path. Action groups only support execute/duplicate/move_to_folder/delete.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "entity_type": {
-                    "type": "string",
-                    "enum": ["trigger", "schedule", "action_group"],
-                    "description": "The kind of automation element"
-                },
-                "entity_id": {
-                    "type": "integer",
-                    "description": "The element ID"
-                },
-                "action": {
-                    "type": "string",
-                    "enum": ["enable", "disable", "execute", "duplicate",
-                             "move_to_folder", "remove_delayed_actions", "delete"],
-                    "description": "What to do"
-                },
-                "duration_seconds": {
-                    "type": "integer",
-                    "description": "For enable/disable: automatically revert after this many seconds",
-                    "minimum": 1
-                },
-                "delay_seconds": {
-                    "type": "integer",
-                    "description": "For enable/disable/execute: apply after this many seconds",
-                    "minimum": 1
-                },
-                "duplicate_name": {
-                    "type": "string",
-                    "description": "For duplicate: name for the copy"
-                },
-                "folder_id": {
-                    "type": "integer",
-                    "description": "For move_to_folder: destination folder ID"
-                },
-                "confirm": {
-                    "type": "boolean",
-                    "description": "Required true for delete (irreversible)"
-                }
-            },
-            "required": ["entity_type", "entity_id", "action"]
+    _delete_note = (
+        " Deleting is irreversible and requires confirm=true AND the 'Allow AI to "
+        "delete automations' plugin preference. All other actions are always available."
+    )
+    _control_props = {
+        "duration_seconds": {
+            "type": "integer",
+            "description": "For enable/disable: automatically revert after this many seconds",
+            "minimum": 1,
         },
-        "function": tool_functions["automation_control"]
+        "delay_seconds": {
+            "type": "integer",
+            "description": "For enable/disable/execute: apply after this many seconds",
+            "minimum": 1,
+        },
+        "duplicate_name": {"type": "string", "description": "For duplicate: name for the copy"},
+        "folder_id": {"type": "integer", "description": "For move_to_folder: destination folder ID"},
+        "confirm": {"type": "boolean", "description": "Required true for delete (irreversible)"},
     }
 
-    tools["update_automation"] = {
-        "description": "Modify basic fields of a trigger, schedule, or action group. Editable: names/descriptions (all three types); trigger event settings (device_id, state_selector, state_change_type, state_value; variable_id, variable_change_type, variable_value). Schedule TIMING is read-only in Indigo's scripting API — only a schedule's name/description can be edited; timing changes require the Indigo UI. Action steps and conditions can NEVER be modified (Indigo has no API); to change what an automation does, edit it in the Indigo UI. Combined with automation_control's duplicate, this is the supported way to create trigger variants. Requires the 'Allow AI to edit automations (experimental)' plugin preference. Returns a before/after diff and warns when the server discarded a value (e.g. state_value on a becomes_true trigger). Use enable/disable and move_to_folder via automation_control, not here.",
+    def _control_schema(id_name, actions, has_duration=True):
+        props = {
+            id_name: {"type": "integer", "description": "The element ID"},
+            "action": {"type": "string", "enum": actions, "description": "What to do"},
+            "delay_seconds": _control_props["delay_seconds"],
+            "duplicate_name": _control_props["duplicate_name"],
+            "folder_id": _control_props["folder_id"],
+            "confirm": _control_props["confirm"],
+        }
+        if has_duration:
+            props["duration_seconds"] = _control_props["duration_seconds"]
+        return {"type": "object", "properties": props, "required": [id_name, "action"]}
+
+    _trigger_schedule_actions = ["enable", "disable", "execute", "duplicate",
+                                 "move_to_folder", "remove_delayed_actions", "delete"]
+
+    tools["control_trigger"] = {
+        "description": "Trigger lifecycle: enable/disable (optionally with duration_seconds to auto-revert — 'disable this trigger for 2 hours'), execute now, duplicate (duplicate-then-edit is the supported way to make a variant, since Indigo has no API to author a trigger's actions/conditions from scratch), move_to_folder, remove_delayed_actions, or delete." + _delete_note,
+        "inputSchema": _control_schema("trigger_id", _trigger_schedule_actions),
+        "function": tool_functions["control_trigger"],
+    }
+    tools["control_schedule"] = {
+        "description": "Schedule lifecycle: enable/disable (with optional duration_seconds auto-revert), execute now, duplicate, move_to_folder, remove_delayed_actions, or delete." + _delete_note,
+        "inputSchema": _control_schema("schedule_id", _trigger_schedule_actions),
+        "function": tool_functions["control_schedule"],
+    }
+    tools["control_action_group"] = {
+        "description": "Action-group lifecycle: execute now, duplicate, move_to_folder, or delete. (Action groups have no enable/disable or delayed-action queue.)" + _delete_note,
+        "inputSchema": _control_schema(
+            "action_group_id", ["execute", "duplicate", "move_to_folder", "delete"],
+            has_duration=False),
+        "function": tool_functions["control_action_group"],
+    }
+
+    _update_note = (
+        " Action steps and conditions can NEVER be modified (Indigo has no API); to "
+        "change what an automation does, edit it in the Indigo UI. Returns a before/after diff."
+    )
+    tools["update_trigger"] = {
+        "description": "Edit a trigger's basic fields: name, description, and its event settings — what it watches (device_id, state_selector, state_change_type, state_value; or variable_id, variable_change_type, variable_value). Enum values use the normalized names the read tools return (becomes_true, becomes_equal, changes, …)." + _update_note,
         "inputSchema": {
             "type": "object",
             "properties": {
-                "entity_type": {
-                    "type": "string",
-                    "enum": ["trigger", "schedule", "action_group"],
-                    "description": "The kind of automation element"
-                },
-                "entity_id": {
-                    "type": "integer",
-                    "description": "The element ID"
-                },
+                "trigger_id": {"type": "integer", "description": "The trigger ID"},
                 "fields": {
                     "type": "object",
-                    "description": "Field name → new value. E.g. {\"name\": \"New name\"}, {\"state_value\": \"PLAYING\"}, {\"device_id\": 123456, \"state_change_type\": \"becomes_false\"}. Enum values use the same normalized names the read tools return (becomes_true, becomes_equal, changes, ...)."
-                }
+                    "description": "Field → new value, e.g. {\"name\": \"New name\"}, {\"state_value\": \"PLAYING\"}, {\"device_id\": 123456, \"state_change_type\": \"becomes_false\"}.",
+                },
             },
-            "required": ["entity_type", "entity_id", "fields"]
+            "required": ["trigger_id", "fields"],
         },
-        "function": tool_functions["update_automation"]
+        "function": tool_functions["update_trigger"],
+    }
+    tools["update_schedule"] = {
+        "description": "Edit a schedule's name and/or description. (Schedule timing is read-only in Indigo's scripting API — change it in the Indigo UI.)" + _update_note,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "schedule_id": {"type": "integer", "description": "The schedule ID"},
+                "fields": {
+                    "type": "object",
+                    "description": "Field → new value, e.g. {\"name\": \"…\", \"description\": \"…\"}.",
+                },
+            },
+            "required": ["schedule_id", "fields"],
+        },
+        "function": tool_functions["update_schedule"],
+    }
+    tools["update_action_group"] = {
+        "description": "Edit an action group's name and/or description. (Its action steps are read-only in Indigo's scripting API — change them in the Indigo UI.)" + _update_note,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action_group_id": {"type": "integer", "description": "The action group ID"},
+                "fields": {
+                    "type": "object",
+                    "description": "Field → new value, e.g. {\"name\": \"…\", \"description\": \"…\"}.",
+                },
+            },
+            "required": ["action_group_id", "fields"],
+        },
+        "function": tool_functions["update_action_group"],
     }
 
     # Plugin control tools
