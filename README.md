@@ -110,27 +110,22 @@ messages, `GET` returns `405` (no server→client SSE stream), and sessions expi
 
 ## What's Possible
 
-What the plugin can and can't do with each kind of Indigo entity, and why. The `✗`'s are Indigo
-scripting-API (SDK) limits, not plugin choices.
+What the plugin can and can't do with each kind of Indigo entity.
 
 | Entity | Read | Create | Edit definition | Control / run | Delete |
 |--------|------|--------|-----------------|---------------|--------|
-| **Devices** | ✓ Full — state, properties, model, type, address | ✗ Created by their protocol plugin / the Indigo UI | ✗ Name, address, and config aren't editable via MCP | ✓ On/off, brightness, RGB/RGBW color, thermostat setpoints & modes | ✗ |
-| **Variables** | ✓ Full — value, folder | ✓ `variable_create` (name, value, folder) | ~ **Value** only (`variable_update`); rename/move not exposed | — value *is* the writable state | ✗ |
-| **Action groups** | ✓ Full — every action step, incl. embedded scripts & plugin configs (`get_action_group_details`) | ✗ Only an empty shell is possible; no API to add steps → **duplicate** an existing one instead | ~ **Name / description** only; the action steps themselves can't be changed | ✓ Execute, duplicate, move to folder | ✓ *gated* |
-| **Triggers** | ✓ Full — event, condition tree, action steps (`get_trigger_details`) | ✗ No API to author actions → **duplicate**, then edit | ~ **Name / description + event settings** (what it watches: device/state/value or variable/value). Conditions ✗, action steps ✗ | ✓ Enable/disable (with timed auto-revert), execute, duplicate, move, remove delayed actions | ✓ *gated* |
-| **Schedules** | ✓ Full — timing, next run time, condition tree, action steps (`get_schedule_details`) | ✗ **duplicate**, then edit | ~ **Name / description** only. Timing ✗, conditions ✗, action steps ✗ | ✓ Enable/disable (with timed auto-revert), execute, duplicate, move, remove delayed actions | ✓ *gated* |
+| **Devices** | ✓ full — state, properties, model, type, address | ✗ | ✗ | ✓ on/off, brightness, RGB/RGBW color, thermostat setpoints & modes | ✗ |
+| **Variables** | ✓ full — value, folder | ✓ `variable_create` | ~ value only | — | ✗ |
+| **Action groups** | ✓ full — every action step (scripts, plugin configs) | ✗ | ~ name / description | ✓ execute, duplicate, move | ✓ *gated* |
+| **Triggers** | ✓ full — event, condition tree, action steps | ✗ | ~ name / description, event settings | ✓ enable/disable (timed auto-revert), execute, duplicate, move, remove delayed actions | ✓ *gated* |
+| **Schedules** | ✓ full — timing, next run, condition tree, action steps | ✗ | ~ name / description | ✓ enable/disable (timed auto-revert), execute, duplicate, move, remove delayed actions | ✓ *gated* |
 
-**Legend:** ✓ fully supported · ~ partial (see the cell) · ✗ not possible · — not applicable.
+**Legend:** ✓ supported · ~ partial (see the cell) · ✗ not possible · — not applicable.
 
-- **Why the ✗'s?** Indigo's Python SDK provides no way to author an automation's actions or conditions
-  from scratch, edit an existing automation's action steps or conditions, or change a schedule's timing.
-  Those stay in the Indigo UI. Everything else is programmatic.
-- **"Duplicate, then edit"** is the supported way to make a variant: `control_trigger` /
-  `control_schedule` / `control_action_group` with `action: "duplicate"`, then `update_trigger` (or rename
-  the copy). The copy carries over the original's actions and conditions intact.
-- **Delete is the only gated capability** — it requires the *Allow AI to delete automations* plugin
-  preference (off by default) **and** `confirm=true`. Everything else (read, control, edit) is always available.
+- Action steps, conditions, and schedule timing are not editable via MCP — change those in the Indigo UI.
+- To make a variant: duplicate an automation (`control_trigger` / `control_schedule` /
+  `control_action_group`, `action: "duplicate"`), then edit the copy.
+- **Delete** requires the *Allow AI to delete automations* preference (off by default) and `confirm=true`.
 
 ## Available Tools
 
