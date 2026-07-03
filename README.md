@@ -1,202 +1,68 @@
 # Indigo MCP Server Plugin
 
-A Model Context Protocol (MCP) server plugin that enables AI assistants like Claude to interact with your Indigo home
-automation system through natural language queries.
-
-## What It Does
-
-Search, analyze, and control your Indigo devices using natural language:
+A Model Context Protocol (MCP) server plugin that lets AI assistants like Claude search, understand, and
+control your [Indigo](https://www.indigodomo.com/) home automation system through natural language.
 
 - "Find all light switches in the bedroom"
-- "Show me temperature sensors"
-- "Turn on the garage lights"
 - "What devices are currently on?"
-- "Execute the bedtime scene"
+- "Turn on the garage lights" / "Execute the bedtime scene"
+- "What trigger turned off the porch light last night?"
 
-## Server Requirements
+## Requirements
 
-- **Indigo Domotics**: 2025.2 or later (ships Python 3.13)
-- **macOS**: 10.15 (Catalina) or later
-- **CPU**: Apple Silicon only (M1/M2/M3/M4)
-    - LanceDB 0.30+ no longer ships Intel Mac (x86) wheels
-- **OpenAI API Key**: Required for semantic search ([Get API key](https://platform.openai.com/api-keys))
-    - Sends device metadata to OpenAI for embeddings (minimal cost)
-    - Only device names, types, descriptions sent - no sensitive data
+- **Indigo Domotics** 2025.2 or later (ships Python 3.13)
+- **macOS** 10.15 (Catalina) or later
+- **Apple Silicon** (M-series) only — LanceDB 0.30+ no longer ships Intel Mac wheels
+- **OpenAI API key** for semantic search ([get one](https://platform.openai.com/api-keys)). Only device
+  names, types, and descriptions are sent, to generate embeddings (minimal cost) — see
+  [Privacy & Security](#privacy--security).
+- **Node.js** (for Claude Desktop only, which connects via `npx mcp-remote`): `brew install node`
 
 ## Installation
 
-1. **Install Node.js**: If not already installed, install Node.js for `npx` command
-   - Via Homebrew: `brew install node`
-   - Or download from [nodejs.org](https://nodejs.org/)
-   - Verify installation: `npx --version`
-2. **Install Plugin**: Add MCP Server plugin to Indigo via Plugin Manager
-3. **Configure Plugin**: Enter OpenAI API key in plugin preferences
-4. **Create MCP Server Device**: Add new "MCP Server" device in Indigo
-5. **Wait for Indexing**: Plugin will index your Indigo database (takes time on first run)
-6. **Configure Claude Desktop**: Add configuration to `claude_desktop_config.json`
+1. Install the **MCP Server** plugin in Indigo via the Plugin Manager.
+2. Enter your **OpenAI API key** in the plugin's preferences.
+3. Add a new **MCP Server** device in Indigo (this creates the actual server; one per install).
+4. Wait for the plugin to **index your database** — the first run takes a while.
+5. **Connect an MCP client** — see below.
 
-## Optional Features
+Optional integrations, all off by default:
 
-- **InfluxDB Connection information**: Required for historical data analysis queries
-- **LangSmith**: Optional debugging and tracing of AI prompts. Not needed for most people.
-- **Event Webhooks**: Optional real-time push notifications, delivered as an HTTP POST to an
-  endpoint **you run** (disabled by default; requires a custom agent/automation system, **not**
-  stock Claude Desktop — see [Event Subscriptions & Webhooks](#event-subscriptions--webhooks)).
-  *Added in v2026.1.0.*
+- **InfluxDB** — required for the `analyze_historical_data` tool.
+- **Event Webhooks** — real-time outbound push notifications; requires a server you run, **not** stock
+  Claude Desktop. See [Event Subscriptions & Webhooks](#event-subscriptions--webhooks). *(v2026.1.0)*
+- **LangSmith** — AI prompt tracing for debugging; most people don't need it.
 
-### MCP Server Device Setup
+## Connecting an MCP Client
 
-The MCP Server Indigo device is what creates the actual MCP Server.
+### 1. Get an API key
 
-- **Server Access**: Configured via MCP Server device in Indigo
-- **Single Server**: Plugin enforces one MCP Server device per installation
+Every connection authenticates with an Indigo API key sent as `Authorization: Bearer <key>`. Two kinds:
 
-### Authentication & Security
+- **Reflector API key** — from your Indigo Reflector settings. Use for remote/HTTPS access.
+- **Local secret** — for local/LAN access. Add one to
+  `/Library/Application Support/Perceptive Automation/Indigo <VERSION>/Preferences/secrets.json`
+  ([format](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets)),
+  then restart the Indigo Web Server.
 
-⚠️ **IMPORTANT**: All MCP connections require authentication using an Indigo API key as a Bearer token.
+### 2. Pick your endpoint URL
 
-**How to obtain API keys:**
+The endpoint path is always `/message/com.vtmikel.mcp_server/mcp/`. Choose the base by where you connect
+from (default Web Server port is `8176`):
 
-- **Local/LAN access**: Create a `secrets.json` file
-  with [local secrets](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets)
-    - Location: `/Library/Application Support/Perceptive Automation/Indigo [VERSION]/Preferences/secrets.json`
-    - See documentation link above for JSON format details
-    - Note: Restart Indigo Web Server after creating/modifying this file
-- **Remote access**: Use your Indigo Reflector API key from your Reflector settings
+| Access | Endpoint URL | Key |
+|--------|--------------|-----|
+| Same machine as Indigo | `http://localhost:8176/message/com.vtmikel.mcp_server/mcp/` | Local secret |
+| Another machine on your LAN | `http://<indigo-ip>:8176/message/com.vtmikel.mcp_server/mcp/` | Local secret |
+| Remote (outside your network) | `https://<your-reflector>.indigodomo.net/message/com.vtmikel.mcp_server/mcp/` | Reflector key |
 
-### HTTP Transport Behavior
+For HTTPS on the LAN with a self-signed certificate, use the `https://<indigo-host>:8176/...` URL and see
+the self-signed note in the client examples below.
 
-The endpoint implements the MCP streamable-HTTP transport over the Indigo Web Server:
+### 3. Configure your client
 
-- `POST` carries all MCP messages.
-- `GET` returns `405` — the server does not offer a server→client SSE stream (spec-permitted).
-- `DELETE` with an `Mcp-Session-Id` header terminates that session. Note: current Indigo Web Server versions reject `DELETE` before it reaches the plugin, so sessions are also expired automatically after 2 hours idle.
-
-### Claude Desktop / MCP Client Configuration
-
-Requirements:
-- **Node.js**: Required for MCP client connection ([Download](https://nodejs.org/))
-    - Provides `npx` command used by Claude Desktop configuration
-    - Install via Homebrew: `brew install node`
-    - Or download from [nodejs.org](https://nodejs.org/)
-
-For Claude Desktop -- Add one of the following configurations to
-`~/Library/Application Support/Claude/claude_desktop_config.json` based on your use case:
-
-In all cases, you will need an API Key. For this, you have two choices:
-
-- **Indigo Reflector API Key**: Obtained from your Reflector settings
-- **Local Secret**: Created in `secrets.json` file (
-  see [documentation](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets))
-
-#### Scenario 1: HTTPS via Reflector (Most Common, Enables remote access outside your home)
-
-**Use when:**
-
-- Accessing Indigo from outside your local network
-- Security: Encrypted connection with valid SSL certificate
-
-```json
-{
-  "mcpServers": {
-    "indigo": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-remote",
-        "https://your-reflector-url.indigodomo.net/message/com.vtmikel.mcp_server/mcp/",
-        "--header",
-        "Authorization:Bearer YOUR_REFLECTOR_API_KEY"
-      ]
-    }
-  }
-}
-```
-
-**Setup:**
-
-1. Configure Indigo Reflector in Web Server Settings
-2. Use your Reflector API key
-3. Replace `your-reflector-url.indigodomo.net` with your actual Reflector URL
-4. Replace `YOUR_REFLECTOR_API_KEY` with your Reflector API key
-
-#### Scenario 2: HTTPS on LAN with Self-Signed Certificate
-
-```json
-{
-  "mcpServers": {
-    "indigo": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-remote",
-        "https://your-local-hostname-or-ip:8176/message/com.vtmikel.mcp_server/mcp/",
-        "--header",
-        "Authorization:Bearer YOUR_LOCAL_SECRET_KEY"
-      ],
-      "env": {
-        "NODE_TLS_REJECT_UNAUTHORIZED": "0"
-      }
-    }
-  }
-}
-```
-
-**Setup:**
-
-1. Create a local secret (
-   see [local secrets documentation](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets))
-    - Create/edit: `/Library/Application Support/Perceptive Automation/Indigo [VERSION]/Preferences/secrets.json`
-    - Restart Indigo Web Server after modifying
-2. Replace `your-local-hostname-or-ip` with your Indigo server IP/hostname
-3. Replace `YOUR_LOCAL_SECRET_KEY` with your generated local secret
-4. `NODE_TLS_REJECT_UNAUTHORIZED=0` disables certificate validation (required for self-signed certs)
-5. Replace port 8176 if you are not using the default Indigo Web Server port
-
-#### Scenario 3: HTTP on Local/LAN
-
-If you have HTTPS disabled on your Indigo Web Server.
-
-```json
-{
-  "mcpServers": {
-    "indigo": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-remote",
-        "http://your-local-hostname-or-ip:8176/message/com.vtmikel.mcp_server/mcp/",
-        "--allow-http",
-        "--header",
-        "Authorization:Bearer YOUR_LOCAL_SECRET_KEY"
-      ]
-    }
-  }
-}
-```
-
-**Setup:**
-
-1. Create a local secret (
-   see [local secrets documentation](https://wiki.indigodomo.com/doku.php?id=indigo_2024.2_documentation:indigo_web_server#local_secrets))
-    - Create/edit: `/Library/Application Support/Perceptive Automation/Indigo [VERSION]/Preferences/secrets.json`
-    - Restart Indigo Web Server after modifying
-2. Replace `YOUR_LOCAL_SECRET_KEY` with your generated local secret
-3. Replace `your-local-hostname-or-ip` with your server IP/hostname for LAN access
-4. Replace port 8176 if you are not using the default Indigo Web Server port
-
-> **Note**: For VS Code, Cursor, or Claude Code CLI, see the "VS Code / Cursor / Claude Code Configuration" section below for direct HTTP configuration.
-
-### VS Code / Cursor / Claude Code Configuration
-
-These clients support **direct HTTP transport** which is simpler and more reliable than the `mcp-remote` proxy.
-
-#### Scenario 1: Local Access (Same Machine as Indigo)
-
-Add to your MCP settings file:
-- **VS Code**: `.vscode/mcp.json` or VS Code settings
-- **Cursor**: Cursor MCP settings
-- **Claude Code**: `~/.claude.json` or project `.mcp.json`
+**VS Code, Cursor, Claude Code** support direct HTTP transport — simpler and more reliable. Add to your MCP
+settings (`.vscode/mcp.json`, Cursor MCP settings, or `~/.claude.json` / project `.mcp.json`):
 
 ```json
 {
@@ -204,198 +70,139 @@ Add to your MCP settings file:
     "indigo": {
       "type": "http",
       "url": "http://localhost:8176/message/com.vtmikel.mcp_server/mcp/",
-      "headers": {
-        "Authorization": "Bearer YOUR_LOCAL_SECRET_KEY"
-      }
+      "headers": { "Authorization": "Bearer YOUR_API_KEY" }
     }
   }
 }
 ```
 
-#### Scenario 2: LAN Access (Different Machine on Same Network)
+Swap the `url` for the LAN or Reflector variant from the table above.
+
+**Claude Desktop** does not support direct HTTP, so it proxies through `mcp-remote`. Add to
+`~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "indigo": {
-      "type": "http",
-      "url": "http://YOUR_INDIGO_IP:8176/message/com.vtmikel.mcp_server/mcp/",
-      "headers": {
-        "Authorization": "Bearer YOUR_LOCAL_SECRET_KEY"
-      }
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote",
+        "https://your-reflector.indigodomo.net/message/com.vtmikel.mcp_server/mcp/",
+        "--header", "Authorization:Bearer YOUR_API_KEY"
+      ]
     }
   }
 }
 ```
 
-Replace `YOUR_INDIGO_IP` with your Indigo server's LAN IP address (e.g., `192.168.1.100`).
+- **Plain HTTP** (local/LAN): add `"--allow-http"` to `args`.
+- **Self-signed HTTPS** (LAN): add `"env": { "NODE_TLS_REJECT_UNAUTHORIZED": "0" }` to the server block.
 
-#### Scenario 3: Remote HTTPS via Indigo Reflector
+> **Why the difference?** `mcp-remote` requests OAuth endpoints that Indigo doesn't implement; direct HTTP
+> transport avoids that entirely, so prefer it whenever your client supports it.
 
-```json
-{
-  "mcpServers": {
-    "indigo": {
-      "type": "http",
-      "url": "https://your-reflector-id.indigodomo.net/message/com.vtmikel.mcp_server/mcp/",
-      "headers": {
-        "Authorization": "Bearer YOUR_REFLECTOR_API_KEY"
-      }
-    }
-  }
-}
-```
+### HTTP transport notes
 
-> **Why direct HTTP?** The `mcp-remote` proxy used by Claude Desktop requests OAuth endpoints that Indigo doesn't implement. Direct HTTP transport avoids this issue entirely.
-
-## Pagination Support
-
-**Important:** To handle large Indigo installations, list and search tools support pagination:
-
-- **Default Limit**: 50 results per request
-- **Maximum Limit**: 500 results per request
-- **Parameters**: Add `limit` and `offset` to paginate through results
-- **Response Metadata**: Returns `total_count`, `offset`, `has_more` for navigation
-
-**Example:**
-```python
-# Get first 50 devices
-list_devices(limit=50, offset=0)
-
-# Get next 50 devices
-list_devices(limit=50, offset=50)
-
-# Search with pagination
-search_entities("bedroom lights", limit=20)
-```
-
-**Tools with Pagination:** `search_entities`, `list_devices`, `list_variables`, `list_action_groups`, `get_devices_by_state`, `list_triggers`, `list_schedules`
+The endpoint uses the MCP streamable-HTTP transport over the Indigo Web Server: `POST` carries all
+messages, `GET` returns `405` (no server→client SSE stream), and sessions expire after 2 hours idle
+(current Indigo Web Server versions reject the `DELETE` teardown before it reaches the plugin).
 
 ## Available Tools
 
-### Search and Query
+Most list and search tools paginate with `limit` (default 50, max 500) and `offset`, and return
+`total_count` / `has_more` for navigation.
 
-- **search_entities**: Natural language search across devices, variables, action groups, triggers, and schedules (pagination supported)
-- **list_devices**: Get all devices with optional state filtering (pagination supported)
-- **list_variables**: Get all variables with current values (pagination supported)
-- **list_action_groups**: Get all action groups/scenes (pagination supported)
-- **list_variable_folders**: Get all variable folders with IDs
-- **get_devices_by_state**: Find devices by state conditions (pagination supported)
-- **get_devices_by_type**: Get devices by type (dimmer, relay, sensor, etc.)
-- **get_device_by_id**: Get specific device by exact ID
-- **get_variable_by_id**: Get specific variable by exact ID
-- **get_action_group_by_id**: Get specific action group by exact ID
+### Search and query
 
-### Automation Introspection
+- **search_entities** — natural-language search across devices, variables, action groups, triggers, and schedules
+- **list_devices** — all devices, with optional state filtering
+- **list_variables** / **list_variable_folders** — variables (with values) and their folders
+- **list_action_groups** — action groups / scenes
+- **get_devices_by_state** — devices matching state conditions
+- **get_devices_by_type** — devices of a type (dimmer, relay, sensor, …)
+- **get_device_by_id** / **get_variable_by_id** / **get_action_group_by_id** — exact lookups
 
-*Added in v2026.6.0.* Triggers, schedules, and action groups can now be inspected in
-full — including the action steps and condition trees that Indigo's scripting API
-does not expose (read from the server's database file, refreshed within minutes of
-changes).
+### Automation introspection *(v2026.6.0)*
 
-- **list_triggers**: List triggers with a one-line summary of what each watches; filter by name/type/enabled/folder (pagination supported)
-- **list_schedules**: List schedules including **next execution time** and a timing summary (pagination supported)
-- **get_automation_details**: Explain a trigger, schedule, or action group — its event/timing, condition tree, and every action step (device commands, variable writes, nested action groups, embedded Python scripts, plugin actions with configuration), with entity IDs resolved to names
-- **find_automation_references**: Reverse lookup — which triggers/schedules/action groups watch, act on, set, or condition-read a device, variable, or action group, including indirect paths through nested action groups, cross-checked against the Indigo server's own dependency graph
+Inspect triggers, schedules, and action groups in full — including the action steps and condition trees
+that Indigo's scripting API does not expose (read from the server's database file, refreshed within
+minutes of a change).
 
-### Investigation
+- **list_triggers** — triggers with a one-line summary of what each watches; filter by name/type/enabled/folder
+- **list_schedules** — schedules with **next execution time** and a timing summary
+- **get_automation_details** — the full explanation of a trigger, schedule, or action group: its event/timing,
+  condition tree, and every action step (device commands, variable writes, nested action groups, embedded
+  Python, plugin actions with config), IDs resolved to names
+- **find_automation_references** — reverse lookup: which automations watch, act on, set, or condition-read a
+  device/variable/action group — including indirect paths through nested action groups, cross-checked
+  against Indigo's own dependency graph
 
-*Added in v2026.6.0.*
+### Investigation *(v2026.6.0)*
 
-- **investigate_event**: "What caused this?" — finds a device's state-change line in the log, collects the automations that fired around it, and ranks candidate causes by structural evidence (does it actually act on that device, directly or through action-group chains?) plus temporal proximity
+- **investigate_event** — "what caused this?" Finds a device's state-change in the log, collects the
+  automations that fired around it, and ranks candidate causes by structural evidence (does it actually act
+  on that device, directly or through action-group chains?) plus temporal proximity.
+- **query_event_log** — read the event log, newest first. With no filters it returns the recent tail from
+  Indigo's live log; add `query`/`regex`/`types`/`start_time`/`end_time` to scan the full historical daily
+  log files instead. Each entry is `{timestamp, type, message}`.
 
-`query_event_log` (below) gained historical search in this release — see the System section.
+### Automation control *(v2026.6.0, safety-gated)*
 
-### Automation Control
+- **automation_control** — `enable`/`disable` (with a `duration_seconds` auto-revert — "disable this trigger
+  for 2 hours"), `execute`, `duplicate`, `move_to_folder`, `remove_delayed_actions`, and `delete`. Deletion
+  requires `confirm=true` **and** the *Allow AI to delete automations* preference (off by default).
+- **update_automation** — edit names/descriptions and trigger event settings (watched device/variable,
+  comparison, value), returning a before/after diff. Gated behind the *Allow AI to edit automations
+  (experimental)* preference (off by default). Schedule timing, action steps, and conditions are read-only in
+  Indigo's API — edit those in the Indigo UI; `duplicate` + `update_automation` is the supported way to make a
+  trigger variant.
 
-*Added in v2026.6.0.*
+> **Headless gate control:** both write gates can also be opened with a
+> `<install>/Preferences/Plugins/com.vtmikel.mcp_server/automation_gates.json` file containing
+> `{"enable_automation_delete": true, "enable_automation_editing": true}` — a gate is open if either the
+> preference or this file enables it (writing it needs server filesystem access, the same trust level as the
+> config UI). Delete the file to revert to the preferences.
 
-- **automation_control**: Lifecycle control for triggers, schedules, and action groups — `enable`/`disable` (with optional `duration_seconds` auto-revert: "disable this trigger for 2 hours"), `execute`, `duplicate` (the supported way to create a variant, since Indigo has no API to author actions/conditions from scratch), `move_to_folder`, `remove_delayed_actions`, and `delete`. Deletion is double-gated: it requires `confirm=true` **and** the *Allow AI to delete automations* plugin preference (off by default).
-- **update_automation**: Modify basic fields — names/descriptions (all three types) and trigger event settings (watched device/variable, state, comparison, value). Schedule *timing* is read-only in Indigo's scripting API, so schedules can only be renamed/redescribed. Gated behind the *Allow AI to edit automations (experimental)* plugin preference (off by default); returns a before/after diff. Action steps and conditions can never be modified — Indigo provides no API for that; edit those in the Indigo UI.
+### Device control
 
-> **Headless gate control:** the two write gates are normally toggled in the plugin config UI.
-> For scripted administration you can also create
-> `<install>/Preferences/Plugins/com.vtmikel.mcp_server/automation_gates.json` on the server
-> containing `{"enable_automation_delete": true, "enable_automation_editing": true}` — a gate is
-> open if **either** the preference or the override file enables it (writing that file requires
-> filesystem access to the server, the same trust level as the config UI). Delete the file to
-> fall back to the preferences.
+- **device_turn_on** / **device_turn_off** — power state
+- **device_set_brightness** — dimmer level (0–100 or 0–1)
+- **device_set_rgb_color** / **device_set_rgb_percent** / **device_set_hex_color** / **device_set_named_color**
+  (954 XKCD colors + aliases) / **device_set_white_levels** — RGB / RGBW control
+- **thermostat_set_heat_setpoint** / **thermostat_set_cool_setpoint** / **thermostat_set_hvac_mode** /
+  **thermostat_set_fan_mode** — thermostat control
 
-### Device Control
+### Variables, actions, and system
 
-- **device_turn_on/off**: Control device power state
-- **device_set_brightness**: Set dimmer brightness (0-100 or 0-1)
+- **variable_create** / **variable_update** — create or update variables
+- **action_execute_group** — run an action group / scene
+- **list_plugins** / **get_plugin_by_id** / **get_plugin_status** / **restart_plugin** — plugin management
+- **analyze_historical_data** — AI analysis of device/variable history (requires InfluxDB)
 
-### RGB Device Control
+### Event subscriptions *(v2026.1.0, only when webhooks are enabled)*
 
-- **device_set_rgb_color**: Set RGB color using 0-255 values
-- **device_set_rgb_percent**: Set RGB color using 0-100 percentages
-- **device_set_hex_color**: Set RGB color using hex codes (#FF8000)
-- **device_set_named_color**: Set RGB color using color names (954 XKCD colors + aliases)
-- **device_set_white_levels**: Control white channels for RGBW devices
+- **create_event_subscription** — POST a JSON event to your webhook URL when device/variable conditions match
+- **list_event_subscriptions** — active subscriptions with delivery health stats (or one by ID)
+- **delete_event_subscription** — delete a subscription (cancels pending dwell timers)
 
-### Thermostat Control
-
-- **thermostat_set_heat_setpoint**: Set heating temperature target
-- **thermostat_set_cool_setpoint**: Set cooling temperature target
-- **thermostat_set_hvac_mode**: Change HVAC operating mode (heat, cool, auto, off, program modes)
-- **thermostat_set_fan_mode**: Control fan operation (auto, alwaysOn)
-
-### Variable and Action Control
-
-- **variable_create**: Create new variable with optional value and folder
-- **variable_update**: Update variable values
-- **action_execute_group**: Execute action groups/scenes
-
-### System
-
-- **query_event_log**: Read the event log, newest first. With no filters it returns the most recent entries from Indigo's live log; add `query`/`regex`/`types`/`start_time`/`end_time` and it scans the historical daily log files instead (full history, text/regex, type and time-range filters, pagination). Each entry is `{timestamp, type, message}`; the response `source` is `live` or `log_files`. *(v2026.6.0 folded the former `search_event_log` into this tool.)*
-- **list_plugins**: List all installed Indigo plugins
-- **get_plugin_by_id**: Get specific plugin information by ID
-- **restart_plugin**: Restart an Indigo plugin
-- **get_plugin_status**: Check plugin status and details
-
-### Analysis
-
-- **analyze_historical_data**: AI-powered historical analysis for devices and variables (requires InfluxDB)
-
-### Event Subscriptions
-
-> Available only when **Enable Event Webhooks** is turned on in plugin preferences, and require you
-> to run your own webhook receiver. *Added in v2026.1.0.* See
-> [Event Subscriptions & Webhooks](#event-subscriptions--webhooks) for the full guide.
-
-- **create_event_subscription**: Subscribe to device/variable state changes; POST a JSON event to your webhook URL when conditions match
-- **list_event_subscriptions**: List active subscriptions with delivery health stats (or fetch one by ID)
-- **delete_event_subscription**: Delete a subscription by ID (cancels pending dwell timers)
+See [Event Subscriptions & Webhooks](#event-subscriptions--webhooks) for the full guide.
 
 ## Event Subscriptions & Webhooks
 
-*Added in v2026.1.0.*
-
-Event subscriptions let an MCP client ask Indigo to notify it the next time something happens —
-"tell me the next time the front door opens", "alert me if the temperature goes above 80°F", "notify
-me if the garage door stays open for 10 minutes".
+*Added in v2026.1.0.* Event subscriptions let an MCP client ask Indigo to notify it the next time something
+happens — "the next time the front door opens", "if the temperature goes above 80°F", "if the garage door
+stays open for 10 minutes".
 
 > ### ⚠️ This is an *outbound* webhook — you must run your own server
 >
-> When a subscription's conditions match, the plugin sends an **HTTP POST** to a URL **you provide**.
-> The plugin is a **sender only** — there is **no built-in receiver**. You must run your own
-> always-on HTTP server with a reachable endpoint that accepts that POST and does something with it.
->
-> **This will not work with stock Claude Desktop** (or most off-the-shelf MCP clients). Those clients
-> have no way to receive a proactive, server-initiated notification — enabling webhooks and
-> restarting Claude Desktop does nothing visible. Event subscriptions are intended for **custom
-> agents / automation systems that own a persistent HTTP endpoint** (for example,
-> [OpenClaw](https://openclaw.ai/)). If you don't have a server that can receive a POST, this feature
-> is not for you yet.
+> When a subscription's conditions match, the plugin sends an **HTTP POST** to a URL **you provide**. It is a
+> **sender only** — there is no built-in receiver. **This will not work with stock Claude Desktop** or most
+> off-the-shelf MCP clients, which have no way to receive a proactive notification. It's meant for custom
+> agents / automation systems that own a persistent HTTP endpoint (for example, [OpenClaw](https://openclaw.ai/)).
 
-### Enabling webhooks
-
-The feature is **disabled by default**. In the plugin's preferences (Plugins → MCP Server → Configure),
-check **Enable Event Webhooks**. The three event-subscription tools
-(`create_event_subscription`, `list_event_subscriptions`, `delete_event_subscription`) are hidden
-from MCP clients until this is turned on.
+Enable it under **Plugins → MCP Server → Configure → Enable Event Webhooks** (the three tools are hidden
+until then).
 
 ### Creating a subscription
 
@@ -412,86 +219,60 @@ from MCP clients until this is turned on.
 | `max_fires` | integer (≥1) | no | Auto-delete the subscription after this many successful deliveries. Use `1` for a one-shot notification. Omit for unlimited. |
 | `description` | string | no | Human-readable label for the subscription. |
 
-A webhook fires on the **transition into** a matching state (not repeatedly while it stays matched).
-When multiple conditions are given, they are combined with **AND** — all must match.
+A webhook fires on the **transition into** a matching state (not repeatedly while it stays matched). Multiple
+conditions are combined with **AND**.
 
 ```python
 # Notify me once, the next time the front door opens
 create_event_subscription(
     webhook_url="https://my-server.example.com/indigo-hook",
-    entity_type="device",
-    entity_id=12345,
-    conditions={"onState": True},
-    max_fires=1,
+    entity_type="device", entity_id=12345,
+    conditions={"onState": True}, max_fires=1,
     description="Front door opened",
 )
 
 # Alert me if the garage door stays open for 10 minutes
 create_event_subscription(
     webhook_url="https://my-server.example.com/indigo-hook",
-    entity_type="device",
-    entity_id=67890,
-    conditions={"onState": True},
-    duration_seconds=600,
+    entity_type="device", entity_id=67890,
+    conditions={"onState": True}, duration_seconds=600,
     description="Garage left open",
 )
 ```
 
 ### Condition operators
 
-Conditions are matched against device/variable state keys (including third-party plugin states).
-Use simple equality, or an operator object per key:
+Conditions match against device/variable state keys (including third-party plugin states). Use simple
+equality, or an operator object per key:
 
 ```jsonc
-{ "onState": true }                                  // equality
-{ "brightness": { "gt": 50 } }                       // single operator
+{ "onState": true }                                    // equality
+{ "brightness": { "gt": 50 } }                         // single operator
 { "temperatureInput1": { "gt": 80 }, "onState": true } // AND of multiple keys
 ```
 
 | Operator | Meaning |
 |----------|---------|
-| `eq` | equal to |
-| `ne` | not equal to |
+| `eq` / `ne` | equal to / not equal to |
 | `gt` / `gte` | greater than / greater than or equal |
 | `lt` / `lte` | less than / less than or equal |
 | `contains` | substring is contained in the value |
 | `regex` | value matches the regular expression |
 
-**Watching variables.** Match a variable on its `value` key. Indigo stores every variable value as a
-**string**, but booleans and numbers in your conditions are coerced automatically, so all of these work:
-
-```jsonc
-{ "value": true }            // matches the string "true"
-{ "value": { "eq": "open" } } // exact string match
-{ "value": { "gt": 50 } }     // numeric comparison against the string value
-```
-
-**Any change (variables only).** To fire on *every* change to a variable's value regardless of what it
-becomes, use the `any_change` sentinel. It is **only valid for variables** (devices update far too
-often), and cannot be combined with `duration_seconds`:
-
-```python
-create_event_subscription(
-    webhook_url="https://my-server.example.com/indigo-hook",
-    entity_type="variable",
-    entity_id=88,
-    conditions={"any_change": True},
-    description="House mode changed",
-)
-```
+**Variables** match on their `value` key. Indigo stores every value as a **string**, but booleans and
+numbers in your conditions are coerced automatically, so `{ "value": true }`, `{ "value": { "eq": "open" } }`,
+and `{ "value": { "gt": 50 } }` all work. To fire on *every* change regardless of the new value, use
+`{ "any_change": true }` — variables only, and not combinable with `duration_seconds`.
 
 ### Authentication
 
-Set via the `auth` parameter. The receiver should validate this so that only your Indigo server can
-post to your endpoint.
+Set via the `auth` parameter; your receiver should validate it so only your Indigo server can post to your
+endpoint.
 
-- **`none`** (default) — no auth headers added.
-- **`bearer`** — adds `Authorization: Bearer <token>` to each POST.
-- **`hmac`** — adds an HMAC-SHA256 signature over the **raw request body**:
-  - `X-Webhook-Signature: sha256=<hexdigest>`
-  - `X-Webhook-Timestamp: <unix-seconds>`
-
-  The signature is computed as `HMAC-SHA256(token, raw_body_bytes)`. Verify it on the receiver:
+- **`none`** (default) — no auth headers.
+- **`bearer`** — adds `Authorization: Bearer <token>`.
+- **`hmac`** — adds `X-Webhook-Signature: sha256=<hexdigest>` (`HMAC-SHA256(token, raw_body_bytes)`) and
+  `X-Webhook-Timestamp: <unix-seconds>`. Verify on the receiver:
 
   ```python
   import hmac, hashlib
@@ -503,15 +284,9 @@ Set `"verify_ssl": false` only if your receiver uses a self-signed certificate.
 
 ### The webhook payload
 
-Each delivery is a `POST` with `Content-Type: application/json` and these headers:
-
-```
-X-Event-Id: <event id>          # same value as the body's event_id
-X-Event-Type: <event type>      # device.state_changed | variable.value_changed
-X-Subscription-Id: <subscription id>
-```
-
-…plus the auth headers above when configured. The JSON body looks like this:
+Each delivery is a `POST` with `Content-Type: application/json`, the headers `X-Event-Id`, `X-Event-Type`
+(`device.state_changed` | `variable.value_changed`), and `X-Subscription-Id` (plus any auth headers), and a
+body like:
 
 ```json
 {
@@ -522,54 +297,42 @@ X-Subscription-Id: <subscription id>
   "timestamp": "2026-06-01T15:30:45.123456+00:00",
   "event_type": "device.state_changed",
   "entity": { "kind": "device", "id": 12345, "name": "Front Door", "device_type": "…" },
-  "state": {
-    "changed_keys": ["onState"],
-    "old": { "onState": false },
-    "new": { "onState": true }
-  },
+  "state": { "changed_keys": ["onState"], "old": { "onState": false }, "new": { "onState": true } },
   "trigger": { "subscription_id": "…", "conditions_matched": { "onState": true } },
   "human": { "title": "Front Door state changed", "summary": "Front Door: onState=true" }
 }
 ```
 
-Variable changes use `event_type: "variable.value_changed"`, `entity.kind: "variable"`, and a
-`state` of `{ "changed_keys": ["value"], "old": { "value": "…" }, "new": { "value": "…" } }`.
+Variable changes use `event_type: "variable.value_changed"`, `entity.kind: "variable"`, and a `state` of
+`{ "changed_keys": ["value"], "old": { "value": "…" }, "new": { "value": "…" } }`.
 
 ### Delivery behavior
 
-- **At-least-once delivery.** Retries mean the same event can arrive more than once — your receiver
-  **must deduplicate by `event_id`** (or `dedupe_key`).
-- **Retries:** up to **4 delivery attempts** (1 initial + 3 retries), 10-second timeout each, with
-  exponential backoff (~1s, 2s, 4s between attempts). Retries happen on `5xx` and network/connection
-  errors. A `4xx` response is treated as a permanent rejection and is **not** retried.
-- **Success** is any `2xx` response — have your endpoint return `200` promptly.
-- **Persisted across restarts:** subscriptions are saved to
-  `…/Preferences/Plugins/com.vtmikel.mcp_server/subscriptions.json` and reloaded on startup, so they
-  survive plugin/Indigo restarts and upgrades. The file is written `0600` and **contains your webhook
-  auth tokens** (it must, so authenticated webhooks can re-authenticate after a restart) — it lives in
-  Indigo's protected app-support directory. Delivery stats are saved on each change and on shutdown
-  (best-effort after an unclean crash). Pending **dwell timers are not persisted** — a held condition
-  re-arms on its next matching transition.
+- **At-least-once** — retries mean an event can arrive more than once; your receiver **must deduplicate by
+  `event_id`** (or `dedupe_key`).
+- **Retries** — up to 4 attempts (1 + 3 retries), 10s timeout each, exponential backoff (~1s/2s/4s), on `5xx`
+  and network errors. A `4xx` is a permanent rejection and is not retried. Success is any `2xx` — return
+  `200` promptly.
+- **Persisted across restarts** — subscriptions are saved (`0600`) to
+  `…/Preferences/Plugins/com.vtmikel.mcp_server/subscriptions.json` and reloaded on startup, so they survive
+  restarts and upgrades. The file **contains your webhook auth tokens** (required so authenticated webhooks
+  can re-authenticate). Pending dwell timers are not persisted — a held condition re-arms on its next
+  matching transition.
 
-### Managing subscriptions in a browser (Web UI)
+### Managing subscriptions in a browser *(v2026.3.0)*
 
-*Added in v2026.3.0.* When event webhooks are enabled, the plugin serves a small web page that **lists
-every active subscription with full detail and lets you remove individual ones** (it does not create or
-edit — that stays with the MCP tools). API keys / bearer tokens are never shown.
+When webhooks are enabled, the plugin serves a page that **lists active subscriptions and lets you remove
+them** (create/edit stays with the MCP tools; auth tokens are never shown).
 
 ![Event Subscriptions web UI](docs/event-subscriptions-web-ui.png)
 
-- **URL:** `http://<your-indigo-host>:8176/message/com.vtmikel.mcp_server/events_ui/`
-- It is served by the Indigo Web Server and uses the **same authentication** as the rest of IWS — open it
-  from a browser that is logged into Indigo (no separate login).
-- The plugin menu **Plugins → MCP Server → Print Event Subscriptions Web UI URL** prints the exact URLs
-  for local, LAN, and Reflector access to the Indigo log.
-- The page reflects the current process only — subscriptions are in-memory and disappear on a plugin restart.
+- **URL:** `http://<your-indigo-host>:8176/message/com.vtmikel.mcp_server/events_ui/` — served by the Indigo
+  Web Server under the **same authentication** as the rest of IWS (open it from a browser logged into Indigo).
+- **Plugins → MCP Server → Print Event Subscriptions Web UI URL** prints the local/LAN/Reflector URLs to the log.
 
 ### Minimal example receiver
 
-Any HTTPS endpoint reachable from your Indigo host works — a small Flask app, a serverless function,
-an automation platform's inbound webhook, etc. Here's a dependency-free Python receiver to test with:
+Any HTTPS endpoint reachable from your Indigo host works. A dependency-free Python receiver to test with:
 
 ```python
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -577,8 +340,7 @@ import json
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length)
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         # (Optional) verify X-Webhook-Signature here if using HMAC auth.
         event = json.loads(body)
         # Dedupe by event_id — at-least-once delivery means retries can repeat.
@@ -589,55 +351,25 @@ class Handler(BaseHTTPRequestHandler):
 HTTPServer(("0.0.0.0", 8888), Handler).serve_forever()
 ```
 
-## Improving Results
+## Tips for Better Results
 
-1. **Be Specific**: Use location and device type in queries
-2. **Device Notes**: Add descriptions to device Notes field - included in AI context
-3. **State vs Search**: Use `list_devices({"onState": true})` for state queries vs `search_entities("lights")`
+- **Be specific** — include location and device type in queries.
+- **Use device Notes** — descriptions in the Notes field are included in the AI's context.
+- **State vs. search** — use `list_devices({"onState": true})` for state queries, `search_entities("lights")`
+  for discovery.
 
 ## Privacy & Security
 
-### Data Sent to OpenAI
+**Sent to OpenAI** (only to generate search embeddings, stored locally on your Indigo server): device
+name/description/model/type/address, variable name/description, and action-group name/description — sent on
+install and when entities are added or changed. **Never sent:** device states or values, credentials, URLs,
+IP/network configuration, or historical/usage data.
 
-When you first install the plugin and when devices are added or modified, the following device information is sent to
-OpenAI to create semantic search capabilities:
-
-**For Devices:**
-
-- Device name
-- Device description (Notes field)
-- Device model
-- Device type (dimmer, sensor, etc.)
-- Device address
-
-**For Variables:**
-
-- Variable name
-- Variable description
-
-**For Action Groups:**
-
-- Action group name
-- Action group description
-
-**What is NOT sent:**
-
-- Device states or current values
-- URLs, passwords, or authentication credentials
-- IP addresses or network configuration
-- Historical data or usage patterns
-
-This data is used only to generate embeddings (mathematical representations) that enable natural language search. The
-embeddings are stored locally on your Indigo server.
-
-### Network Security
-
-- **Authentication Required**: All MCP connections require Bearer token authentication with Indigo API keys
-- **Local Access**: HTTP on localhost/LAN is secure (traffic never leaves local network)
-- **Remote Access**: Use Indigo Reflector for secure remote access with HTTPS and valid SSL certificates
-- **Self-Signed Certificates**: If using HTTPS on LAN, set `NODE_TLS_REJECT_UNAUTHORIZED=0` (see Scenario 3 above)
+**Network** — every MCP connection requires Bearer-token authentication. Local HTTP stays on your LAN; use the
+Indigo Reflector for encrypted remote access. For self-signed HTTPS on the LAN, set
+`NODE_TLS_REJECT_UNAUTHORIZED=0` (Claude Desktop) as shown above.
 
 ## Support
 
-- **Issues**: Submit on project repository
-- **Questions**: [Indigo Domotics Forum](https://forums.indigodomo.com/viewforum.php?f=274)
+- **Issues:** the project repository
+- **Questions:** [Indigo Domotics Forum](https://forums.indigodomo.com/viewforum.php?f=274)
