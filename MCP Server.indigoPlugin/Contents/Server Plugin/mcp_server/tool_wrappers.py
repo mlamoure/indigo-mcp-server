@@ -474,18 +474,25 @@ class ToolWrappers:
             folder_id=folder_id, sort_by=sort_by, limit=limit, offset=offset
         )
 
-    def tool_get_automation_details(
-        self,
-        entity_type: str,
-        entity_id: int,
-        include_scripts: bool = True
-    ) -> str:
-        """Get automation details tool implementation."""
+    def tool_get_trigger_details(self, trigger_id: int, include_scripts: bool = True) -> str:
+        """Explain a trigger in full (event, conditions, action steps)."""
         return self._call(
-            "Explain automation",
-            self.automation_handler.get_details,
-            entity_type=entity_type, entity_id=entity_id,
-            include_scripts=include_scripts
+            "Explain trigger", self.automation_handler.get_details,
+            entity_type="trigger", entity_id=trigger_id, include_scripts=include_scripts
+        )
+
+    def tool_get_schedule_details(self, schedule_id: int, include_scripts: bool = True) -> str:
+        """Explain a schedule in full (timing, conditions, action steps)."""
+        return self._call(
+            "Explain schedule", self.automation_handler.get_details,
+            entity_type="schedule", entity_id=schedule_id, include_scripts=include_scripts
+        )
+
+    def tool_get_action_group_details(self, action_group_id: int, include_scripts: bool = True) -> str:
+        """Explain an action group in full (its action steps)."""
+        return self._call(
+            "Explain action group", self.automation_handler.get_details,
+            entity_type="action_group", entity_id=action_group_id, include_scripts=include_scripts
         )
 
     def tool_find_automation_references(
@@ -520,37 +527,61 @@ class ToolWrappers:
             lookback_seconds=lookback_seconds, lookahead_seconds=lookahead_seconds
         )
 
-    def tool_automation_control(
-        self,
-        entity_type: str,
-        entity_id: int,
-        action: str,
-        duration_seconds: int = None,
-        delay_seconds: int = None,
-        duplicate_name: str = None,
-        folder_id: int = None,
-        confirm: bool = False
-    ) -> str:
-        """Automation control tool implementation."""
+    def _control(self, entity_type, entity_id, action, duration_seconds,
+                 delay_seconds, duplicate_name, folder_id, confirm) -> str:
         return self._call(
-            "Control automation",
+            f"Control {entity_type.replace('_', ' ')}",
             self.automation_handler.control,
             entity_type=entity_type, entity_id=entity_id, action=action,
             duration_seconds=duration_seconds, delay_seconds=delay_seconds,
             duplicate_name=duplicate_name, folder_id=folder_id, confirm=confirm
         )
 
-    def tool_update_automation(
-        self,
-        entity_type: str,
-        entity_id: int,
-        fields: Dict = None
+    def tool_control_trigger(
+        self, trigger_id: int, action: str, duration_seconds: int = None,
+        delay_seconds: int = None, duplicate_name: str = None,
+        folder_id: int = None, confirm: bool = False
     ) -> str:
-        """Update automation fields tool implementation."""
+        """Trigger lifecycle control (enable/disable/execute/duplicate/move/delete)."""
+        return self._control("trigger", trigger_id, action, duration_seconds,
+                             delay_seconds, duplicate_name, folder_id, confirm)
+
+    def tool_control_schedule(
+        self, schedule_id: int, action: str, duration_seconds: int = None,
+        delay_seconds: int = None, duplicate_name: str = None,
+        folder_id: int = None, confirm: bool = False
+    ) -> str:
+        """Schedule lifecycle control (enable/disable/execute/duplicate/move/delete)."""
+        return self._control("schedule", schedule_id, action, duration_seconds,
+                             delay_seconds, duplicate_name, folder_id, confirm)
+
+    def tool_control_action_group(
+        self, action_group_id: int, action: str, delay_seconds: int = None,
+        duplicate_name: str = None, folder_id: int = None, confirm: bool = False
+    ) -> str:
+        """Action-group lifecycle control (execute/duplicate/move/delete)."""
+        return self._control("action_group", action_group_id, action, None,
+                             delay_seconds, duplicate_name, folder_id, confirm)
+
+    def tool_update_trigger(self, trigger_id: int, fields: Dict = None) -> str:
+        """Edit a trigger's name/description and event settings."""
         return self._call(
-            "Update automation",
-            self.automation_handler.update,
-            entity_type=entity_type, entity_id=entity_id, fields=fields
+            "Update trigger", self.automation_handler.update,
+            entity_type="trigger", entity_id=trigger_id, fields=fields
+        )
+
+    def tool_update_schedule(self, schedule_id: int, fields: Dict = None) -> str:
+        """Edit a schedule's name/description."""
+        return self._call(
+            "Update schedule", self.automation_handler.update,
+            entity_type="schedule", entity_id=schedule_id, fields=fields
+        )
+
+    def tool_update_action_group(self, action_group_id: int, fields: Dict = None) -> str:
+        """Edit an action group's name/description."""
+        return self._call(
+            "Update action group", self.automation_handler.update,
+            entity_type="action_group", entity_id=action_group_id, fields=fields
         )
 
     def tool_list_plugins(self, include_disabled: bool = False) -> str:

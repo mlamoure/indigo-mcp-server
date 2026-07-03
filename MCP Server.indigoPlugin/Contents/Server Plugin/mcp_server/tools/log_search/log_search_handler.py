@@ -174,8 +174,9 @@ class LogSearchHandler(BaseToolHandler):
             )
             if "error" not in result:
                 result["hint"] = (
-                    "Use get_automation_details on the top candidate to see "
-                    "exactly what it executes."
+                    "Use the matching get_*_details tool (get_trigger_details / "
+                    "get_schedule_details / get_action_group_details) on the top "
+                    "candidate to see exactly what it executes."
                 )
                 self.log_tool_outcome(
                     "investigate_event", True, count=len(result.get("candidates", []))

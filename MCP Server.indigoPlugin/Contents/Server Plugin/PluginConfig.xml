@@ -98,20 +98,13 @@
 
     <Field id="separator_webhooks" type="separator"/>
 
-    <!-- Automation Control Safety -->
+    <!-- Automation Delete Safety -->
     <Field type="checkbox" id="enable_automation_delete" defaultValue="false">
         <Label>Allow AI to delete automations:</Label>
         <Description>Allow MCP clients to delete triggers, schedules, and action groups
-            (deletion is irreversible; each call also requires confirm=true).
-            Enable/disable, execute, and duplicate are always available.</Description>
-    </Field>
-
-    <Field type="checkbox" id="enable_automation_editing" defaultValue="false">
-        <Label>Allow AI to edit automations (experimental):</Label>
-        <Description>Allow MCP clients to modify basic fields of triggers, schedules,
-            and action groups (names, descriptions, trigger event settings, schedule
-            timing). Uses Indigo's replaceOnServer() scripting call. Action steps and
-            conditions can never be modified.</Description>
+            (deletion is irreversible; each call also requires confirm=true). All other
+            automation tools — enable/disable, execute, duplicate, rename, and editing a
+            trigger's event settings — are always available and do not need this.</Description>
     </Field>
 
     <Field id="separator_automation" type="separator"/>

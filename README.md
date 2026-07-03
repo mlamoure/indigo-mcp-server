@@ -131,9 +131,9 @@ minutes of a change).
 
 - **list_triggers** — triggers with a one-line summary of what each watches; filter by name/type/enabled/folder
 - **list_schedules** — schedules with **next execution time** and a timing summary
-- **get_automation_details** — the full explanation of a trigger, schedule, or action group: its event/timing,
-  condition tree, and every action step (device commands, variable writes, nested action groups, embedded
-  Python, plugin actions with config), IDs resolved to names
+- **get_trigger_details** / **get_schedule_details** / **get_action_group_details** — the full explanation of
+  one automation: its event/timing, condition tree, and every action step (device commands, variable writes,
+  nested action groups, embedded Python, plugin actions with config), IDs resolved to names
 - **find_automation_references** — reverse lookup: which automations watch, act on, set, or condition-read a
   device/variable/action group — including indirect paths through nested action groups, cross-checked
   against Indigo's own dependency graph
@@ -147,22 +147,20 @@ minutes of a change).
   Indigo's live log; add `query`/`regex`/`types`/`start_time`/`end_time` to scan the full historical daily
   log files instead. Each entry is `{timestamp, type, message}`.
 
-### Automation control *(v2026.6.0, safety-gated)*
+### Automation control *(v2026.6.0)*
 
-- **automation_control** — `enable`/`disable` (with a `duration_seconds` auto-revert — "disable this trigger
-  for 2 hours"), `execute`, `duplicate`, `move_to_folder`, `remove_delayed_actions`, and `delete`. Deletion
-  requires `confirm=true` **and** the *Allow AI to delete automations* preference (off by default).
-- **update_automation** — edit names/descriptions and trigger event settings (watched device/variable,
-  comparison, value), returning a before/after diff. Gated behind the *Allow AI to edit automations
-  (experimental)* preference (off by default). Schedule timing, action steps, and conditions are read-only in
-  Indigo's API — edit those in the Indigo UI; `duplicate` + `update_automation` is the supported way to make a
-  trigger variant.
+- **control_trigger** / **control_schedule** / **control_action_group** — lifecycle actions: `enable`/`disable`
+  (with a `duration_seconds` auto-revert — "disable this trigger for 2 hours"), `execute`, `duplicate`,
+  `move_to_folder`, `remove_delayed_actions`, and `delete`. (Action groups support execute/duplicate/move/delete
+  only.) **Delete** requires `confirm=true` **and** the *Allow AI to delete automations* preference (off by
+  default); every other action is always available.
+- **update_trigger** — edit a trigger's name/description and its event settings (watched device/variable,
+  comparison, value), returning a before/after diff.
+- **update_schedule** / **update_action_group** — edit name/description only.
 
-> **Headless gate control:** both write gates can also be opened with a
-> `<install>/Preferences/Plugins/com.vtmikel.mcp_server/automation_gates.json` file containing
-> `{"enable_automation_delete": true, "enable_automation_editing": true}` — a gate is open if either the
-> preference or this file enables it (writing it needs server filesystem access, the same trust level as the
-> config UI). Delete the file to revert to the preferences.
+Action steps, conditions, and schedule timing are read-only in Indigo's scripting API — change those in the
+Indigo UI. Since there's no API to author actions from scratch, `duplicate` (via `control_trigger`) followed by
+`update_trigger` is the supported way to make a trigger variant.
 
 ### Device control
 
