@@ -28,7 +28,9 @@ control your [Indigo](https://www.indigodomo.com/) home automation system throug
 
 Optional integrations, all off by default:
 
-- **InfluxDB** — required for the `analyze_historical_data` tool.
+- **InfluxDB** — required for the `analyze_historical_data` tool. Works with InfluxDB 1.x and
+  InfluxDB 3 (via its v1-compatibility API): use an `https://` URL to enable TLS, and for v3 enter a
+  database token as the password (the username is ignored by v3).
 - **Event Webhooks** — real-time outbound push notifications; requires a server you run, **not** stock
   Claude Desktop. See [Event Subscriptions & Webhooks](#event-subscriptions--webhooks). *(v2026.1.0)*
 - **LangSmith** — AI prompt tracing for debugging; most people don't need it.

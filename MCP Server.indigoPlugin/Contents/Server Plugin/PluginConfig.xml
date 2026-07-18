@@ -54,13 +54,13 @@
     <!-- InfluxDB Configuration -->
     <Field type="checkbox" id="enable_influxdb" defaultValue="false">
         <Label>Enable InfluxDB Historical Data:</Label>
-        <Description>Enable access to historical device data stored in InfluxDB</Description>
+        <Description>Enable access to historical device data stored in InfluxDB (v1.x or v3)</Description>
     </Field>
 
     <Field enabledBindingId="enable_influxdb" enabledBindingNegate="false" type="textfield" id="influx_url"
            defaultValue="http://localhost">
         <Label>InfluxDB URL:</Label>
-        <Description>InfluxDB server URL (e.g., http://localhost or https://influxdb.example.com)</Description>
+        <Description>InfluxDB server URL (e.g., http://localhost or https://influxdb.example.com). An https:// URL enables TLS.</Description>
     </Field>
 
     <Field enabledBindingId="enable_influxdb" enabledBindingNegate="false" type="textfield" id="influx_port"
@@ -78,7 +78,7 @@
     <Field enabledBindingId="enable_influxdb" enabledBindingNegate="false" type="textfield" id="influx_password"
            defaultValue="" secure="true">
         <Label>InfluxDB Password:</Label>
-        <Description>Password for InfluxDB authentication</Description>
+        <Description>Password for InfluxDB authentication. For InfluxDB v3, enter a database token here (username can be anything).</Description>
     </Field>
 
     <Field enabledBindingId="enable_influxdb" enabledBindingNegate="false" type="textfield" id="influx_database"
