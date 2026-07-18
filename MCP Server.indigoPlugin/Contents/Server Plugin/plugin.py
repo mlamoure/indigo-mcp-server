@@ -148,6 +148,7 @@ class Plugin(indigo.PluginBase):
                 else:
                     try:
                         port = int(self.influx_port)
+                        use_ssl = self.influx_url.startswith("https://")
                         client = InfluxDBClient(
                             host=self.influx_url.replace("http://", "").replace(
                                 "https://", ""
@@ -158,6 +159,8 @@ class Plugin(indigo.PluginBase):
                                 self.influx_password if self.influx_password else None
                             ),
                             database=self.influx_database,
+                            ssl=use_ssl,
+                            verify_ssl=use_ssl,
                             timeout=10,
                         )
 
@@ -356,6 +359,9 @@ class Plugin(indigo.PluginBase):
             os.environ["INFLUXDB_HOST"] = self.influx_url.replace(
                 "http://", ""
             ).replace("https://", "")
+            os.environ["INFLUXDB_SSL"] = (
+                "true" if self.influx_url.startswith("https://") else "false"
+            )
             os.environ["INFLUXDB_PORT"] = str(self.influx_port)
             os.environ["INFLUXDB_USERNAME"] = self.influx_login
             os.environ["INFLUXDB_PASSWORD"] = self.influx_password

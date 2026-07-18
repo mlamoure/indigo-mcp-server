@@ -45,7 +45,8 @@ class InfluxDBClient:
             "port": int(os.environ.get("INFLUXDB_PORT", "8086")),
             "username": os.environ.get("INFLUXDB_USERNAME", ""),
             "password": os.environ.get("INFLUXDB_PASSWORD", ""),
-            "database": os.environ.get("INFLUXDB_DATABASE", "indigo")
+            "database": os.environ.get("INFLUXDB_DATABASE", "indigo"),
+            "ssl": os.environ.get("INFLUXDB_SSL", "false").lower() == "true"
         }
     
     @contextmanager
@@ -72,6 +73,8 @@ class InfluxDBClient:
                 username=conn_info["username"] if conn_info["username"] else None,
                 password=conn_info["password"] if conn_info["password"] else None,
                 database=conn_info["database"],
+                ssl=conn_info["ssl"],
+                verify_ssl=conn_info["ssl"],
                 timeout=30
             )
             
@@ -103,8 +106,11 @@ class InfluxDBClient:
         
         try:
             with self.get_client() as client:
-                # Try to list databases as an additional test
-                client.get_list_database()
+                # Run a query scoped to the configured database as an additional
+                # test. SHOW DATABASES requires admin rights, which scoped
+                # InfluxDB 3 tokens don't have; SHOW MEASUREMENTS works on both
+                # 1.x and the v3 v1-compat API.
+                client.query("SHOW MEASUREMENTS LIMIT 1")
                 return True
         except Exception as e:
             self.logger.error(f"InfluxDB connection test failed: {e}")
