@@ -75,7 +75,11 @@ class InfluxDBClient:
                 database=conn_info["database"],
                 ssl=conn_info["ssl"],
                 verify_ssl=conn_info["ssl"],
-                timeout=30
+                timeout=30,
+                # The client defaults to Accept: application/x-msgpack, which
+                # InfluxDB 3's v1-compat API serializes in a shape the 1.x
+                # client can't parse. JSON works on both 1.x and v3.
+                headers={"Accept": "application/json"}
             )
 
             # No ping() here: the 1.x client's ping() expects a 204, but

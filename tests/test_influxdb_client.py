@@ -66,6 +66,19 @@ class TestGetClient:
         assert kwargs["ssl"] is True
         assert kwargs["verify_ssl"] is True
 
+    def test_forces_json_accept_header(self, monkeypatch):
+        # The client's default Accept: application/x-msgpack breaks against
+        # InfluxDB 3's v1-compat API; JSON works on both 1.x and v3.
+        _set_env(monkeypatch, ssl="true")
+        mock_client_cls = MagicMock()
+        monkeypatch.setattr(client_mod, "InfluxClient", mock_client_cls)
+
+        with client_mod.InfluxDBClient().get_client():
+            pass
+
+        kwargs = mock_client_cls.call_args.kwargs
+        assert kwargs["headers"] == {"Accept": "application/json"}
+
     def test_no_ssl_for_http(self, monkeypatch):
         _set_env(monkeypatch, ssl="false")
         mock_client_cls = MagicMock()
