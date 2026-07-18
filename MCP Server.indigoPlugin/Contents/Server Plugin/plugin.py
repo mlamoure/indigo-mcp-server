@@ -162,6 +162,9 @@ class Plugin(indigo.PluginBase):
                             ssl=use_ssl,
                             verify_ssl=use_ssl,
                             timeout=10,
+                            # msgpack (the client default) breaks against
+                            # InfluxDB 3's v1-compat API; JSON works on both
+                            headers={"Accept": "application/json"},
                         )
 
                         # Test with a db-scoped query — works on 1.x and the
