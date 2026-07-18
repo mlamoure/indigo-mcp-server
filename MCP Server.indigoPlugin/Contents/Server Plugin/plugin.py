@@ -164,12 +164,12 @@ class Plugin(indigo.PluginBase):
                             timeout=10,
                         )
 
-                        # Test connection with ping
-                        result = client.ping()
-                        if result:
-                            self.logger.info("✅ InfluxDB connected — historical data available")
-                        else:
-                            self.logger.warning("⚠️ InfluxDB isn't responding — historical data won't be available")
+                        # Test with a db-scoped query — works on 1.x and the
+                        # v3 v1-compat API (the 1.x client's ping() expects a
+                        # 204, which InfluxDB 3 doesn't return, and SHOW
+                        # DATABASES needs admin rights scoped tokens lack)
+                        client.query("SHOW MEASUREMENTS LIMIT 1")
+                        self.logger.info("✅ InfluxDB connected — historical data available")
 
                         client.close()
 
