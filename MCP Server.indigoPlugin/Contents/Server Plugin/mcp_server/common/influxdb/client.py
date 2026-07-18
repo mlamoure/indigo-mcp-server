@@ -77,11 +77,10 @@ class InfluxDBClient:
                 verify_ssl=conn_info["ssl"],
                 timeout=30
             )
-            
-            # Test connection
-            if not client.ping():
-                raise RuntimeError("InfluxDB ping failed")
-            
+
+            # No ping() here: the 1.x client's ping() expects a 204, but
+            # InfluxDB 3's v1-compat /ping returns 200 with a body. Real
+            # queries surface connection failures on their own.
             yield client
             
         except Exception as e:

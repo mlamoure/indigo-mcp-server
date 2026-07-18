@@ -57,7 +57,6 @@ class TestGetClient:
     def test_passes_ssl_flags_when_enabled(self, monkeypatch):
         _set_env(monkeypatch, ssl="true")
         mock_client_cls = MagicMock()
-        mock_client_cls.return_value.ping.return_value = "3.10.3"
         monkeypatch.setattr(client_mod, "InfluxClient", mock_client_cls)
 
         with client_mod.InfluxDBClient().get_client():
@@ -70,7 +69,6 @@ class TestGetClient:
     def test_no_ssl_for_http(self, monkeypatch):
         _set_env(monkeypatch, ssl="false")
         mock_client_cls = MagicMock()
-        mock_client_cls.return_value.ping.return_value = "1.8.10"
         monkeypatch.setattr(client_mod, "InfluxClient", mock_client_cls)
 
         with client_mod.InfluxDBClient().get_client():
@@ -80,6 +78,18 @@ class TestGetClient:
         assert kwargs["ssl"] is False
         assert kwargs["verify_ssl"] is False
 
+    def test_does_not_ping(self, monkeypatch):
+        # The 1.x client's ping() expects a 204; InfluxDB 3's v1-compat
+        # /ping returns 200 with a body, so ping() must never be used.
+        _set_env(monkeypatch, ssl="true")
+        mock_client_cls = MagicMock()
+        monkeypatch.setattr(client_mod, "InfluxClient", mock_client_cls)
+
+        with client_mod.InfluxDBClient().get_client():
+            pass
+
+        mock_client_cls.return_value.ping.assert_not_called()
+
 
 class TestTestConnection:
     def test_uses_db_scoped_query_not_show_databases(self, monkeypatch):
@@ -88,7 +98,6 @@ class TestTestConnection:
         _set_env(monkeypatch, ssl="true")
         mock_client_cls = MagicMock()
         instance = mock_client_cls.return_value
-        instance.ping.return_value = "3.10.3"
         monkeypatch.setattr(client_mod, "InfluxClient", mock_client_cls)
 
         assert client_mod.InfluxDBClient().test_connection() is True
@@ -99,7 +108,6 @@ class TestTestConnection:
         _set_env(monkeypatch, ssl="true")
         mock_client_cls = MagicMock()
         instance = mock_client_cls.return_value
-        instance.ping.return_value = "3.10.3"
         instance.query.side_effect = RuntimeError("unauthorized access")
         monkeypatch.setattr(client_mod, "InfluxClient", mock_client_cls)
 
