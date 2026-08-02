@@ -107,8 +107,20 @@ Swap the `url` for the LAN or Reflector variant from the table above.
 ### HTTP transport notes
 
 The endpoint uses the MCP streamable-HTTP transport over the Indigo Web Server: `POST` carries all
-messages, `GET` returns `405` (no server→client SSE stream), and sessions expire after 2 hours idle
-(current Indigo Web Server versions reject the `DELETE` teardown before it reaches the plugin).
+messages and `GET` returns `405` (no server→client SSE stream).
+
+**Supported protocol revisions** (both served concurrently on the same endpoint):
+
+| Revision | Style | Notes |
+|----------|-------|-------|
+| `2026-07-28` | Stateless ("modern") | Per-request `_meta` metadata, `MCP-Protocol-Version` / `Mcp-Method` / `Mcp-Name` headers, `server/discover`. No sessions. |
+| `2025-11-25`, `2025-06-18` | Session-based ("legacy") | `initialize` handshake + `Mcp-Session-Id` header; sessions expire after 2 hours idle (current Indigo Web Server versions reject the `DELETE` teardown before it reaches the plugin). **Deprecated** — legacy support will be removed in a future release once MCP clients have migrated to `2026-07-28`. |
+
+A request carrying the modern per-request metadata is served statelessly; an `initialize` request
+selects the legacy session flow. Server-push features (`subscriptions/listen`, `listChanged`
+notifications) are not offered — Indigo Web Server plugin responses are one-shot, so there is no
+SSE channel to deliver them on. `Origin`-header validation is likewise not enforced: the Indigo Web
+Server authenticates every request before the plugin sees it, which already defeats DNS rebinding.
 
 ## What's Possible
 

@@ -6,8 +6,6 @@ Implements standards-compliant MCP protocol over Indigo's built-in web server.
 import json
 import logging
 import os
-import secrets
-import time
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -18,6 +16,19 @@ from .adapters.indidb import IndiDbStructureStore
 from .common.json_encoder import safe_json_dumps
 from .common.vector_store.vector_store_manager import VectorStoreManager
 from .handlers.list_handlers import ListHandlers
+from .legacy_era import LegacyEra
+# NOTE: `from .modern_era import ...` (not `from . import modern_era`) — the
+# test conftest stubs the mcp_server package with a MagicMock, so the
+# attribute-style module import would silently return a mock under pytest.
+from .modern_era import (
+    META_CLIENT_INFO,
+    META_SERVER_INFO,
+    MODERN_PROTOCOL_VERSIONS,
+    get_meta,
+    http_status_for,
+    is_modern_request,
+    validate_envelope,
+)
 from .resource_registry import get_resource_schemas
 from .tool_registry import get_tool_schemas
 from .tool_wrappers import ToolWrappers
@@ -37,14 +48,17 @@ from .tools.variable_control import VariableControlHandler
 class MCPHandler:
     """Handles MCP protocol requests through Indigo IWS."""
 
-    # MCP Protocol versions we support (newest first)
-    SUPPORTED_PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18")
+    SERVER_NAME = "Indigo MCP Server"
+
+    # Legacy (session-based) protocol versions, newest first. Aliased here for
+    # existing callers and tests; the authoritative tuple lives in LegacyEra.
+    SUPPORTED_PROTOCOL_VERSIONS = LegacyEra.PROTOCOL_VERSIONS
     LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]
 
-    # Session expiry: clients that never send DELETE would otherwise leak sessions
-    SESSION_TTL_SECONDS = 2 * 60 * 60   # purge sessions idle longer than 2 hours
-    SESSION_SWEEP_INTERVAL = 300        # scan for idle sessions at most every 5 minutes
-    
+    # Every protocol revision this server speaks (modern first), as advertised
+    # by server/discover.
+    ALL_PROTOCOL_VERSIONS = MODERN_PROTOCOL_VERSIONS + LegacyEra.PROTOCOL_VERSIONS
+
     def __init__(
         self,
         data_provider: DataProvider,
@@ -60,7 +74,7 @@ class MCPHandler:
             data_provider: Data provider for accessing entity data
             logger: Optional logger instance
             subscription_handler: Optional event subscription handler (when webhooks enabled)
-            server_version: Plugin version reported in the MCP initialize response
+            server_version: Plugin version reported in serverInfo
             automation_delete_supplier: Callable returning whether the
                 "allow AI to delete automations" preference is on (checked per call)
         """
@@ -70,9 +84,12 @@ class MCPHandler:
         self.server_version = server_version
         self.automation_delete_supplier = automation_delete_supplier or (lambda: False)
 
-        # Session management
-        self._sessions = {}  # session_id -> {created, last_seen, client_info}
-        self._last_session_sweep = time.time()
+        # Legacy (session-based) era support — delete when legacy is retired
+        self.legacy = LegacyEra(
+            logger=self.logger,
+            server_name=self.SERVER_NAME,
+            server_version=server_version,
+        )
 
         # Get database path from environment variable
         db_path = os.environ.get("DB_FILE")
@@ -196,49 +213,18 @@ class MCPHandler:
         if self.vector_store_manager:
             self.vector_store_manager.stop()
 
-    def _handle_delete_session(self, headers: Dict[str, str]) -> Dict[str, Any]:
-        """Handle HTTP DELETE: client-initiated session termination."""
-        session_id = headers.get("mcp-session-id")
-        if not session_id:
-            return {
-                "status": 400,
-                "headers": {"Content-Type": "application/json; charset=utf-8"},
-                "content": json.dumps({"error": "Missing Mcp-Session-Id header"})
-            }
+    @property
+    def _sessions(self) -> Dict[str, Any]:
+        """Legacy session store (compatibility alias for tests; see LegacyEra)."""
+        return self.legacy.sessions
 
-        session = self._sessions.pop(session_id, None)
-        if session:
-            client_name = session.get("client_info", {}).get("name", "Unknown")
-            self.logger.debug(f"Session terminated by client: {client_name} | session: {session_id[:8]}")
-        else:
-            # Idempotent: deleting an unknown/expired session is still success
-            # (404 would be spec-purist but generates an IWS warning log line).
-            self.logger.debug(f"DELETE for unknown session: {session_id[:8]}")
+    @property
+    def _last_session_sweep(self) -> float:
+        return self.legacy.last_sweep
 
-        return {
-            "status": 200,
-            "headers": {"Content-Type": "application/json; charset=utf-8"},
-            "content": "{}"
-        }
-
-    def _sweep_sessions(self) -> None:
-        """Purge sessions idle longer than SESSION_TTL_SECONDS (rate-limited)."""
-        now = time.time()
-        if now - self._last_session_sweep < self.SESSION_SWEEP_INTERVAL:
-            return
-        self._last_session_sweep = now
-
-        expired = [
-            sid for sid, data in list(self._sessions.items())
-            if now - data.get("last_seen", 0) > self.SESSION_TTL_SECONDS
-        ]
-        for sid in expired:
-            self._sessions.pop(sid, None)
-
-        if expired:
-            self.logger.debug(
-                f"Purged {len(expired)} idle MCP session(s); {len(self._sessions)} active"
-            )
+    @_last_session_sweep.setter
+    def _last_session_sweep(self, value: float) -> None:
+        self.legacy.last_sweep = value
 
     def handle_request(
         self,
@@ -261,12 +247,12 @@ class MCPHandler:
         headers = {k.lower(): v for k, v in headers.items()}
         accept = headers.get("accept", "")
 
-        # Opportunistically purge idle sessions (rate-limited; see _sweep_sessions)
-        self._sweep_sessions()
+        # Opportunistically purge idle legacy sessions (rate-limited)
+        self.legacy.sweep()
 
-        # DELETE: explicit session termination (MCP streamable HTTP)
+        # DELETE: explicit session termination (legacy MCP streamable HTTP)
         if method == "DELETE":
-            return self._handle_delete_session(headers)
+            return self.legacy.handle_delete(headers)
 
         # GET would open a server->client SSE stream, which we don't offer;
         # the MCP spec requires 405 in that case. The body must be non-empty:
@@ -288,6 +274,14 @@ class MCPHandler:
                 "content": "Not Acceptable"
             }
 
+        # Malformed bodies can't be era-detected from content; use the declared
+        # protocol-version header to pick the status convention (modern clients
+        # expect real 4xx statuses, legacy responses are always HTTP 200).
+        malformed_status = (
+            400 if headers.get("mcp-protocol-version") in MODERN_PROTOCOL_VERSIONS
+            else 200
+        )
+
         # Parse JSON body
         try:
             payload = json.loads(body) if body else None
@@ -295,14 +289,14 @@ class MCPHandler:
             self.logger.debug(f"Failed to parse JSON body: {e}")
             return self._json_response(
                 self._json_error(None, -32700, "Parse error"),
-                status=200
+                status=malformed_status
             )
 
         # Handle empty or invalid payload
         if not payload:
             return self._json_response(
                 self._json_error(None, -32600, "Invalid Request"),
-                status=200
+                status=malformed_status
             )
 
         # MCP 2025-06-18 spec removes support for JSON-RPC batching
@@ -310,10 +304,24 @@ class MCPHandler:
             self.logger.debug("Batch requests not supported")
             return self._json_response(
                 self._json_error(None, -32600, "Batch requests not supported"),
-                status=200
+                status=malformed_status
             )
-        
-        # Process single message
+
+        # Modern era (2026-07-28): stateless, per-request metadata. Origin-header
+        # validation is deliberately not enforced in either era: IWS authenticates
+        # every request (Bearer) before this callback runs, which defeats DNS
+        # rebinding, and the plugin cannot know its legitimate reflector hostnames.
+        if is_modern_request(payload, headers):
+            try:
+                return self._handle_modern_post(payload, headers)
+            except Exception:
+                self.logger.exception("Unhandled MCP error (modern era)")
+                return self._json_response(
+                    self._json_error(payload.get("id"), -32603, "Internal error"),
+                    status=500
+                )
+
+        # --- Legacy era (sessions + initialize handshake); delete when retired ---
         try:
             # Single message
             resp = self._dispatch_message(payload, headers)
@@ -380,19 +388,9 @@ class MCPHandler:
             "unknown"
         )
 
-        # Log incoming request at INFO level (concise)
         session_id = headers.get("mcp-session-id", "")
         session_short = session_id[:8] if session_id else "none"
-
-        # Get client info from session if available
-        client_label = client_ip
-        if session_id and session_id in self._sessions:
-            session_data = self._sessions[session_id]
-            # Try to use client name if available
-            client_info = session_data.get("client_info", {})
-            client_name = client_info.get("name", "")
-            if client_name:
-                client_label = f"{client_name}@{client_ip}"
+        client_label = self.legacy.client_label(headers, client_ip)
 
         # Format method for logging
         if method.startswith("notifications/"):
@@ -406,25 +404,15 @@ class MCPHandler:
         # tool handlers (which know entity names and outcomes).
         self.logger.debug(f"{log_method} | {client_label} | session: {session_short}")
         
-        # MCP protocol requires MCP-Protocol-Version header for HTTP transport
-        protocol_version_header = headers.get("mcp-protocol-version")
-        if method != "initialize" and not method.startswith("notifications/") and self._sessions:
-            if protocol_version_header and protocol_version_header not in self.SUPPORTED_PROTOCOL_VERSIONS:
-                self.logger.debug(f"Invalid protocol version: {protocol_version_header}")
-                return self._json_error(msg_id, -32600, f"Unsupported protocol version: {protocol_version_header}")
+        # Legacy gates: protocol-version header + session validation
+        validation_error = self.legacy.validate(msg_id, method, headers)
+        if validation_error:
+            return validation_error
 
-        # Session validation (skip for initialize and notifications)
-        session_id = headers.get("mcp-session-id")
-        if method != "initialize" and not method.startswith("notifications/") and self._sessions:
-            if not session_id or session_id not in self._sessions:
-                self.logger.debug(f"Invalid session ID for {method}")
-                return self._json_error(msg_id, -32600, "Missing or invalid Mcp-Session-Id")
-            # Update last seen
-            self._sessions[session_id]["last_seen"] = time.time()
-
-        # Route to appropriate handler
+        # Route to appropriate handler. initialize and ping exist only in the
+        # legacy era (both were removed in the 2026-07-28 revision).
         if method == "initialize":
-            return self._handle_initialize(msg_id, params, client_ip)
+            return self.legacy.handle_initialize(msg_id, params, client_ip)
         elif method == "ping":
             return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
         elif method == "notifications/cancelled":
@@ -447,11 +435,7 @@ class MCPHandler:
         
         # Prompt methods (stubs for now)
         elif method == "prompts/list":
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {"prompts": []}
-            }
+            return self._handle_prompts_list(msg_id)
         elif method == "prompts/get":
             return self._json_error(msg_id, -32602, "Unknown prompt")
         
@@ -463,73 +447,6 @@ class MCPHandler:
             else:
                 self.logger.debug(f"Unknown method: {method}")
                 return self._json_error(msg_id, -32601, "Method not found")
-    
-    def _handle_initialize(
-        self,
-        msg_id: Any,
-        params: Dict[str, Any],
-        client_ip: str = "unknown"
-    ) -> Dict[str, Any]:
-        """Handle initialize request."""
-        requested_version = str(params.get("protocolVersion") or "")
-        client_info = params.get("clientInfo", {})
-        client_name = client_info.get("name", "Unknown")
-
-        # Check if we support the requested version
-        if requested_version in self.SUPPORTED_PROTOCOL_VERSIONS:
-            # Create new session
-            session_id = secrets.token_urlsafe(24)
-            self._sessions[session_id] = {
-                "created": time.time(),
-                "last_seen": time.time(),
-                "client_info": client_info,
-                "client_ip": client_ip,
-                "protocol_version": requested_version  # Track negotiated version per session
-            }
-
-            # Log new session creation with client details
-            self.logger.debug(f"New session: {client_name}@{client_ip} | session: {session_id[:8]} | protocol: {requested_version}")
-
-            result = {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {
-                    "protocolVersion": requested_version,  # Echo back client's requested version
-                    "capabilities": {
-                        "logging": {},
-                        "prompts": {"listChanged": True},
-                        "resources": {"subscribe": False, "listChanged": True},
-                        "tools": {"listChanged": True}
-                    },
-                    "serverInfo": {
-                        "name": "Indigo MCP Server",
-                        "version": self.server_version
-                    }
-                }
-            }
-
-            # Add session ID for header
-            result["_mcp_session_id"] = session_id
-
-            self.logger.debug(f"Client initialized: {client_name} | session: {session_id[:8]}")
-
-            return result
-        else:
-            # Unsupported version
-            self.logger.debug(f"Unsupported protocol version: {requested_version}")
-
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "error": {
-                    "code": -32602,
-                    "message": "Unsupported protocol version",
-                    "data": {
-                        "supported": list(self.SUPPORTED_PROTOCOL_VERSIONS),
-                        "requested": requested_version
-                    }
-                }
-            }
     
     def _handle_cancelled(self, params: Dict[str, Any]):
         """Handle cancellation notification."""
@@ -543,7 +460,8 @@ class MCPHandler:
         params: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle tools/list request."""
-        # Convert tool functions to tool descriptions
+        # Convert tool functions to tool descriptions. Registry insertion order
+        # is fixed, giving the deterministic ordering the spec asks for.
         tools = []
         for name, info in self._tools.items():
             tools.append({
@@ -551,14 +469,8 @@ class MCPHandler:
                 "description": info["description"],
                 "inputSchema": info["inputSchema"]
             })
-        
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "result": {
-                "tools": tools
-            }
-        }
+
+        return self._result(msg_id, {"tools": tools}, ttl_ms=3600000)
     
     def _handle_tools_call(
         self, 
@@ -576,39 +488,31 @@ class MCPHandler:
             # Call the tool function
             result = self._tools[tool_name]["function"](**tool_args)
 
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": result
-                        }
-                    ]
-                }
-            }
+            return self._result(msg_id, {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": result
+                    }
+                ]
+            })
         except (TypeError, ValueError) as e:
-            # MCP 2025-11-25: Input validation errors return as Tool Execution Errors
+            # Input validation errors return as Tool Execution Errors
             # This enables model self-correction by returning error as tool result
             self.logger.debug(f"Tool {tool_name} validation error: {e}")
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": safe_json_dumps({
-                                "error": str(e),
-                                "tool": tool_name,
-                                "success": False
-                            })
-                        }
-                    ],
-                    "isError": True
-                }
-            }
+            return self._result(msg_id, {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": safe_json_dumps({
+                            "error": str(e),
+                            "tool": tool_name,
+                            "success": False
+                        })
+                    }
+                ],
+                "isError": True
+            })
         except Exception as e:
             # Internal errors still return as JSON-RPC errors
             self.logger.error(f"❌ Tool '{tool_name}' failed unexpectedly: {e}")
@@ -632,14 +536,8 @@ class MCPHandler:
                 "description": info["description"],
                 "mimeType": "application/json"
             })
-        
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "result": {
-                "resources": resources
-            }
-        }
+
+        return self._result(msg_id, {"resources": resources}, ttl_ms=3600000)
     
     def _handle_resources_read(
         self, 
@@ -656,19 +554,15 @@ class MCPHandler:
         if uri in self._resources:
             try:
                 content = self._resources[uri]["function"]()
-                return {
-                    "jsonrpc": "2.0",
-                    "id": msg_id,
-                    "result": {
-                        "contents": [
-                            {
-                                "uri": uri,
-                                "mimeType": "application/json",
-                                "text": content
-                            }
-                        ]
-                    }
-                }
+                return self._result(msg_id, {
+                    "contents": [
+                        {
+                            "uri": uri,
+                            "mimeType": "application/json",
+                            "text": content
+                        }
+                    ]
+                }, ttl_ms=0)
             except Exception as e:
                 self.logger.error(f"❌ Read resource {uri} failed: {e}")
                 return self._json_error(
@@ -688,19 +582,15 @@ class MCPHandler:
                     if param_value:
                         try:
                             content = info["function"](param_value)
-                            return {
-                                "jsonrpc": "2.0",
-                                "id": msg_id,
-                                "result": {
-                                    "contents": [
-                                        {
-                                            "uri": uri,
-                                            "mimeType": "application/json",
-                                            "text": content
-                                        }
-                                    ]
-                                }
-                            }
+                            return self._result(msg_id, {
+                                "contents": [
+                                    {
+                                        "uri": uri,
+                                        "mimeType": "application/json",
+                                        "text": content
+                                    }
+                                ]
+                            }, ttl_ms=0)
                         except Exception as e:
                             self.logger.error(f"❌ Read resource {uri} failed: {e}")
                             return self._json_error(
@@ -709,8 +599,116 @@ class MCPHandler:
                                 f"Resource read failed: {str(e)}"
                             )
         
-        return self._json_error(msg_id, -32002, f"Resource not found: {uri}")
-    
+        # -32602 per the 2026-07-28 revision (which forbids the old -32002 code);
+        # legacy clients treat the code opaquely here, so both eras share it.
+        return self._json_error(msg_id, -32602, f"Resource not found: {uri}")
+
+    def _handle_prompts_list(self, msg_id: Any) -> Dict[str, Any]:
+        """Handle prompts/list request (no prompts are defined)."""
+        return self._result(msg_id, {"prompts": []}, ttl_ms=3600000)
+
+    def _handle_server_discover(self, msg_id: Any) -> Dict[str, Any]:
+        """Handle server/discover (modern era): versions, capabilities, identity."""
+        return self._result(msg_id, {
+            "supportedVersions": list(self.ALL_PROTOCOL_VERSIONS),
+            # No push channel exists (IWS responses are one-shot), so no
+            # listChanged/subscribe capabilities and no subscriptions/listen.
+            "capabilities": {
+                "prompts": {},
+                "resources": {},
+                "tools": {}
+            }
+        }, ttl_ms=3600000)
+
+    def _handle_modern_post(
+        self,
+        msg: Dict[str, Any],
+        headers: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """
+        Serve a modern-era (2026-07-28) request: stateless, per-request metadata.
+
+        Returns the full IWS response dict. Never reads or mints session IDs —
+        an Mcp-Session-Id header from a confused client is simply ignored.
+        """
+        # The modern revision defines no client->server notifications on
+        # Streamable HTTP; accept any stray ones leniently. (The spec's
+        # 202-with-no-body is unavailable: IWS 500s on empty response bodies.)
+        if "id" not in msg:
+            return {
+                "status": 200,
+                "headers": {"Content-Type": "application/json; charset=utf-8"},
+                "content": "{}"
+            }
+
+        msg_id = msg.get("id")
+        envelope_error = validate_envelope(msg, headers)
+        if envelope_error:
+            code, message, data = envelope_error
+            self.logger.debug(f"Modern envelope rejected: {message}")
+            return self._json_response(
+                self._json_error(msg_id, code, message, data),
+                status=400
+            )
+
+        method = msg["method"]
+        params = msg.get("params") or {}
+        client_info = get_meta(msg).get(META_CLIENT_INFO)
+        client_name = client_info.get("name") if isinstance(client_info, dict) else None
+        self.logger.debug(f"{method.replace('/', ':')} | {client_name or 'unknown'} | era: modern")
+
+        if method == "server/discover":
+            resp = self._handle_server_discover(msg_id)
+        elif method == "tools/list":
+            resp = self._handle_tools_list(msg_id, params)
+        elif method == "tools/call":
+            resp = self._handle_tools_call(msg_id, params)
+        elif method == "resources/list":
+            resp = self._handle_resources_list(msg_id, params)
+        elif method == "resources/read":
+            resp = self._handle_resources_read(msg_id, params)
+        elif method == "prompts/list":
+            resp = self._handle_prompts_list(msg_id)
+        elif method == "prompts/get":
+            resp = self._json_error(msg_id, -32602, "Unknown prompt")
+        else:
+            # No ping, logging/setLevel or initialize here: all three were
+            # removed from the protocol in the 2026-07-28 revision.
+            resp = self._json_error(msg_id, -32601, "Method not found")
+
+        return {
+            "status": http_status_for(resp),
+            "headers": {"Content-Type": "application/json; charset=utf-8"},
+            "content": json.dumps(resp)
+        }
+
+    def _result(
+        self,
+        msg_id: Any,
+        result: Dict[str, Any],
+        *,
+        ttl_ms: Optional[int] = None,
+        cache_scope: str = "private"
+    ) -> Dict[str, Any]:
+        """
+        Build a JSON-RPC result response in the modern (2026-07-28) shape.
+
+        Both eras serve these identical bodies: resultType, the serverInfo _meta
+        and cache hints are extra result fields legacy clients must tolerate,
+        which keeps the business handlers era-free. ttl_ms is set only on the
+        methods the spec designates cacheable; cacheScope defaults to "private"
+        because every response is Bearer-authenticated, user-specific home data.
+        """
+        result["resultType"] = "complete"
+        result.setdefault("_meta", {})[META_SERVER_INFO] = {
+            "name": self.SERVER_NAME,
+            "version": self.server_version
+        }
+        if ttl_ms is not None:
+            result["ttlMs"] = ttl_ms
+            result["cacheScope"] = cache_scope
+        return {"jsonrpc": "2.0", "id": msg_id, "result": result}
+
     def _register_tools(self):
         """Register all available tools using extracted tool registry."""
         # Create tool functions dictionary mapping tool names to wrapper methods
