@@ -2,5 +2,13 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "packageRules": [
+    {
+      "description": "CI Python must match the interpreter Indigo bundles, not the newest release. This plugin only ever runs inside Indigo's embedded Python -- Indigo 2025.2 ships Python 3.13 (docs.indigodomo.com, and the header comment in requirements.txt) -- so testing on 3.14 would prove nothing about production. Bump the workflow's python-version by hand when Perceptive Automation ships a new Python with Indigo.",
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["python"],
+      "enabled": false
+    }
   ]
 }
