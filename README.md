@@ -209,7 +209,10 @@ Indigo UI. Since there's no API to author actions from scratch, `duplicate` (via
 - **variable_create** / **variable_update** — create or update variables
 - **action_execute_group** — run an action group / scene
 - **list_plugins** / **get_plugin_by_id** / **get_plugin_status** / **restart_plugin** — plugin management
-- **analyze_historical_data** — AI analysis of device/variable history (requires InfluxDB)
+- **analyze_historical_data** — AI analysis of device/variable history (requires InfluxDB). Pass
+  `time_range_hours` for "last N hours" questions; `time_range_days` cannot express windows shorter
+  than a day. Numeric sensors also get a current/min/max/mean/trend summary, and a warning when the
+  value never moved during the window — usually the sign of a sensor that has stopped reporting.
 
 ### Event subscriptions *(v2026.1.0, only when webhooks are enabled)*
 

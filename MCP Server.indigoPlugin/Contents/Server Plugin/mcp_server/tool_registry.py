@@ -479,7 +479,7 @@ def get_tool_schemas(tool_functions):
 
     # Historical analysis
     tools["analyze_historical_data"] = {
-        "description": "Analyze historical data patterns and trends for specific devices using AI-powered insights. IMPORTANT: Requires EXACT device names - use 'search_entities' or 'list_devices' first to find correct device names. Only works if InfluxDB historical data logging is enabled.",
+        "description": "Analyze historical data patterns and trends for specific devices using AI-powered insights. Numeric sensors also get a current/min/max/mean/trend summary, and a warning when the value never moved during the window (which usually means the sensor is offline). IMPORTANT: Requires EXACT device names - use 'search_entities' or 'list_devices' first to find correct device names. Only works if InfluxDB historical data logging is enabled.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -492,9 +492,13 @@ def get_tool_schemas(tool_functions):
                     "items": {"type": "string"},
                     "description": "EXACT device names to analyze (case-sensitive). Must match device names exactly as they appear in Indigo. Use 'search_entities' or 'list_devices' first to find correct names. Examples: ['Living Room Lamp', 'Front Door Sensor', 'Master Bedroom Thermostat']"
                 },
+                "time_range_hours": {
+                    "type": "number",
+                    "description": "Number of hours to analyze (1-8760). USE THIS for any 'last N hours' question — it takes precedence over time_range_days, which cannot express windows shorter than a day."
+                },
                 "time_range_days": {
                     "type": "integer",
-                    "description": "Number of days to analyze (1-365, default: 30). Larger ranges take longer to process."
+                    "description": "Number of days to analyze (1-365, default: 30). Larger ranges take longer to process. Ignored when time_range_hours is supplied."
                 }
             },
             "required": ["query", "device_names"]

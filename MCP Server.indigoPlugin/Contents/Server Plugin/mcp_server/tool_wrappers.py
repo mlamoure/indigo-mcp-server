@@ -337,13 +337,14 @@ class ToolWrappers:
         self,
         query: str,
         device_names: List[str],
-        time_range_days: int = 30
+        time_range_days: int = 30,
+        time_range_hours: float = None
     ) -> str:
         """Analyze historical data tool implementation."""
         return self._call(
             "Analyze historical data",
             self.historical_analysis_handler.analyze_historical_data,
-            query, device_names, time_range_days
+            query, device_names, time_range_days, "auto", time_range_hours
         )
 
     def tool_list_devices(

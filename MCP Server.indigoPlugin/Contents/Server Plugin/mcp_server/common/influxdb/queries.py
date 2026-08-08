@@ -238,6 +238,46 @@ class InfluxDBQueryBuilder:
         self.logger.debug(f"Built time range query: {query}")
         return query
     
+    def build_last_different_value_query(
+        self,
+        device_name: str,
+        device_property: str,
+        current_value: Union[str, int, float],
+        measurement: str = "device_changes"
+    ) -> str:
+        """
+        Build a query for the most recent record whose value differs from the
+        current one.
+
+        Used to answer "when did this actually last change?" for a device whose
+        value has been flat for the entire analysis window — a frozen sensor
+        looks identical to a genuinely steady one until you look further back.
+
+        Args:
+            device_name: Name of the device
+            device_property: Property to query
+            current_value: The value the device is currently stuck on
+            measurement: InfluxDB measurement name
+
+        Returns:
+            InfluxQL query string
+        """
+        # Handle string vs numeric values
+        if isinstance(current_value, str):
+            value_condition = f'"{device_property}" != \'{current_value}\''
+        else:
+            value_condition = f'"{device_property}" != {current_value}'
+
+        query = (
+            f'SELECT "{device_property}" FROM "{measurement}" '
+            f"WHERE \"name\" = '{device_name}' "
+            f"AND {value_condition} "
+            f"ORDER BY time DESC LIMIT 1"
+        )
+
+        self.logger.debug(f"Built last-different-value query: {query}")
+        return query
+
     def get_available_properties_query(
         self,
         device_name: str,
@@ -295,6 +335,43 @@ class InfluxDBQueryBuilder:
         self.logger.debug(f"Built variable history query: {query}")
         return query
     
+    def build_variable_time_range_query(
+        self,
+        variable_name: str,
+        start_time: datetime,
+        end_time: datetime,
+        measurement: str = "variable_changes"
+    ) -> str:
+        """
+        Build a query for variable data over a specific time range.
+
+        The variable counterpart to build_time_range_query, so callers can
+        express windows shorter than a day.
+
+        Args:
+            variable_name: Name of the variable
+            start_time: Start of time range
+            end_time: End of time range
+            measurement: InfluxDB measurement name
+
+        Returns:
+            InfluxQL query string
+        """
+        start_time_ms = int(start_time.timestamp() * 1000)
+        end_time_ms = int(end_time.timestamp() * 1000)
+
+        query = (
+            f'SELECT "value" FROM "{measurement}" '
+            f"WHERE \"varname\" = '{variable_name}' "
+            f"AND time >= {start_time_ms}ms "
+            f"AND time <= {end_time_ms}ms "
+            f'GROUP BY "varname" '
+            f"ORDER BY time ASC"
+        )
+
+        self.logger.debug(f"Built variable time range query: {query}")
+        return query
+
     def build_variable_latest_query(
         self,
         variable_name: str,
