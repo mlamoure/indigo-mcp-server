@@ -324,15 +324,67 @@ class TestFrozenSensorDetection:
 
 
 class TestStatsLine:
-    def test_temperature_units(self, handler):
+    def test_temperature_units_from_property_name(self, handler):
         stats = handler._summarize_numeric([83.3, 84.8, 85.8], "temperatureInput1")
         line = handler._format_stats_line(stats)
         assert "current 85.8°" in line
         assert "range 83.3°–85.8°" in line
         assert "rising" in line
 
+    def test_device_unit_is_appended_to_bare_numbers(self, handler):
+        stats = handler._summarize_numeric([83.3, 84.8, 85.8], "sensorValue")
+        line = handler._format_stats_line(stats, unit="°F")
+        assert "current 85.8 °F" in line
+        assert "range 83.3 °F–85.8 °F" in line
+
+    def test_device_unit_does_not_double_up(self, handler):
+        stats = handler._summarize_numeric([83.3, 85.8], "temperatureInput1")
+        line = handler._format_stats_line(stats, unit="°F")
+        assert "°F" not in line
+        assert "current 85.8°" in line
+
+    def test_no_unit_leaves_bare_numbers(self, handler):
+        stats = handler._summarize_numeric([83.0, 85.0], "sensorValue")
+        assert handler._format_stats_line(stats) == (
+            "current 85 | range 83–85 | mean 84 | rising"
+        )
+
     def test_none_stats_yields_no_line(self, handler):
         assert handler._format_stats_line(None) is None
+
+
+class TestPropertyUnit:
+    def test_unit_read_from_ui_state(self, handler):
+        handler.data_provider.get_all_devices.return_value = [
+            {"name": "Living Room Temperature", "states": {"sensorValue.ui": "69.1 °F"}}
+        ]
+        assert handler._get_property_unit("Living Room Temperature", "sensorValue") == "°F"
+
+    def test_word_units(self, handler):
+        handler.data_provider.get_all_devices.return_value = [
+            {"name": "Living Room Luminance", "states": {"sensorValue.ui": "57 lux"}}
+        ]
+        assert handler._get_property_unit("Living Room Luminance", "sensorValue") == "lux"
+
+    def test_negative_values(self, handler):
+        handler.data_provider.get_all_devices.return_value = [
+            {"name": "Back Patio", "states": {"sensorValue.ui": "-4.5 °C"}}
+        ]
+        assert handler._get_property_unit("Back Patio", "sensorValue") == "°C"
+
+    def test_unitless_ui_state(self, handler):
+        handler.data_provider.get_all_devices.return_value = [
+            {"name": "Counter", "states": {"sensorValue.ui": "42"}}
+        ]
+        assert handler._get_property_unit("Counter", "sensorValue") is None
+
+    def test_unknown_device(self, handler):
+        handler.data_provider.get_all_devices.return_value = []
+        assert handler._get_property_unit("Nope", "sensorValue") is None
+
+    def test_provider_failure_is_swallowed(self, handler):
+        handler.data_provider.get_all_devices.side_effect = RuntimeError("boom")
+        assert handler._get_property_unit("Whatever", "sensorValue") is None
 
 
 class TestReportFormatting:

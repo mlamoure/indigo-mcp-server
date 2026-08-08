@@ -380,7 +380,8 @@ class HistoricalAnalysisHandler(BaseToolHandler):
                 value_key=actual_property,
                 window=window,
                 client=client,
-                query_builder=query_builder
+                query_builder=query_builder,
+                unit=self._get_property_unit(device_name, actual_property)
             )
 
         except Exception as e:
@@ -398,7 +399,8 @@ class HistoricalAnalysisHandler(BaseToolHandler):
         client: Optional[InfluxDBClient] = None,
         query_builder: Optional[InfluxDBQueryBuilder] = None,
         message_prefix: Optional[str] = None,
-        value_formatter: Optional[Any] = None
+        value_formatter: Optional[Any] = None,
+        unit: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Turn raw InfluxDB records into a change narrative plus summary stats.
@@ -415,6 +417,7 @@ class HistoricalAnalysisHandler(BaseToolHandler):
             message_prefix: Overrides `label` at the start of each line
             value_formatter: Callable rendering a value for display; defaults to
                 the device-oriented, unit-aware _format_state_value
+            unit: Display unit for the stats line, e.g. "°F"
 
         Returns:
             Entity report dict, or None when the records held no usable values
@@ -491,8 +494,41 @@ class HistoricalAnalysisHandler(BaseToolHandler):
             "total_changes": total_changes,
             "truncated": truncated,
             "stats": stats,
-            "warning": warning
+            "warning": warning,
+            "unit": unit
         }
+
+    def _get_property_unit(self, device_name: str, property_name: str) -> Optional[str]:
+        """
+        Derive a display unit from the device's own UI state string.
+
+        Indigo records a sensor's reading under the generic `sensorValue`, so
+        the field name alone can't say whether it's degrees, lux or percent —
+        but the paired `sensorValue.ui` state carries the unit.
+
+        Args:
+            device_name: Device to inspect
+            property_name: The field being reported on
+
+        Returns:
+            The unit (e.g. "°F", "lux"), or None if it can't be determined
+        """
+        try:
+            for device in self.data_provider.get_all_devices():
+                if device.get("name") != device_name:
+                    continue
+
+                ui_value = (device.get("states") or {}).get(f"{property_name}.ui")
+                if not isinstance(ui_value, str):
+                    return None
+
+                # "69.1 °F" -> "°F"; "57 lux" -> "lux"
+                remainder = ui_value.lstrip("-+0123456789., ").strip()
+                return remainder or None
+        except Exception as e:
+            self.debug_log(f"Could not determine unit for {device_name}.{property_name}: {e}")
+
+        return None
 
     def _summarize_numeric(
         self, values: List[Any], property_name: str
@@ -1274,7 +1310,7 @@ Recommend 1-3 most relevant properties:"""
         for report in sorted(entity_reports, key=lambda r: r["label"]):
             report_lines.append(f"\n{report['entity']}:")
 
-            summary_line = self._format_stats_line(report["stats"])
+            summary_line = self._format_stats_line(report["stats"], report.get("unit"))
             if summary_line:
                 report_lines.append(f"  {summary_line}")
 
@@ -1304,12 +1340,15 @@ Recommend 1-3 most relevant properties:"""
 
         return "\n".join(report_lines)
 
-    def _format_stats_line(self, stats: Optional[Dict[str, Any]]) -> Optional[str]:
+    def _format_stats_line(
+        self, stats: Optional[Dict[str, Any]], unit: Optional[str] = None
+    ) -> Optional[str]:
         """
         Render the one-line numeric summary that leads each device section.
 
         Args:
             stats: Output of _summarize_numeric, or None
+            unit: Optional display unit from the device's UI state
 
         Returns:
             Formatted summary line, or None for non-numeric entities
@@ -1318,7 +1357,15 @@ Recommend 1-3 most relevant properties:"""
             return None
 
         prop = stats["property"]
-        fmt = lambda v: self._format_state_value(v, prop)
+
+        def fmt(value):
+            rendered = self._format_state_value(value, prop)
+            # _format_state_value adds its own suffix for names it recognises
+            # (temp, humidity, power); only append the device's unit when it
+            # left a bare number behind.
+            if unit and rendered and rendered[-1].isdigit():
+                return f"{rendered} {unit}"
+            return rendered
 
         parts = [
             f"current {fmt(stats['current'])}",

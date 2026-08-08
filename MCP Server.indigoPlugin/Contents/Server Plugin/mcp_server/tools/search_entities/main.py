@@ -212,9 +212,13 @@ class SearchEntitiesHandler(BaseToolHandler):
                         self.debug_log(f"Live lookup failed for {entity_type} {entity_id}: {e}")
 
                 if live:
+                    # The live record has no notion of the search that found
+                    # it, so carry the vector store's own annotations across —
+                    # _similarity_score becomes relevance_score downstream.
                     merged = dict(live)
-                    if "relevance_score" in entity:
-                        merged["relevance_score"] = entity["relevance_score"]
+                    for key, value in entity.items():
+                        if key.startswith("_") or key == "relevance_score":
+                            merged[key] = value
                     updated.append(merged)
                 else:
                     # Deleted since the last sync, or an id we can't resolve —

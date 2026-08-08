@@ -69,7 +69,7 @@ STALE_DEVICE = {
     "displayStateValRaw": 76.7,
     "lastChanged": "2025-08-11T14:20:49",
     "states": {"sensorValue": 76.7},
-    "relevance_score": 0.765,
+    "_similarity_score": 0.765,
 }
 
 LIVE_DEVICE = {
@@ -98,12 +98,27 @@ class TestRefreshWithLiveState:
         assert device["states"]["sensorValue"] == 69.1
         handler.data_provider.get_device.assert_called_once_with(528656030)
 
-    def test_relevance_score_survives_the_refresh(self, handler):
+    def test_similarity_score_survives_the_refresh(self, handler):
+        """
+        The formatter turns _similarity_score into the user-facing
+        relevance_score, so losing it here silently zeroes every result.
+        """
         handler.data_provider.get_device.return_value = LIVE_DEVICE
 
         result = handler._refresh_with_live_state({"devices": [STALE_DEVICE]})
 
-        assert result["devices"][0]["relevance_score"] == 0.765
+        assert result["devices"][0]["_similarity_score"] == 0.765
+
+    def test_all_search_annotations_survive_the_refresh(self, handler):
+        handler.data_provider.get_device.return_value = LIVE_DEVICE
+        annotated = dict(STALE_DEVICE, _entity_type="device", _distance=0.235)
+
+        result = handler._refresh_with_live_state({"devices": [annotated]})
+        device = result["devices"][0]
+
+        assert device["_entity_type"] == "device"
+        assert device["_distance"] == 0.235
+        assert device["displayStateValRaw"] == 69.1
 
     def test_missing_entity_keeps_the_stored_record(self, handler):
         handler.data_provider.get_device.return_value = None
