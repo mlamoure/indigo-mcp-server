@@ -87,6 +87,12 @@ class SearchEntitiesHandler(BaseToolHandler):
             # Group results by entity type
             grouped_results = self._group_results_by_type(raw_results)
 
+            # Replace the vector store's stored snapshot with live state before
+            # anything reads it. The index only rewrites a record when static
+            # fields change, so its state values can be arbitrarily old — the
+            # store matches entities, it does not report on them.
+            grouped_results = self._refresh_with_live_state(grouped_results)
+
             # Apply state filtering if specified
             if state_filter is not None and grouped_results.get("devices"):
                 filtered_devices = StateFilter.filter_by_state(grouped_results["devices"], state_filter)
@@ -154,6 +160,71 @@ class SearchEntitiesHandler(BaseToolHandler):
         except Exception as e:
             return self.handle_exception(e, f"searching for '{query}'")
     
+    # Entity bucket -> data provider lookup used to refresh it with live state
+    _LIVE_LOOKUPS = {
+        "devices": "get_device",
+        "variables": "get_variable",
+        "actions": "get_action",
+        "triggers": "get_trigger",
+        "schedules": "get_schedule",
+    }
+
+    def _refresh_with_live_state(
+        self, grouped_results: Dict[str, List[Dict[str, Any]]]
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Re-read each hit from the data provider so results carry current state.
+
+        The vector store's payload is only rewritten when an entity's static
+        fields change, so its state values can be a long way out of date. The
+        relevance score comes from the search and is carried over; entities the
+        provider no longer knows about keep their stored record rather than
+        disappearing from the results.
+
+        Args:
+            grouped_results: Results grouped by entity type
+
+        Returns:
+            The same structure with live entity data substituted in
+        """
+        refreshed = {}
+
+        for entity_type, entities in grouped_results.items():
+            lookup_name = self._LIVE_LOOKUPS.get(entity_type)
+            if not lookup_name or not entities:
+                refreshed[entity_type] = entities
+                continue
+
+            lookup = getattr(self.data_provider, lookup_name, None)
+            if lookup is None:
+                refreshed[entity_type] = entities
+                continue
+
+            updated = []
+            for entity in entities:
+                entity_id = entity.get("id")
+                live = None
+
+                if entity_id is not None:
+                    try:
+                        live = lookup(entity_id)
+                    except Exception as e:
+                        self.debug_log(f"Live lookup failed for {entity_type} {entity_id}: {e}")
+
+                if live:
+                    merged = dict(live)
+                    if "relevance_score" in entity:
+                        merged["relevance_score"] = entity["relevance_score"]
+                    updated.append(merged)
+                else:
+                    # Deleted since the last sync, or an id we can't resolve —
+                    # keep the stored record rather than dropping the hit.
+                    updated.append(entity)
+
+            refreshed[entity_type] = updated
+
+        return refreshed
+
     def _group_results_by_type(self, raw_results: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
         """
         Group search results by entity type.
