@@ -5,24 +5,33 @@ Main handler for historical data analysis.
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from ...adapters.data_provider import DataProvider
 from ..base_handler import BaseToolHandler
 from ...common.influxdb import InfluxDBClient, InfluxDBQueryBuilder
-from ...common.openai_client.main import _get_client
 
 
 # Alternative fields to try for device properties
 _ALTERNATIVE_FIELDS = [
     "onState", "onOffState", "isPoweredOn",
     "brightness", "brightnessLevel",
-    "temperature", "temperatureInput1", 
+    "temperature", "temperatureInput1",
     "humidity", "humidityInput1",
     "sensorValue", "energyAccumTotal", "state"
 ]
+
+# Window bounds. An hour is the shortest useful window given that the InfluxDB
+# writer only re-records each device every few minutes.
+_MIN_WINDOW = timedelta(hours=1)
+_MAX_WINDOW = timedelta(days=365)
+
+# A single device's change narrative is capped at this many lines. Left
+# uncapped, one temperature sensor over the default 30-day range produces ~700
+# lines. The stats block always covers every sample, capped or not.
+_MAX_CHANGE_LINES = 50
 
 
 class HistoricalAnalysisHandler(BaseToolHandler):
@@ -48,28 +57,34 @@ class HistoricalAnalysisHandler(BaseToolHandler):
         query: str,
         entity_names: List[str],
         time_range_days: int = 30,
-        entity_type: str = "auto"
+        entity_type: str = "auto",
+        time_range_hours: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Analyze historical data for the specified devices and/or variables.
-        
+
         Args:
             query: User's natural language query about the data
             entity_names: List of device or variable names to analyze
             time_range_days: Number of days to analyze (default: 30)
             entity_type: Type of entities to analyze ("auto", "devices", "variables", "mixed")
-            
+            time_range_hours: Number of hours to analyze; takes precedence over
+                time_range_days when supplied
+
         Returns:
             Dictionary with analysis results
         """
         start_time = time.time()
-        
+
         try:
-            self.activity_log(f"Analyzing history for {len(entity_names)} entities over {time_range_days} days", write=False)
+            window = self._resolve_window(time_range_days, time_range_hours)
+            window_label = self._format_window_label(window)
+
+            self.activity_log(f"Analyzing history for {len(entity_names)} entities over {window_label}", write=False)
             self.debug_log(f"Query: '{query}'")
             self.debug_log(f"Entities: {entity_names}")
             self.debug_log(f"Entity type: {entity_type}")
-            
+
             # Validate inputs
             validation_error = self.validate_required_params(
                 {"query": query, "entity_names": entity_names},
@@ -77,19 +92,22 @@ class HistoricalAnalysisHandler(BaseToolHandler):
             )
             if validation_error:
                 return validation_error
-            
+
             if not entity_names:
                 return self.handle_exception(
                     ValueError("No entity names provided"),
                     "validating input parameters"
                 )
-            
-            if time_range_days <= 0 or time_range_days > 365:
+
+            if window < _MIN_WINDOW or window > _MAX_WINDOW:
                 return self.handle_exception(
-                    ValueError("Time range must be between 1 and 365 days"),
+                    ValueError(
+                        "Time range must be between 1 hour and 365 days "
+                        "(use time_range_hours for windows shorter than a day)"
+                    ),
                     "validating time range"
                 )
-            
+
             # Validate entity names exist and determine types
             validation_result = self._validate_entity_names(entity_names, entity_type)
             if not validation_result["all_valid"]:
@@ -122,104 +140,80 @@ class HistoricalAnalysisHandler(BaseToolHandler):
             variables = entity_classification.get("variables", [])
             
             # Get historical data for all entities
-            all_results = []
+            entity_reports = []
             entities_analyzed = []
-            
+
             # Process devices
             for device_name in devices:
                 self.debug_log(f"Querying historical data for device: {device_name}")
-                
+
                 # Use LLM to intelligently select device properties based on query
-                device_results = []
+                device_report = None
                 recommended_properties = self._get_recommended_properties(device_name, query)
-                
+
                 if recommended_properties:
                     self.debug_log(f"LLM recommended properties for {device_name}: {recommended_properties}")
-                    
-                    # Try recommended properties in order
-                    for device_property in recommended_properties:
-                        try:
-                            self.debug_log(f"Querying InfluxDB for {device_name}.{device_property}")
-                            property_results = self._get_historical_device_data(
-                                device_name, device_property, time_range_days
-                            )
-                            if property_results:
-                                device_results.extend(property_results)
-                                self.debug_log(f"Found {len(property_results)} records for {device_name}.{device_property}")
-                                break  # Found data, stop trying other properties
-                            else:
-                                self.debug_log(f"❌ No data for {device_name}.{device_property}")
-                        except Exception as e:
-                            self.debug_log(f"❌ Error querying {device_name}.{device_property}: {e}")
-                            continue
-                
+                    device_report = self._try_properties(
+                        device_name, recommended_properties, window
+                    )
+
                 # Fallback to predefined fields if LLM recommendations didn't work
-                if not device_results:
+                if not device_report:
                     self.debug_log(f"LLM recommendations failed, falling back to predefined properties: {_ALTERNATIVE_FIELDS}")
-                    for device_property in _ALTERNATIVE_FIELDS:
-                        try:
-                            self.debug_log(f"Trying fallback property: {device_name}.{device_property}")
-                            property_results = self._get_historical_device_data(
-                                device_name, device_property, time_range_days
-                            )
-                            if property_results:
-                                device_results.extend(property_results)
-                                self.debug_log(f"Fallback success: found {len(property_results)} records for {device_name}.{device_property}")
-                                break  # Found data, stop trying other properties
-                            else:
-                                self.debug_log(f"❌ No fallback data for {device_name}.{device_property}")
-                        except Exception as e:
-                            self.debug_log(f"❌ Fallback error for {device_name}.{device_property}: {e}")
-                            continue
-                
-                if device_results:
-                    all_results.extend(device_results)
+                    device_report = self._try_properties(
+                        device_name, _ALTERNATIVE_FIELDS, window
+                    )
+
+                if device_report:
+                    entity_reports.append(device_report)
                     entities_analyzed.append(device_name)
-            
+
             # Process variables (simpler - only 'value' field)
             for variable_name in variables:
                 self.debug_log(f"Querying historical data for variable: {variable_name}")
-                
+
                 try:
-                    variable_results = self._get_historical_variable_data(
-                        variable_name, time_range_days
+                    variable_report = self._get_historical_variable_data(
+                        variable_name, window
                     )
-                    if variable_results:
-                        all_results.extend(variable_results)
+                    if variable_report:
+                        entity_reports.append(variable_report)
                         entities_analyzed.append(variable_name)
-                        self.debug_log(f"Found {len(variable_results)} records for variable {variable_name}")
+                        self.debug_log(f"Found {variable_report['total_changes']} changes for variable {variable_name}")
                     else:
                         self.debug_log(f"❌ No data for variable {variable_name}")
                 except Exception as e:
                     self.debug_log(f"❌ Error querying variable {variable_name}: {e}")
                     continue
-            
+
             # Calculate analysis duration
             analysis_duration = time.time() - start_time
-            
+
             # Create enhanced summary statistics
             summary_stats = self._calculate_summary_statistics(
-                all_results, entities_analyzed, time_range_days, analysis_duration
+                entity_reports, entities_analyzed, window, analysis_duration
             )
-            
+
             # Format report with better organization
-            if all_results:
+            if entity_reports:
                 report = self._format_analysis_report(
-                    all_results, entities_analyzed, time_range_days, summary_stats, entity_classification
+                    entity_reports, entities_analyzed, window, summary_stats, entity_classification
                 )
-                
+
+                total_changes = summary_stats["total_state_changes"]
                 self.debug_log(f"Analysis completed in {analysis_duration:.2f}s")
                 return self.create_success_response(
                     data={
                         "report": report,
                         "summary_stats": summary_stats,
                         "entities_analyzed": entities_analyzed,
-                        "total_data_points": len(all_results),
-                        "time_range_days": time_range_days,
+                        "total_data_points": total_changes,
+                        "time_range_days": window.total_seconds() / 86400,
+                        "time_range_hours": window.total_seconds() / 3600,
                         "analysis_duration_seconds": analysis_duration,
                         "entity_classification": entity_classification
                     },
-                    message=f"Analyzed {len(all_results)} changes from {len(entities_analyzed)} entities ({len(devices)} devices, {len(variables)} variables)"
+                    message=f"Analyzed {total_changes} changes from {len(entities_analyzed)} entities ({len(devices)} devices, {len(variables)} variables)"
                 )
             else:
                 self.warning_log("No historical data found for any devices")
@@ -232,37 +226,124 @@ class HistoricalAnalysisHandler(BaseToolHandler):
                     "devices_analyzed": [],
                     "analysis_duration_seconds": analysis_duration
                 }
-            
+
         except Exception as e:
             analysis_duration = time.time() - start_time
             return self.handle_exception(e, f"analyzing historical data (duration: {analysis_duration:.2f}s)")
     
-    def _get_historical_device_data(
-        self, device_name: str, device_property: str, time_range_days: int = 60
-    ) -> List[str]:
+    def _resolve_window(
+        self,
+        time_range_days: Optional[int],
+        time_range_hours: Optional[float] = None
+    ) -> timedelta:
         """
-        Query InfluxDB for historical device data and return formatted results.
-        
+        Resolve the requested analysis window.
+
+        Hours win over days when both are supplied, so a caller answering a
+        "last N hours" question doesn't have to reason about the day field.
+
+        Args:
+            time_range_days: Number of days to look back
+            time_range_hours: Number of hours to look back (takes precedence)
+
+        Returns:
+            The resolved window as a timedelta
+        """
+        if time_range_hours is not None:
+            return timedelta(hours=float(time_range_hours))
+        if time_range_days is not None:
+            return timedelta(days=float(time_range_days))
+        return timedelta(days=30)
+
+    def _format_window_label(self, window: timedelta) -> str:
+        """
+        Describe a window the way a person would say it.
+
+        Args:
+            window: The analysis window
+
+        Returns:
+            Human-readable label, e.g. "the last 4 hours"
+        """
+        total_hours = window.total_seconds() / 3600
+
+        if total_hours < 48:
+            hours = total_hours
+            if hours == int(hours):
+                hours = int(hours)
+                return f"the last {hours} hour" if hours == 1 else f"the last {hours} hours"
+            return f"the last {hours:.1f} hours"
+
+        days = total_hours / 24
+        if days == int(days):
+            days = int(days)
+            return f"the last {days} day" if days == 1 else f"the last {days} days"
+        return f"the last {days:.1f} days"
+
+    def _try_properties(
+        self, device_name: str, properties: List[str], window: timedelta
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Query candidate properties in order and return the first with data.
+
+        Args:
+            device_name: The device to query
+            properties: Candidate property names, most relevant first
+            window: The analysis window
+
+        Returns:
+            An entity report dict, or None if no property yielded data
+        """
+        for device_property in properties:
+            try:
+                self.debug_log(f"Querying InfluxDB for {device_name}.{device_property}")
+                report = self._get_historical_device_data(
+                    device_name, device_property, window
+                )
+                if report:
+                    self.debug_log(
+                        f"Found {report['total_changes']} changes for "
+                        f"{device_name}.{report['property']}"
+                    )
+                    return report
+                self.debug_log(f"❌ No data for {device_name}.{device_property}")
+            except Exception as e:
+                self.debug_log(f"❌ Error querying {device_name}.{device_property}: {e}")
+                continue
+
+        return None
+
+    def _get_historical_device_data(
+        self, device_name: str, device_property: str, window: timedelta
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Query InfluxDB for historical device data and build an entity report.
+
         Args:
             device_name: The device name to query data for
             device_property: The device property to query data for
-            time_range_days: Number of days to look back for historical data
-            
+            window: How far back to look
+
         Returns:
-            List of formatted messages describing device state changes
+            An entity report dict (see _build_entity_report), or None when the
+            property has no data in the window
         """
         try:
             client = InfluxDBClient(logger=self.logger)
             query_builder = InfluxDBQueryBuilder(logger=self.logger)
-            
+
             if not client.is_enabled() or not client.test_connection():
-                return []
-            
+                return None
+
+            end_time = datetime.now()
+            start_time = end_time - window
+
             # Build and execute query - try top-level property first
-            query = query_builder.build_device_history_query(
+            query = query_builder.build_time_range_query(
                 device_name=device_name,
                 device_property=device_property,
-                time_range_days=time_range_days
+                start_time=start_time,
+                end_time=end_time
             )
 
             results = client.execute_query(query)
@@ -273,10 +354,11 @@ class HistoricalAnalysisHandler(BaseToolHandler):
                 nested_property = f"state.{device_property}"
                 self.debug_log(f"No results for top-level property '{device_property}', trying nested format: {nested_property}")
 
-                query = query_builder.build_device_history_query(
+                query = query_builder.build_time_range_query(
                     device_name=device_name,
                     device_property=nested_property,
-                    time_range_days=time_range_days
+                    start_time=start_time,
+                    end_time=end_time
                 )
 
                 results = client.execute_query(query)
@@ -286,75 +368,249 @@ class HistoricalAnalysisHandler(BaseToolHandler):
 
             if not results:
                 self.debug_log(f"InfluxDB query returned no results for {device_name}.{device_property} (tried both top-level and nested formats)")
-                return []
+                return None
 
             self.debug_log(f"InfluxDB returned {len(results)} raw records for {device_name}.{actual_property}")
-            
-            # Convert to formatted state change messages
-            formatted_results = []
-            saved_state = None
-            from_timestamp = None
-            
-            for data_record in results:
-                record_time_str = data_record.get("time")
-                if not record_time_str:
-                    continue
-                
-                timestamp_local = self._convert_to_local_timezone(record_time_str)
-                field_value = data_record.get(actual_property)
-                
-                if saved_state is None:
-                    from_timestamp = timestamp_local
-                    saved_state = field_value
-                elif saved_state != field_value and from_timestamp is not None:
-                    # Format duration in a more readable way
-                    duration_str = self._format_duration(
-                        from_timestamp, timestamp_local
-                    )
-                    
-                    # Format timestamps with timezone info
-                    from_str = from_timestamp.strftime("%Y-%m-%d %H:%M:%S %Z")
-                    to_str = timestamp_local.strftime("%Y-%m-%d %H:%M:%S %Z")
-                    
-                    # Format the state value with context
-                    state_str = self._format_state_value(saved_state, actual_property)
 
-                    message = (
-                        f"{device_name}.{actual_property} was {state_str} for {duration_str}, "
-                        f"from {from_str} to {to_str}"
-                    )
-                    formatted_results.append(message)
-                    self.debug_log(message)
-                    from_timestamp = timestamp_local
-                    saved_state = field_value
-            
-            # Handle final state (ongoing until now)
-            to_timestamp = datetime.now().astimezone()
-            if from_timestamp is not None and saved_state is not None:
-                # Format duration in a more readable way
-                duration_str = self._format_duration(
-                    from_timestamp, to_timestamp
-                )
-                
-                # Format timestamps with timezone info
-                from_str = from_timestamp.strftime("%Y-%m-%d %H:%M:%S %Z")
-                to_str = to_timestamp.strftime("%Y-%m-%d %H:%M:%S %Z")
-                
-                # Format the state value with context
-                final_state = self._format_state_value(saved_state, actual_property)
+            return self._build_entity_report(
+                label=f"{device_name}.{actual_property}",
+                entity_name=device_name,
+                property_name=actual_property,
+                records=results,
+                value_key=actual_property,
+                window=window,
+                client=client,
+                query_builder=query_builder
+            )
 
-                message = (
-                    f"{device_name}.{actual_property} is currently {final_state} (for {duration_str}), "
-                    f"since {from_str}"
-                )
-                formatted_results.append(message)
-            
-            return formatted_results
-            
         except Exception as e:
             self.debug_log(f"Error querying {device_name}.{device_property}: {e}")
-            return []
-    
+            return None
+
+    def _build_entity_report(
+        self,
+        label: str,
+        entity_name: str,
+        property_name: str,
+        records: List[Dict[str, Any]],
+        value_key: str,
+        window: timedelta,
+        client: Optional[InfluxDBClient] = None,
+        query_builder: Optional[InfluxDBQueryBuilder] = None,
+        message_prefix: Optional[str] = None,
+        value_formatter: Optional[Any] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Turn raw InfluxDB records into a change narrative plus summary stats.
+
+        Args:
+            label: How the entity is named inside each narrative line
+            entity_name: The bare entity name, used for follow-up queries
+            property_name: The field being reported on
+            records: Raw records from InfluxDB, oldest first
+            value_key: Key holding the value inside each record
+            window: The analysis window
+            client: Optional client, for the "when did it last change?" probe
+            query_builder: Optional builder, for the same probe
+            message_prefix: Overrides `label` at the start of each line
+            value_formatter: Callable rendering a value for display; defaults to
+                the device-oriented, unit-aware _format_state_value
+
+        Returns:
+            Entity report dict, or None when the records held no usable values
+        """
+        prefix = message_prefix if message_prefix is not None else label
+        format_value = value_formatter or (
+            lambda v: self._format_state_value(v, property_name)
+        )
+
+        messages = []
+        values = []
+        saved_state = None
+        from_timestamp = None
+
+        for data_record in records:
+            record_time_str = data_record.get("time")
+            if not record_time_str:
+                continue
+
+            timestamp_local = self._convert_to_local_timezone(record_time_str)
+            field_value = data_record.get(value_key)
+            values.append(field_value)
+
+            if saved_state is None:
+                from_timestamp = timestamp_local
+                saved_state = field_value
+            elif saved_state != field_value and from_timestamp is not None:
+                duration_str = self._format_duration(from_timestamp, timestamp_local)
+
+                from_str = from_timestamp.strftime("%Y-%m-%d %H:%M:%S %Z")
+                to_str = timestamp_local.strftime("%Y-%m-%d %H:%M:%S %Z")
+
+                state_str = format_value(saved_state)
+
+                messages.append(
+                    f"{prefix} was {state_str} for {duration_str}, "
+                    f"from {from_str} to {to_str}"
+                )
+                from_timestamp = timestamp_local
+                saved_state = field_value
+
+        # Handle final state (ongoing until now)
+        to_timestamp = datetime.now().astimezone()
+        if from_timestamp is not None and saved_state is not None:
+            duration_str = self._format_duration(from_timestamp, to_timestamp)
+            from_str = from_timestamp.strftime("%Y-%m-%d %H:%M:%S %Z")
+            final_state = format_value(saved_state)
+
+            messages.append(
+                f"{prefix} is currently {final_state} (for {duration_str}), "
+                f"since {from_str}"
+            )
+
+        if not messages:
+            return None
+
+        total_changes = len(messages)
+        truncated = total_changes > _MAX_CHANGE_LINES
+        shown = messages[-_MAX_CHANGE_LINES:] if truncated else messages
+
+        stats = self._summarize_numeric(values, property_name)
+
+        warning = None
+        if stats and stats["distinct_count"] == 1 and stats["sample_count"] >= 3:
+            warning = self._describe_frozen_value(
+                entity_name, property_name, stats["current"], client, query_builder
+            )
+
+        return {
+            "entity": entity_name,
+            "property": property_name,
+            "label": label,
+            "messages": shown,
+            "total_changes": total_changes,
+            "truncated": truncated,
+            "stats": stats,
+            "warning": warning
+        }
+
+    def _summarize_numeric(
+        self, values: List[Any], property_name: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Summarize a numeric series so the report can lead with an answer.
+
+        Returns None for booleans and non-numeric values, leaving on/off and
+        enum devices with the change narrative alone — a duration story suits
+        them better than arithmetic does.
+
+        Args:
+            values: Raw values in chronological order
+            property_name: The field name, used for unit-aware formatting
+
+        Returns:
+            Dict of summary figures, or None if the series isn't numeric
+        """
+        numeric = [
+            v for v in values
+            if isinstance(v, (int, float)) and not isinstance(v, bool)
+        ]
+
+        if len(numeric) < 2:
+            return None
+
+        first = numeric[0]
+        last = numeric[-1]
+        delta = last - first
+
+        # A tenth of a degree/percent/watt is below the noise floor of most
+        # sensors; anything smaller reads as steady rather than as a trend.
+        if abs(delta) < 0.1:
+            trend = "steady"
+        elif delta > 0:
+            trend = "rising"
+        else:
+            trend = "falling"
+
+        return {
+            "current": last,
+            "first": first,
+            "min": min(numeric),
+            "max": max(numeric),
+            "mean": sum(numeric) / len(numeric),
+            "delta": delta,
+            "trend": trend,
+            "sample_count": len(numeric),
+            "distinct_count": len(set(numeric)),
+            "property": property_name
+        }
+
+    def _describe_frozen_value(
+        self,
+        entity_name: str,
+        property_name: str,
+        current_value: Any,
+        client: Optional[InfluxDBClient],
+        query_builder: Optional[InfluxDBQueryBuilder]
+    ) -> str:
+        """
+        Build the warning shown when a value never moved during the window.
+
+        Looks further back for the last differing reading, so the report can
+        distinguish a genuinely steady sensor from one that stopped reporting.
+
+        Args:
+            entity_name: The entity to probe
+            property_name: The field that is stuck
+            current_value: The value it is stuck on
+            client: InfluxDB client, or None to skip the probe
+            query_builder: Query builder, or None to skip the probe
+
+        Returns:
+            A human-readable warning string
+        """
+        lines = [
+            f"⚠️ {entity_name}.{property_name} did not change at all during this window."
+        ]
+
+        if client is None or query_builder is None:
+            lines.append("   The sensor may be offline, or the value may simply be steady.")
+            return "\n".join(lines)
+
+        try:
+            query = query_builder.build_last_different_value_query(
+                device_name=entity_name,
+                device_property=property_name,
+                current_value=current_value
+            )
+            results = client.execute_query(query)
+
+            if results:
+                record = results[0]
+                changed_at = self._convert_to_local_timezone(record.get("time", ""))
+                previous = self._format_state_value(record.get(property_name), property_name)
+                current = self._format_state_value(current_value, property_name)
+                days_ago = (datetime.now().astimezone() - changed_at).days
+
+                lines.append(
+                    f"   Last actual change: {changed_at.strftime('%Y-%m-%d %H:%M:%S %Z')} "
+                    f"({previous} → {current}), {days_ago} days ago."
+                )
+                if days_ago >= 1:
+                    lines.append(
+                        "   The sensor is likely offline or off the network — treat this reading as stale."
+                    )
+            else:
+                lines.append(
+                    "   No differing reading found in the retained history; the value may never have changed."
+                )
+        except Exception as e:
+            self.debug_log(f"Could not determine last change for {entity_name}.{property_name}: {e}")
+            lines.append("   The sensor may be offline, or the value may simply be steady.")
+
+        return "\n".join(lines)
+
+
     def _get_delta_summary(self, start_time: datetime, end_time: datetime) -> Tuple[int, int, int]:
         """
         Calculate the difference between two datetime objects.
@@ -651,14 +907,17 @@ class HistoricalAnalysisHandler(BaseToolHandler):
                         properties.append(key)
             
             self.debug_log(f"Found {len(properties)} properties for {device_name}: {properties}")
-            
-            # Always include common fallback properties if not already present
-            for prop in _ALTERNATIVE_FIELDS:
-                if prop not in properties:
-                    properties.append(prop)
-            
+
+            # Only fall back to the generic list when the device told us
+            # nothing. Appending it unconditionally offers the model fields the
+            # device doesn't have (a temperature sensor's reading lives in
+            # sensorValue, not temperature), and every miss costs two InfluxDB
+            # round-trips before the real field is reached.
+            if not properties:
+                return list(_ALTERNATIVE_FIELDS)
+
             return properties
-            
+
         except Exception as e:
             self.debug_log(f"Error getting properties for {device_name}: {e}")
             return _ALTERNATIVE_FIELDS  # Fallback to predefined fields
@@ -693,13 +952,12 @@ Rules:
 - Return properties in order of relevance (most relevant first)  
 - Only return properties from the provided list
 - Properties may come from device states or top-level properties
+- Indigo sensor devices (temperature, humidity, luminance) expose their reading as sensorValue — prefer it over generic names like temperature or humidity unless those actually appear in the list
 - For presence/occupancy queries, prioritize: onOffState, displayState, state, pending, presence
 - For general queries about "state changes" or "activity", prioritize: onState, onOffState, displayState, state
-- For brightness/dimming queries, prioritize: brightness, brightnessLevel  
-- For temperature queries, prioritize: temperature, temperatureInput1
-- For humidity queries, prioritize: humidity, humidityInput1
-- For sensor queries, prioritize: sensorValue, state, displayState
-- For energy/power queries, prioritize: energyAccumTotal, realPower, accumEnergyTotal
+- For brightness/dimming queries, prioritize: brightness, brightnessLevel
+- For temperature or humidity queries, prioritize: sensorValue, then temperatureInput1 / humidityInput1 on thermostats
+- For energy/power queries, prioritize: energyAccumTotal, realPower, accumEnergyTotal, curEnergyLevel
 - For timer/persistence devices, prioritize: onOffState, displayState, state, pending
 
 Return only the property names, separated by commas, no explanations."""
@@ -710,27 +968,27 @@ User query: "{user_query}"
 
 Recommend 1-3 most relevant properties:"""
 
-            # Get OpenAI client
-            try:
-                client = _get_client()
-            except Exception as e:
-                self.debug_log(f"OpenAI client not available: {e}, using fallback properties")
-                return _ALTERNATIVE_FIELDS[:3]
-            
-            # Make LLM call
-            response = client.chat.completions.create(
-                model="gpt-4",
+            # Import here to avoid circular imports
+            from ...common.openai_client.main import perform_completion, SMALL_MODEL
+            from ...common.response_utils import extract_text_content
+
+            response = perform_completion(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.1,
-                max_tokens=50
+                model=SMALL_MODEL,
+                response_token_reserve=50
             )
-            
-            # Parse response
-            recommendations = response.choices[0].message.content.strip()
-            recommended_properties = [prop.strip() for prop in recommendations.split(",")]
+
+            recommendations = extract_text_content(
+                response, f"property_recommendation[{device_name}]"
+            )
+            if not recommendations:
+                self.debug_log(f"Empty LLM response for {device_name}, using fallback")
+                return _ALTERNATIVE_FIELDS[:3]
+
+            recommended_properties = [prop.strip() for prop in recommendations.strip().split(",")]
             
             # Validate recommendations are in available properties
             valid_properties = []
@@ -926,66 +1184,74 @@ Recommend 1-3 most relevant properties:"""
         return False
     
     def _calculate_summary_statistics(
-        self, results: List[str], devices: List[str], days: int, duration: float
+        self,
+        entity_reports: List[Dict[str, Any]],
+        entities: List[str],
+        window: timedelta,
+        duration: float
     ) -> Dict[str, Any]:
         """
         Calculate enhanced summary statistics from analysis results.
-        
+
+        Counts every change found, not just the ones the capped narrative
+        shows, so the totals stay honest at long ranges.
+
         Args:
-            results: List of formatted result messages
-            devices: List of analyzed device names
-            days: Number of days analyzed
+            entity_reports: Per-entity reports from _build_entity_report
+            entities: List of analyzed entity names
+            window: The analysis window
             duration: Analysis duration in seconds
-            
+
         Returns:
             Dictionary of summary statistics
         """
+        total_changes = sum(r["total_changes"] for r in entity_reports)
+        days = window.total_seconds() / 86400
+
         stats = {
-            "total_state_changes": len(results),
-            "devices_with_data": len(devices),
+            "total_state_changes": total_changes,
+            "devices_with_data": len(entities),
             "analysis_period_days": days,
+            "analysis_period_hours": window.total_seconds() / 3600,
             "analysis_duration_seconds": duration,
-            "avg_changes_per_device": len(results) / len(devices) if devices else 0,
-            "avg_changes_per_day": len(results) / days if days > 0 else 0
+            "avg_changes_per_device": total_changes / len(entities) if entities else 0,
+            "avg_changes_per_day": total_changes / days if days > 0 else 0
         }
-        
-        # Add time-based analysis if we have results
-        if results:
-            # Parse timestamps from results to get activity patterns
-            for result in results:
-                # Extract time patterns (simplified for now)
-                if "from" in result and "to" in result:
-                    # Count state changes by hour of day
-                    pass  # Could be enhanced to extract actual patterns
-            
+
+        if entity_reports:
             stats["activity_summary"] = "State changes distributed across analysis period"
-        
+
         return stats
-    
+
     def _format_analysis_report(
-        self, results: List[str], entities: List[str], days: int, stats: Dict[str, Any], entity_classification: Dict[str, Any] = None
+        self,
+        entity_reports: List[Dict[str, Any]],
+        entities: List[str],
+        window: timedelta,
+        stats: Dict[str, Any],
+        entity_classification: Dict[str, Any] = None
     ) -> str:
         """
         Format analysis results into a well-organized report.
-        
+
         Args:
-            results: List of state change messages
+            entity_reports: Per-entity reports from _build_entity_report
             entities: List of analyzed entity names
-            days: Number of days analyzed
+            window: The analysis window
             stats: Summary statistics
             entity_classification: Optional entity type breakdown
-            
+
         Returns:
             Formatted report string
         """
         report_lines = []
-        
+
         # Header
         report_lines.append("=" * 60)
         report_lines.append("HISTORICAL DATA ANALYSIS REPORT")
         report_lines.append("=" * 60)
-        report_lines.append(f"Analysis Period: Last {days} days")
-        
+        report_lines.append(f"Analysis Period: {self._format_window_label(window)}")
+
         # Show entity breakdown if available
         if entity_classification:
             devices = entity_classification.get("devices", [])
@@ -993,139 +1259,130 @@ Recommend 1-3 most relevant properties:"""
             report_lines.append(f"Entities Analyzed: {len(entities)} ({len(devices)} devices, {len(variables)} variables)")
         else:
             report_lines.append(f"Entities Analyzed: {len(entities)}")
-            
-        report_lines.append(f"Total State Changes: {len(results)}")
-        
+
+        report_lines.append(f"Total State Changes: {stats['total_state_changes']}")
+
         if stats.get("avg_changes_per_device"):
             report_lines.append(f"Average Changes per Device: {stats['avg_changes_per_device']:.1f}")
         if stats.get("avg_changes_per_day"):
             report_lines.append(f"Average Changes per Day: {stats['avg_changes_per_day']:.1f}")
-        
+
         report_lines.append("")
         report_lines.append("DEVICE STATE HISTORY:")
         report_lines.append("-" * 60)
-        
-        # Group results by device for better organization
-        device_results = {}
-        for result in results:
-            # Extract device name from result (first word before period or space)
-            device_name = result.split('.')[0] if '.' in result else result.split(' ')[0]
-            if device_name not in device_results:
-                device_results[device_name] = []
-            device_results[device_name].append(result)
-        
-        # Format results by device
-        for device_name in sorted(device_results.keys()):
-            report_lines.append(f"\n{device_name}:")
-            for result in device_results[device_name]:
-                report_lines.append(f"  • {result}")
-        
+
+        for report in sorted(entity_reports, key=lambda r: r["label"]):
+            report_lines.append(f"\n{report['entity']}:")
+
+            summary_line = self._format_stats_line(report["stats"])
+            if summary_line:
+                report_lines.append(f"  {summary_line}")
+
+            if report["warning"]:
+                for line in report["warning"].split("\n"):
+                    report_lines.append(f"  {line}")
+
+            if summary_line or report["warning"]:
+                report_lines.append("")
+
+            for message in report["messages"]:
+                report_lines.append(f"  • {message}")
+
+            if report["truncated"]:
+                report_lines.append(
+                    f"  (showing the most recent {len(report['messages'])} of "
+                    f"{report['total_changes']} changes — narrow time_range_hours "
+                    f"for the full list)"
+                )
+
         report_lines.append("")
         report_lines.append("=" * 60)
-        
+
         # Add completion time if available
         if stats.get("analysis_duration_seconds") is not None:
             report_lines.append(f"Analysis completed in {stats['analysis_duration_seconds']:.2f} seconds")
-        
+
         return "\n".join(report_lines)
-    
-    def _get_historical_variable_data(
-        self, variable_name: str, time_range_days: int = 60
-    ) -> List[str]:
+
+    def _format_stats_line(self, stats: Optional[Dict[str, Any]]) -> Optional[str]:
         """
-        Query InfluxDB for historical variable data and return formatted results.
-        
+        Render the one-line numeric summary that leads each device section.
+
+        Args:
+            stats: Output of _summarize_numeric, or None
+
+        Returns:
+            Formatted summary line, or None for non-numeric entities
+        """
+        if not stats:
+            return None
+
+        prop = stats["property"]
+        fmt = lambda v: self._format_state_value(v, prop)
+
+        parts = [
+            f"current {fmt(stats['current'])}",
+            f"range {fmt(stats['min'])}–{fmt(stats['max'])}",
+            f"mean {fmt(stats['mean'])}",
+            stats["trend"]
+        ]
+        return " | ".join(parts)
+
+
+    def _get_historical_variable_data(
+        self, variable_name: str, window: timedelta
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Query InfluxDB for historical variable data and build an entity report.
+
         Args:
             variable_name: The variable name to query data for
-            time_range_days: Number of days to look back for historical data
-            
+            window: How far back to look
+
         Returns:
-            List of formatted messages describing variable value changes
+            An entity report dict, or None when the variable has no data
         """
         try:
             client = InfluxDBClient(logger=self.logger)
             query_builder = InfluxDBQueryBuilder(logger=self.logger)
-            
+
             if not client.is_enabled() or not client.test_connection():
-                return []
-            
+                return None
+
+            end_time = datetime.now()
+            start_time = end_time - window
+
             # Build and execute query for variable changes
-            query = query_builder.build_variable_history_query(
+            query = query_builder.build_variable_time_range_query(
                 variable_name=variable_name,
-                time_range_days=time_range_days
+                start_time=start_time,
+                end_time=end_time
             )
-            
+
             results = client.execute_query(query)
             if not results:
                 self.debug_log(f"InfluxDB query returned no results for variable {variable_name}")
-                return []
-            
+                return None
+
             self.debug_log(f"InfluxDB returned {len(results)} raw records for variable {variable_name}")
-            
-            # Convert to formatted value change messages
-            formatted_results = []
-            saved_value = None
-            from_timestamp = None
-            
-            for data_record in results:
-                record_time_str = data_record.get("time")
-                if not record_time_str:
-                    continue
-                
-                timestamp_local = self._convert_to_local_timezone(record_time_str)
-                field_value = data_record.get("value")
-                
-                if saved_value is None:
-                    from_timestamp = timestamp_local
-                    saved_value = field_value
-                elif saved_value != field_value and from_timestamp is not None:
-                    # Format duration in a more readable way
-                    duration_str = self._format_duration(
-                        from_timestamp, timestamp_local
-                    )
-                    
-                    # Format timestamps with timezone info
-                    from_str = from_timestamp.strftime("%Y-%m-%d %H:%M:%S %Z")
-                    to_str = timestamp_local.strftime("%Y-%m-%d %H:%M:%S %Z")
-                    
-                    # Format the variable value (simplified formatting)
-                    value_str = self._format_variable_value(saved_value)
-                    
-                    message = (
-                        f"Variable '{variable_name}' was {value_str} for {duration_str}, "
-                        f"from {from_str} to {to_str}"
-                    )
-                    formatted_results.append(message)
-                    self.debug_log(message)
-                    from_timestamp = timestamp_local
-                    saved_value = field_value
-            
-            # Handle final value (current state)
-            to_timestamp = datetime.now().astimezone()
-            if from_timestamp is not None and saved_value is not None:
-                # Format duration in a more readable way
-                duration_str = self._format_duration(
-                    from_timestamp, to_timestamp
-                )
-                
-                # Format timestamps with timezone info
-                from_str = from_timestamp.strftime("%Y-%m-%d %H:%M:%S %Z")
-                
-                # Format the variable value (simplified formatting)
-                final_value = self._format_variable_value(saved_value)
-                
-                message = (
-                    f"Variable '{variable_name}' is currently {final_value} (for {duration_str}), "
-                    f"since {from_str}"
-                )
-                formatted_results.append(message)
-            
-            return formatted_results
-            
+
+            # Variables are recorded as strings; the frozen-value probe is a
+            # device-sensor diagnostic, so no client is passed here.
+            return self._build_entity_report(
+                label=f"Variable '{variable_name}'",
+                entity_name=variable_name,
+                property_name="value",
+                records=results,
+                value_key="value",
+                window=window,
+                message_prefix=f"Variable '{variable_name}'",
+                value_formatter=self._format_variable_value
+            )
+
         except Exception as e:
             self.debug_log(f"Error querying variable {variable_name}: {e}")
-            return []
-    
+            return None
+
     def _format_variable_value(self, value) -> str:
         """
         Format variable value for display (simpler than device states).
