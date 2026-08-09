@@ -1,14 +1,34 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    ":disableDependencyDashboard"
   ],
   "packageRules": [
     {
       "description": "CI Python must match the interpreter Indigo bundles, not the newest release. This plugin only ever runs inside Indigo's embedded Python -- Indigo 2025.2 ships Python 3.13 (docs.indigodomo.com, and the header comment in requirements.txt) -- so testing on 3.14 would prove nothing about production. Bump the workflow's python-version by hand when Perceptive Automation ships a new Python with Indigo.",
-      "matchManagers": ["github-actions"],
-      "matchDepNames": ["python"],
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDepNames": [
+        "python"
+      ],
       "enabled": false
+    },
+    {
+      "description": "Batch every non-major update into ONE weekly PR. Rationale: merging several Renovate PRs into the same docker-configs repo back-to-back triggers the deploy coalescing bug (homelab-deployment-support-assets#52) — the first queued deploy_repo_updates run pulls all pending commits, later runs see an empty delta and silently skip their stacks while reporting success. One grouped PR means one merge, one delta, one deploy, and every affected stack restarts. Majors are deliberately NOT grouped so they still get individual review.",
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest",
+        "pin",
+        "pinDigest"
+      ],
+      "groupName": "all non-major dependencies",
+      "groupSlug": "all-non-major",
+      "schedule": [
+        "after 10pm on sunday"
+      ]
     }
   ]
 }
