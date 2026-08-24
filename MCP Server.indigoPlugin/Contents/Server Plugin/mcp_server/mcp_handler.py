@@ -15,6 +15,7 @@ from .adapters.data_provider import DataProvider
 from .adapters.indidb import IndiDbStructureStore
 from .common.json_encoder import safe_json_dumps
 from .common.vector_store.vector_store_manager import VectorStoreManager
+from .external_tools.external_tool_handler import ExternalToolHandler
 from .handlers.list_handlers import ListHandlers
 from .legacy_era import LegacyEra
 # NOTE: `from .modern_era import ...` (not `from . import modern_era`) — the
@@ -66,6 +67,7 @@ class MCPHandler:
         subscription_handler: "Optional[SubscriptionHandler]" = None,
         server_version: str = "unknown",
         automation_delete_supplier=None,
+        external_tool_manager=None,
     ):
         """
         Initialize the MCP handler.
@@ -77,12 +79,16 @@ class MCPHandler:
             server_version: Plugin version reported in serverInfo
             automation_delete_supplier: Callable returning whether the
                 "allow AI to delete automations" preference is on (checked per call)
+            external_tool_manager: Optional ExternalToolManager serving
+                plugin-provided tools; without one, behavior is identical to
+                a build without the feature
         """
         self.data_provider = data_provider
         self.logger = logger or logging.getLogger("Plugin")
         self.subscription_handler = subscription_handler
         self.server_version = server_version
         self.automation_delete_supplier = automation_delete_supplier or (lambda: False)
+        self.external_tool_manager = external_tool_manager
 
         # Legacy (session-based) era support — delete when legacy is retired
         self.legacy = LegacyEra(
@@ -115,6 +121,7 @@ class MCPHandler:
         self._resources = {}
         self._register_tools()
         self._register_resources()
+        self.refresh_external_tools()
 
         self.logger.info(f"✅ MCP Server ready — {len(self._tools)} tools available to AI clients")
         self.logger.debug("Endpoint: /message/com.vtmikel.mcp_server/mcp/")
@@ -188,6 +195,10 @@ class MCPHandler:
             structure_store=self.structure_store,
             logger=self.logger,
         )
+
+        # Dispatcher for plugin-provided tools (used only when an
+        # ExternalToolManager was supplied)
+        self.external_tool_handler = ExternalToolHandler(logger=self.logger)
 
         # Initialize tool wrappers with all handlers
         self.tool_wrappers = ToolWrappers(
@@ -765,8 +776,49 @@ class MCPHandler:
             tool_functions["list_event_subscriptions"] = self.tool_wrappers.tool_list_event_subscriptions
             tool_functions["delete_event_subscription"] = self.tool_wrappers.tool_delete_event_subscription
 
-        # Get tool schemas from registry
-        self._tools = get_tool_schemas(tool_functions)
+        # Get tool schemas from registry. The static registry is kept
+        # separately so refresh_external_tools() can rebuild the merged view
+        # from a stable base at any time.
+        self._static_tools = get_tool_schemas(tool_functions)
+        self._tools = self._static_tools
+
+    def refresh_external_tools(self):
+        """
+        Re-discover plugin-provided tools and swap the merged registry in.
+
+        Safe to call at any time: the merged dict is built fully and then
+        assigned in one reference swap, which per-request readers
+        (_handle_tools_list/_handle_tools_call) pick up on their next access.
+        With no manager configured this is a no-op and the registry stays
+        exactly the static tool set.
+        """
+        if not self.external_tool_manager:
+            return
+
+        entries = self.external_tool_manager.rescan_and_build(self.external_tool_handler)
+        merged = dict(self._static_tools)
+        for name, entry in entries.items():
+            if name in merged:
+                self.logger.error(
+                    f"❌ Plugin-provided tool '{name}' (from "
+                    f"{entry.get('external_provider')}) collides with a built-in "
+                    f"tool — skipped"
+                )
+                continue
+            merged[name] = entry
+        self._tools = merged
+
+        external_count = len(merged) - len(self._static_tools)
+        providers = self.external_tool_manager.manifests
+        if external_count or providers:
+            provider_names = ", ".join(m.display_name for m in providers) or "none"
+            self.logger.info(
+                f"🔌 {external_count} plugin-provided tool"
+                f"{'s' if external_count != 1 else ''} registered "
+                f"(providers: {provider_names})"
+            )
+        else:
+            self.logger.debug("No plugin-provided MCP tool manifests found")
 
     def _register_resources(self):
         """Register all available resources using extracted resource registry."""

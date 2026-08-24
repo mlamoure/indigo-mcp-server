@@ -20,6 +20,7 @@ import openai
 from mcp_server.adapters.indigo_data_provider import IndigoDataProvider
 from mcp_server.common import log_style
 from mcp_server.common.openai_client.langsmith_config import get_langsmith_config
+from mcp_server.external_tools.manager import ExternalToolManager
 from mcp_server.mcp_handler import MCPHandler
 
 
@@ -74,6 +75,13 @@ class Plugin(indigo.PluginBase):
         # Automation delete gate (checked at call time — no restart needed).
         # Editing (names/descriptions/trigger event settings) is not gated.
         self.enable_automation_delete = plugin_prefs.get("enable_automation_delete", False)
+
+        # Plugin-provided (external) tool write gate (checked at call time).
+        # Default TRUE: provider writes are the point of the feature, and
+        # providers auto-backup their own config changes.
+        self.enable_external_tool_writes = plugin_prefs.get(
+            "enable_external_tool_writes", True
+        )
 
         # Component instances
         self.data_provider = None
@@ -333,6 +341,51 @@ class Plugin(indigo.PluginBase):
             return False
 
     ########################################
+    # Plugin-provided (external) MCP tools
+
+    # Known providers subscribed to even before their manifest first appears:
+    # broadcast subscriptions are registered server-side by (pluginId, key)
+    # and survive the broadcaster not being installed yet, so a first-time
+    # install of a known provider is picked up live without a manual rescan.
+    EXTERNAL_TOOL_PROVIDER_ALLOWLIST = ("com.vtmikel.autolights",)
+
+    def _subscribe_to_provider_broadcasts(self, external_tool_manager) -> None:
+        """
+        Subscribe to the 'mcp_tools_updated' broadcast for every discovered
+        provider plus the static allowlist. Providers broadcast it from their
+        startup() and whenever their tool set changes.
+        """
+        provider_ids = set(external_tool_manager.provider_ids())
+        provider_ids.update(self.EXTERNAL_TOOL_PROVIDER_ALLOWLIST)
+        for plugin_id in sorted(provider_ids):
+            try:
+                indigo.server.subscribeToBroadcast(
+                    plugin_id, "mcp_tools_updated", "external_tools_updated_broadcast"
+                )
+                self.logger.debug(f"Subscribed to mcp_tools_updated from {plugin_id}")
+            except Exception as e:
+                self.logger.warning(
+                    f"⚠️ Could not subscribe to mcp_tools_updated from {plugin_id}: {e}"
+                )
+
+    def external_tools_updated_broadcast(self, arg=None) -> None:
+        """
+        Broadcast callback: a provider announced that its MCP tool manifest
+        changed (or the provider just started). Runs on the plugin's single
+        callback thread, so the registry rebuild needs no locking.
+        """
+        if self.mcp_handler:
+            self.logger.debug("mcp_tools_updated broadcast received — rescanning")
+            self.mcp_handler.refresh_external_tools()
+
+    def rescan_external_tools_menu(self) -> None:
+        """Menu item: manually re-discover plugin-provided MCP tools."""
+        if not self.mcp_handler:
+            self.logger.error("❌ MCP Server is not running — nothing to rescan")
+            return
+        self.mcp_handler.refresh_external_tools()
+
+    ########################################
     def _apply_environment(self) -> None:
         """
         Push the current plugin configuration into environment variables for
@@ -458,13 +511,21 @@ class Plugin(indigo.PluginBase):
 
         # Initialize MCP handler (includes vector store initialization)
         try:
+            external_tool_manager = ExternalToolManager(
+                logger=self.logger,
+                write_gate_supplier=lambda: self._automation_gate(
+                    "enable_external_tool_writes"
+                ),
+            )
             self.mcp_handler = MCPHandler(
                 data_provider=self.data_provider,
                 logger=self.logger,
                 subscription_handler=subscription_handler,
                 server_version=self.pluginVersion,
                 automation_delete_supplier=lambda: self._automation_gate("enable_automation_delete"),
+                external_tool_manager=external_tool_manager,
             )
+            self._subscribe_to_provider_broadcasts(external_tool_manager)
 
             # Log MCP client connection information (full list in the menu action)
             urls = self._get_mcp_client_urls()
@@ -1076,6 +1137,15 @@ class Plugin(indigo.PluginBase):
                 self.enable_automation_delete = new_delete_gate
                 self.logger.info(
                     f"Automation delete via MCP {'enabled' if new_delete_gate else 'disabled'}"
+                )
+
+            # External tool write gate (takes effect immediately — checked per call)
+            new_external_write_gate = values_dict.get("enable_external_tool_writes", True)
+            if new_external_write_gate != self.enable_external_tool_writes:
+                self.enable_external_tool_writes = new_external_write_gate
+                self.logger.info(
+                    f"Plugin-provided write tools "
+                    f"{'enabled' if new_external_write_gate else 'disabled'}"
                 )
 
             # Apply configuration to environment (same as startup)

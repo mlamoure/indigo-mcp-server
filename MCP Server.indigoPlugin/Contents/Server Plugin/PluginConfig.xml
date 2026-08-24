@@ -107,6 +107,14 @@
             trigger's event settings — are always available and do not need this.</Description>
     </Field>
 
+    <!-- Plugin-Provided Tools -->
+    <Field type="checkbox" id="enable_external_tool_writes" defaultValue="true">
+        <Label>Allow plugin-provided tools to make changes:</Label>
+        <Description>Other Indigo plugins can contribute MCP tools (e.g. Auto Lights
+            config editing). When unchecked, their write tools are refused and only
+            their read tools work. Takes effect immediately.</Description>
+    </Field>
+
     <Field id="separator_automation" type="separator"/>
 
     <!-- Debug Settings -->
