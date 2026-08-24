@@ -222,6 +222,82 @@ Indigo UI. Since there's no API to author actions from scratch, `duplicate` (via
 
 See [Event Subscriptions & Webhooks](#event-subscriptions--webhooks) for the full guide.
 
+## Plugin-Provided Tools *(v2026.8.1)*
+
+Other Indigo plugins can contribute their own MCP tools to this server. A provider plugin
+ships a small manifest in its bundle; this server discovers it automatically, lists the
+tools to AI clients under the provider's prefix (e.g. `autolights_update_zone` from the
+[Auto Lights](https://github.com/mlamoure/indigo-auto-lights) plugin), and forwards calls
+to the provider. No configuration is needed on this server.
+
+- **Write gate**: the plugin config checkbox "Allow plugin-provided tools to make changes"
+  (default on) controls whether provider *write* tools work; read tools always do. Takes
+  effect immediately.
+- **Refresh**: provider tools register automatically when the provider starts or updates.
+  The menu item **Plugins → MCP Server → Rescan Plugin-Provided MCP Tools** forces a
+  re-discovery.
+- **Client cache caveat**: `tools/list` responses carry a 1-hour cache hint, so an
+  already-connected MCP client may not see newly installed provider tools until it starts
+  a fresh session.
+
+### Add MCP tools to your plugin
+
+Three steps — full details and rules in
+[docs/mcp-provider-manifest.md](docs/mcp-provider-manifest.md):
+
+**1. Ship a manifest** at `Contents/Resources/mcp-manifest.json` describing your tools:
+
+```json
+{
+  "manifest_version": 1,
+  "provider": {"plugin_id": "com.example.myplugin", "display_name": "My Plugin"},
+  "tools": [
+    {
+      "name": "get_status",
+      "description": "Return the plugin's current status.",
+      "write": false,
+      "inputSchema": {"type": "object", "properties": {}, "required": []}
+    }
+  ]
+}
+```
+
+**2. Answer tool calls** — declare a hidden action in `Actions.xml`:
+
+```xml
+<Action id="mcp_tool_invoke" uiPath="hidden">
+    <Name>MCP Tool Invocation Endpoint</Name>
+    <CallbackMethod>handle_mcp_tool_invoke</CallbackMethod>
+</Action>
+```
+
+and implement the callback in `plugin.py` (arguments arrive as a JSON string; reply with a
+JSON-string envelope):
+
+```python
+def handle_mcp_tool_invoke(self, action, dev=None, caller_waiting_for_result=True):
+    import json
+    tool = action.props.get("tool", "")
+    args = json.loads(action.props.get("arguments", "{}"))
+    if tool == "get_status":
+        return json.dumps({"status": "ok", "result": {"state": "running"}})
+    return json.dumps({"status": "error",
+                       "error": {"type": "not_found", "message": f"unknown tool {tool}"}})
+```
+
+**3. Announce yourself** (recommended) — one line in your `startup()` so your tools
+register the moment your plugin starts, without an MCP Server restart:
+
+```python
+try:
+    indigo.server.broadcastToSubscribers("mcp_tools_updated")
+except Exception:
+    pass
+```
+
+Your plugin stays fully functional for users who don't have the MCP Server installed — the
+manifest is inert data, the hidden action is never called, and the broadcast is a no-op.
+
 ## Event Subscriptions & Webhooks
 
 *Added in v2026.1.0.* Event subscriptions let an MCP client ask Indigo to notify it the next time something

@@ -9,4 +9,8 @@
         <Name>Print Event Subscriptions Web UI URL</Name>
         <CallbackMethod>show_events_ui_url_menu</CallbackMethod>
     </MenuItem>
+    <MenuItem id="rescan_external_tools">
+        <Name>Rescan Plugin-Provided MCP Tools</Name>
+        <CallbackMethod>rescan_external_tools_menu</CallbackMethod>
+    </MenuItem>
 </MenuItems>
