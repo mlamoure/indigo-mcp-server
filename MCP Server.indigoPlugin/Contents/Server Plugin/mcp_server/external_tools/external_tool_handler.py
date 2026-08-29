@@ -17,7 +17,7 @@ bounded leak that is logged loudly.
 
 import json
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from ..tools.base_handler import BaseToolHandler
 
