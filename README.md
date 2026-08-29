@@ -165,11 +165,13 @@ minutes of a change).
 - **list_triggers** — triggers with a one-line summary of what each watches; filter by name/type/enabled/folder
 - **list_schedules** — schedules with **next execution time** and a timing summary
 - **get_trigger_details** / **get_schedule_details** / **get_action_group_details** — the full explanation of
-  one automation: its event/timing, condition tree, and every action step (device commands, variable writes,
-  nested action groups, embedded Python, plugin actions with config), IDs resolved to names
+  one automation: its event/timing, condition tree (or embedded Python condition script), and every action
+  step (device commands, variable writes, nested action groups, embedded Python, plugin actions with config),
+  IDs resolved to names
 - **find_automation_references** — reverse lookup: which automations watch, act on, set, or condition-read a
-  device/variable/action group — including indirect paths through nested action groups, cross-checked
-  against Indigo's own dependency graph
+  device/variable/action group — including indirect paths through nested action groups, heuristic id/name
+  matches inside embedded Python (condition scripts and action scripts), cross-checked against Indigo's own
+  dependency graph
 
 ### Investigation *(v2026.6.0)*
 

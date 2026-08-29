@@ -22,7 +22,7 @@ def parsed():
 
 class TestParseCounts:
     def test_structure_counts(self, parsed):
-        assert parsed.counts() == {"triggers": 3, "schedules": 1, "action_groups": 2}
+        assert parsed.counts() == {"triggers": 4, "schedules": 2, "action_groups": 2}
 
     def test_name_maps(self, parsed):
         assert parsed.device_names == {
@@ -74,6 +74,13 @@ class TestDecoding:
     def test_multiline_script_source(self, parsed):
         steps = parsed.triggers[4000003]["ActionGroup"]["ActionSteps"]
         assert "indigo.server.log" in steps[0]["ScriptSource"]
+
+    def test_scripted_condition(self, parsed):
+        condition = parsed.triggers[4000004]["Condition"]
+        assert condition["Type"] == 4
+        assert "ConditionList" not in condition
+        assert "indigo.variables[2000888]" in condition["ScriptSource"]
+        assert "\n" in condition["ScriptSource"]
 
     def test_unknown_action_class_passes_through(self, parsed):
         steps = parsed.action_groups[3000002]["ActionSteps"]
