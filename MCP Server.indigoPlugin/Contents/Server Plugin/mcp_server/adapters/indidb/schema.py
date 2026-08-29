@@ -116,8 +116,12 @@ CONDITION_TYPE_KINDS = {
     7: "device_state_compare",
 }
 
-# Container-level <Condition Type=...>: 0 = no conditions, 100 = condition list.
+# Container-level <Condition Type=...>: 0 = no conditions, 4 = embedded
+# Python script (its <ScriptSource> returns True/False), 100 = condition
+# list. Other codes (2 and 6 have been observed in the wild) render as
+# "unknown" with raw passthrough.
 CONDITION_CONTAINER_NONE = 0
+CONDITION_CONTAINER_SCRIPT = 4
 CONDITION_CONTAINER_LIST = 100
 
 # <Logic> on a ConditionList. Verified: 1 = "all" (AND). 0 is presumed "any"

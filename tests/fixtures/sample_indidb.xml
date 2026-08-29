@@ -126,6 +126,36 @@
 			<Type type="integer">0</Type>
 			<UploadToInterface type="bool">true</UploadToInterface>
 		</TDTrigger>
+		<TDTrigger type="dict">
+			<ActionGroup type="dict">
+				<ActionSteps type="vector">
+					<Action type="dict">
+						<Class type="integer">0</Class>
+						<ObjVers type="integer">14</ObjVers>
+					</Action>
+				</ActionSteps>
+				<ObjVers type="integer">2</ObjVers>
+			</ActionGroup>
+			<AutoDelete type="bool">false</AutoDelete>
+			<Class type="integer">100</Class>
+			<Condition type="dict">
+				<ObjVers type="integer">6</ObjVers>
+				<ScriptSource type="string">mode = indigo.variables['houseMode']
+return mode.value == "away" and indigo.devices[1000111].onState</ScriptSource>
+				<ScriptType type="integer">0</ScriptType>
+				<Type type="integer">4</Type>
+			</Condition>
+			<DateType type="integer">0</DateType>
+			<Enabled type="bool">true</Enabled>
+			<ID type="integer">5000002</ID>
+			<Name type="string">Away-mode morning check</Name>
+			<ObjVers type="integer">7</ObjVers>
+			<RandomizeAmount type="integer">0</RandomizeAmount>
+			<RepeatInterval type="integer">1</RepeatInterval>
+			<TimeType type="integer">0</TimeType>
+			<Type type="integer">0</Type>
+			<UploadToInterface type="bool">true</UploadToInterface>
+		</TDTrigger>
 	</TDTriggerList>
 	<TDTriggerFolderList type="vector">
 	</TDTriggerFolderList>
@@ -248,7 +278,8 @@
 						<Class type="integer">101</Class>
 						<ObjVers type="integer">14</ObjVers>
 						<ScriptSource type="string">import time
-indigo.server.log("startup")</ScriptSource>
+indigo.server.log("startup")
+indigo.variable.updateValue(2000999, value="reset")</ScriptSource>
 						<ScriptType type="integer">0</ScriptType>
 					</Action>
 				</ActionSteps>
@@ -262,6 +293,32 @@ indigo.server.log("startup")</ScriptSource>
 			<Enabled type="bool">true</Enabled>
 			<ID type="integer">4000003</ID>
 			<Name type="string">Server startup housekeeping</Name>
+			<ObjVers type="integer">7</ObjVers>
+			<UploadToInterface type="bool">true</UploadToInterface>
+		</Trigger>
+		<Trigger type="dict">
+			<ActionGroup type="dict">
+				<ActionSteps type="vector">
+					<Action type="dict">
+						<Class type="integer">0</Class>
+						<ObjVers type="integer">14</ObjVers>
+					</Action>
+				</ActionSteps>
+				<ObjVers type="integer">2</ObjVers>
+			</ActionGroup>
+			<Class type="integer">509</Class>
+			<Condition type="dict">
+				<ObjVers type="integer">6</ObjVers>
+				<ScriptSource type="string">is_day = indigo.variables[2000888].getValue(bool)
+sonos = indigo.devices["Living Room Sonos"]
+ignored = 1234567  # unknown id, must not match
+return is_day and sonos.onState</ScriptSource>
+				<ScriptType type="integer">0</ScriptType>
+				<Type type="integer">4</Type>
+			</Condition>
+			<Enabled type="bool">true</Enabled>
+			<ID type="integer">4000004</ID>
+			<Name type="string">Startup check with script gate</Name>
 			<ObjVers type="integer">7</ObjVers>
 			<UploadToInterface type="bool">true</UploadToInterface>
 		</Trigger>

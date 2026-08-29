@@ -805,11 +805,11 @@ def get_tool_schemas(tool_functions):
     )
     _include_scripts_prop = {
         "type": "boolean",
-        "description": "Include embedded Python script source in action steps (default: true; scripts over 4000 chars are truncated)"
+        "description": "Include embedded Python script source in action steps and scripted conditions (default: true; scripts over 4000 chars are truncated)"
     }
 
     tools["get_trigger_details"] = {
-        "description": "Explain a trigger in full: the event that fires it, its condition tree, and every action step it executes (device commands, variable writes, nested action groups, embedded Python, plugin actions with their configuration)." + _DETAILS_COMMON,
+        "description": "Explain a trigger in full: the event that fires it, its condition tree (or embedded Python condition script), and every action step it executes (device commands, variable writes, nested action groups, embedded Python, plugin actions with their configuration)." + _DETAILS_COMMON,
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -822,7 +822,7 @@ def get_tool_schemas(tool_functions):
     }
 
     tools["get_schedule_details"] = {
-        "description": "Explain a schedule in full: its timing, its condition tree, and every action step it executes." + _DETAILS_COMMON,
+        "description": "Explain a schedule in full: its timing, its condition tree (or embedded Python condition script), and every action step it executes." + _DETAILS_COMMON,
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -848,7 +848,7 @@ def get_tool_schemas(tool_functions):
     }
 
     tools["find_automation_references"] = {
-        "description": "Reverse lookup: find every trigger, schedule, and action group that references a device, variable, or action group — tagged by role (watches = trigger fires on it, acts_on = an action commands it, sets = an action writes it, condition_reads = a condition checks it, executes = runs the action group), including indirect paths through nested action-group chains (via_action_groups). Answers 'what could change this device?' and 'what watches this variable?'. Follow up with get_trigger_details / get_schedule_details / get_action_group_details.",
+        "description": "Reverse lookup: find every trigger, schedule, and action group that references a device, variable, or action group — tagged by role (watches = trigger fires on it, acts_on = an action commands it, sets = an action writes it, condition_reads = a condition checks it, including id/name matches inside scripted-condition Python marked confidence: heuristic, script_reference = its id or name appears in an embedded Python action script (heuristic text match), executes = runs the action group), including indirect paths through nested action-group chains (via_action_groups). Answers 'what could change this device?' and 'what watches this variable?'. Follow up with get_trigger_details / get_schedule_details / get_action_group_details.",
         "inputSchema": {
             "type": "object",
             "properties": {

@@ -158,6 +158,40 @@ class TestGetDetails:
         assert "script_source" not in script_step
         assert script_step["script_first_line"].startswith("indigo.server.log")
 
+    def test_scripted_condition_rendered(self, handler, data_provider):
+        data_provider.get_trigger.return_value = dict(
+            LIVE_TRIGGER, id=4000004, name="Startup check with script gate",
+        )
+        doc = handler.get_details("trigger", 4000004)
+        conditions = doc["conditions"]
+        assert conditions["type"] == "scripted"
+        assert conditions["language"] == "python"
+        assert "indigo.variables[2000888]" in conditions["script_source"]
+        assert conditions["script_truncated"] is False
+        assert conditions["script_length"] > 0
+        assert "ScriptSource" not in conditions["raw"]
+        assert conditions["raw"]["Type"] == 4
+
+    def test_scripted_condition_include_scripts_false(self, handler, data_provider):
+        data_provider.get_trigger.return_value = dict(
+            LIVE_TRIGGER, id=4000004, name="Startup check with script gate",
+        )
+        doc = handler.get_details("trigger", 4000004, include_scripts=False)
+        conditions = doc["conditions"]
+        assert conditions["type"] == "scripted"
+        assert "script_source" not in conditions
+        assert conditions["script_first_line"].startswith("is_day")
+        assert conditions["script_length"] > 0
+
+    def test_schedule_scripted_condition_rendered(self, handler, data_provider):
+        data_provider.get_schedule.return_value = dict(
+            LIVE_SCHEDULE, id=5000002, name="Away-mode morning check",
+        )
+        doc = handler.get_details("schedule", 5000002)
+        conditions = doc["conditions"]
+        assert conditions["type"] == "scripted"
+        assert "indigo.devices[1000111]" in conditions["script_source"]
+
     def test_plugin_trigger_config_from_xml(self, handler, data_provider):
         data_provider.get_trigger.return_value = {
             "id": 4000002, "name": "Camera sees a person", "description": "",

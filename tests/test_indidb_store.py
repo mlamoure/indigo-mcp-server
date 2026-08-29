@@ -93,7 +93,7 @@ class TestAccessors:
     def test_freshness(self, store):
         fresh = store.freshness()
         assert fresh["available"] is True
-        assert fresh["counts"] == {"triggers": 3, "schedules": 1, "action_groups": 2}
+        assert fresh["counts"] == {"triggers": 4, "schedules": 2, "action_groups": 2}
         assert "file_modified" in fresh
 
 
@@ -143,3 +143,42 @@ class TestReverseIndex:
         assert ("action_group", 3000001) in keys
         assert ("trigger", 4000002) in keys
         assert all(r["confidence"] == "heuristic" for r in heuristic)
+
+    def test_scripted_condition_id_match(self, store):
+        refs = store.find_references("variable", 2000888)
+        assert ("trigger", 4000004, "condition_reads") in self._refs_by_key(refs)
+        ref = next(
+            r for r in refs if r["id"] == 4000004 and r["role"] == "condition_reads"
+        )
+        assert ref["confidence"] == "heuristic"
+        assert "2000888" in ref["detail"]
+
+    def test_scripted_condition_name_match(self, store):
+        refs = store.find_references("device", 1000333)
+        assert ("trigger", 4000004, "condition_reads") in self._refs_by_key(refs)
+        ref = next(
+            r for r in refs if r["id"] == 4000004 and r["role"] == "condition_reads"
+        )
+        assert ref["confidence"] == "heuristic"
+        assert '"Living Room Sonos"' in ref["detail"]
+
+    def test_schedule_scripted_condition(self, store):
+        # Single-quoted name lookup
+        var_refs = self._refs_by_key(store.find_references("variable", 2000999))
+        assert ("schedule", 5000002, "condition_reads") in var_refs
+        # Numeric id lookup
+        dev_refs = self._refs_by_key(store.find_references("device", 1000111))
+        assert ("schedule", 5000002, "condition_reads") in dev_refs
+
+    def test_script_unknown_id_ignored(self, store):
+        # 1234567 appears in trigger 4000004's condition script but matches
+        # no known entity — the scanner must emit nothing for it.
+        assert store.find_references("device", 1234567) == []
+        assert store.find_references("variable", 1234567) == []
+
+    def test_action_script_reference(self, store):
+        refs = store.find_references("variable", 2000999)
+        assert ("trigger", 4000003, "script_reference") in self._refs_by_key(refs)
+        ref = next(r for r in refs if r["role"] == "script_reference")
+        assert ref["confidence"] == "heuristic"
+        assert "2000999" in ref["detail"]

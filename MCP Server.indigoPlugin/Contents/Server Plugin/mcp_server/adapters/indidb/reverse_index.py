@@ -7,14 +7,18 @@ the investigation tool's cause ranking.
 
 Roles:
 - watches:          a trigger fires on this device/variable changing
-- condition_reads:  a condition compares this device/variable
+- condition_reads:  a condition compares this device/variable, or the entity's
+  id or name appears in a scripted condition's Python source (heuristic)
 - acts_on:          an action step commands this device
 - sets:             an action step writes this variable
 - executes:         an action step runs this action group
+- script_reference: this entity's id or name appears inside an embedded
+  Python action script (heuristic — text match)
 - plugin_config_reference: this entity's id appears inside a plugin action's
   or plugin trigger's config props (heuristic — id-shaped value match)
 """
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -22,6 +26,18 @@ from . import schema
 
 # Maximum depth when following action-group → action-group execution chains.
 MAX_CHAIN_DEPTH = 5
+
+# Entity-id-shaped runs in script text: 6-10 digits not embedded in an
+# identifier, float, or longer number (\w includes digits, so the lookarounds
+# reject var1234567, 1.2345678, and 11+-digit runs).
+_SCRIPT_ID_RE = re.compile(r"(?<![\w.])(\d{6,10})(?![\w.])")
+
+# Simple single-line string literals (no escapes) — enough to catch the
+# common indigo.devices["Name"] / indigo.variables['name'] lookup patterns.
+_SCRIPT_STRING_RE = re.compile(r"'([^'\n\\]+)'|\"([^\"\n\\]+)\"")
+
+# Very short literals ("on", "up") collide with ordinary strings too easily.
+_MIN_NAME_MATCH_LEN = 3
 
 # (entity_kind, entity_id) — entity_kind is "device" | "variable" | "action_group"
 TargetKey = Tuple[str, int]
@@ -122,17 +138,18 @@ def build_reverse_index(parsed) -> ReverseIndex:
     """Build the index in one pass over a ParsedDb."""
     index = ReverseIndex()
     known_ids = _known_entity_ids(parsed)
+    known_names = _known_entity_names(parsed)
 
     for trigger_id, trigger in parsed.triggers.items():
         _index_trigger_event(index, trigger_id, trigger)
-        _index_container(index, "trigger", trigger_id, trigger, known_ids)
+        _index_container(index, "trigger", trigger_id, trigger, known_ids, known_names)
 
     for schedule_id, sched in parsed.schedules.items():
-        _index_container(index, "schedule", schedule_id, sched, known_ids)
+        _index_container(index, "schedule", schedule_id, sched, known_ids, known_names)
 
     for ag_id, action_group in parsed.action_groups.items():
         steps = action_group.get("ActionSteps") or []
-        _index_action_steps(index, "action_group", ag_id, steps, known_ids)
+        _index_action_steps(index, "action_group", ag_id, steps, known_ids, known_names)
 
     return index
 
@@ -146,6 +163,24 @@ def _known_entity_ids(parsed) -> Dict[int, str]:
         known[var_id] = "variable"
     for ag_id in parsed.action_groups:
         known[ag_id] = "action_group"
+    return known
+
+
+def _known_entity_names(parsed) -> Dict[str, List[TargetKey]]:
+    """Exact entity name -> [(kind, id), ...] for the script-text heuristic.
+
+    Same-name collisions (a device and a variable both named "Garage") keep
+    every match — each ref is already flagged heuristic.
+    """
+    known: Dict[str, List[TargetKey]] = {}
+    for dev_id, name in parsed.device_names.items():
+        known.setdefault(name, []).append(("device", dev_id))
+    for var_id, name in parsed.variable_names.items():
+        known.setdefault(name, []).append(("variable", var_id))
+    for ag_id, action_group in parsed.action_groups.items():
+        name = action_group.get("Name")
+        if isinstance(name, str) and name:
+            known.setdefault(name, []).append(("action_group", ag_id))
     return known
 
 
@@ -171,13 +206,17 @@ def _index_container(
     container_id: int,
     container: dict,
     known_ids: Dict[int, str],
+    known_names: Dict[str, List[TargetKey]],
 ) -> None:
     """Conditions, action steps, and plugin props of a trigger/schedule."""
-    _index_conditions(index, container_kind, container_id, container.get("Condition"))
+    _index_conditions(
+        index, container_kind, container_id, container.get("Condition"),
+        known_ids, known_names,
+    )
 
     embedded = container.get("ActionGroup") or {}
     steps = embedded.get("ActionSteps") or []
-    _index_action_steps(index, container_kind, container_id, steps, known_ids)
+    _index_action_steps(index, container_kind, container_id, steps, known_ids, known_names)
 
     meta_props = container.get("MetaProps")
     if meta_props:
@@ -185,10 +224,24 @@ def _index_container(
 
 
 def _index_conditions(
-    index: ReverseIndex, container_kind: str, container_id: int, condition: Any
+    index: ReverseIndex,
+    container_kind: str,
+    container_id: int,
+    condition: Any,
+    known_ids: Dict[int, str],
+    known_names: Dict[str, List[TargetKey]],
 ) -> None:
     if not isinstance(condition, dict):
         return
+    # Scripted condition (container Type 4): the only structure is the script
+    # text itself. Gate on ScriptSource presence rather than the type code so
+    # a future scripted variant still gets scanned.
+    script = condition.get("ScriptSource")
+    if isinstance(script, str) and script:
+        _scan_script_source(
+            index, container_kind, container_id, script,
+            "condition_reads", known_ids, known_names,
+        )
     condition_list = condition.get("ConditionList") or {}
     items = condition_list.get("Conditions") or []
     for item in items:
@@ -224,6 +277,7 @@ def _index_action_steps(
     container_id: int,
     steps: List[Any],
     known_ids: Dict[int, str],
+    known_names: Dict[str, List[TargetKey]],
 ) -> None:
     for step in steps:
         if not isinstance(step, dict):
@@ -252,6 +306,13 @@ def _index_action_steps(
                 Reference(container_kind, container_id, "executes"),
             )
             index.exec_parents.setdefault(ag_id, []).append((container_kind, container_id))
+        elif step_class == schema.ACTION_CLASS_EMBEDDED_SCRIPT:
+            script = step.get("ScriptSource")
+            if isinstance(script, str) and script:
+                _scan_script_source(
+                    index, container_kind, container_id, script,
+                    "script_reference", known_ids, known_names,
+                )
         elif step_class == schema.ACTION_CLASS_PLUGIN:
             # Class 999 steps can also command a device directly (DeviceID at
             # the step level) in addition to their MetaProps config.
@@ -268,6 +329,67 @@ def _index_action_steps(
             meta_props = step.get("MetaProps")
             if meta_props:
                 _index_plugin_props(index, container_kind, container_id, meta_props, known_ids)
+
+
+def _scan_script_source(
+    index: ReverseIndex,
+    container_kind: str,
+    container_id: int,
+    script: str,
+    role: str,
+    known_ids: Dict[int, str],
+    known_names: Dict[str, List[TargetKey]],
+) -> None:
+    """
+    Heuristic: entity ids and exact quoted entity names appearing in embedded
+    Python script text become low-confidence references. False positives (a
+    log string that happens to equal an entity name) are the safe direction
+    for a "can I delete this?" tool; false negatives were 100% before.
+    """
+    seen: Set[TargetKey] = set()
+
+    for token in _SCRIPT_ID_RE.findall(script):
+        candidate = int(token)
+        # Same floor as the plugin-props heuristic: entity ids are large
+        # random integers, so small numbers are delays/ports/percentages.
+        if candidate < 100000:
+            continue
+        kind = known_ids.get(candidate)
+        if kind is None:
+            continue
+        target = (kind, candidate)
+        if target in seen:
+            continue
+        seen.add(target)
+        index.add(
+            target,
+            Reference(
+                container_kind,
+                container_id,
+                role,
+                detail=f"script references id {candidate}",
+                confidence="heuristic",
+            ),
+        )
+
+    for match in _SCRIPT_STRING_RE.finditer(script):
+        literal = match.group(1) or match.group(2)
+        if len(literal) < _MIN_NAME_MATCH_LEN:
+            continue
+        for target in known_names.get(literal, ()):
+            if target in seen:
+                continue
+            seen.add(target)
+            index.add(
+                target,
+                Reference(
+                    container_kind,
+                    container_id,
+                    role,
+                    detail=f'script references "{literal}"',
+                    confidence="heuristic",
+                ),
+            )
 
 
 def _index_plugin_props(

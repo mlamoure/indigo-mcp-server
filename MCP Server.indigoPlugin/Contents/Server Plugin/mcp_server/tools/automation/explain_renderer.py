@@ -72,7 +72,9 @@ class ExplainRenderer:
             doc["schedule_timing"] = self._render_schedule_timing(live, struct)
 
         if struct:
-            doc["conditions"] = self._render_conditions(struct.get("Condition"), names)
+            doc["conditions"] = self._render_conditions(
+                struct.get("Condition"), names, include_scripts
+            )
             doc["action_steps"] = self._render_action_steps(
                 _extract_steps(entity_type, struct), names, include_scripts
             )
@@ -165,15 +167,33 @@ class ExplainRenderer:
         return timing
 
     def _render_conditions(
-        self, condition: Any, names: "_NameResolver"
+        self, condition: Any, names: "_NameResolver", include_scripts: bool
     ) -> Dict[str, Any]:
         if not isinstance(condition, dict):
             return {"type": "none"}
         container_type = condition.get("Type")
-        if container_type == schema.CONDITION_CONTAINER_NONE or "ConditionList" not in condition:
+        if container_type == schema.CONDITION_CONTAINER_NONE:
             return {"type": "none"}
+        if container_type == schema.CONDITION_CONTAINER_SCRIPT:
+            rendered: Dict[str, Any] = {"type": "scripted"}
+            rendered.update(
+                _render_script_fields(condition.get("ScriptSource") or "", include_scripts)
+            )
+            rendered["raw"] = {
+                key: value
+                for key, value in condition.items()
+                if key not in _RAW_STEP_EXCLUDES
+            }
+            return rendered
         if container_type != schema.CONDITION_CONTAINER_LIST:
-            return {"type": "unknown", "raw": condition}
+            return {
+                "type": "unknown",
+                "raw": {
+                    key: value for key, value in condition.items() if key != "ScriptSource"
+                },
+            }
+        if "ConditionList" not in condition:
+            return {"type": "none"}
 
         condition_list = condition.get("ConditionList") or {}
         items = []
@@ -266,18 +286,9 @@ class ExplainRenderer:
         elif step_class == schema.ACTION_CLASS_EXECUTE_ACTION_GROUP:
             rendered["action_group"] = names.resolve("action_group", step.get("ActionGroupID"))
         elif step_class == schema.ACTION_CLASS_EMBEDDED_SCRIPT:
-            script = step.get("ScriptSource") or ""
-            rendered["language"] = "python"
-            rendered["script_length"] = len(script)
-            if include_scripts:
-                truncated = len(script) > SCRIPT_TRUNCATE_CHARS
-                rendered["script_source"] = (
-                    script[:SCRIPT_TRUNCATE_CHARS] if truncated else script
-                )
-                rendered["script_truncated"] = truncated
-            else:
-                first_line = script.strip().splitlines()[0] if script.strip() else ""
-                rendered["script_first_line"] = first_line
+            rendered.update(
+                _render_script_fields(step.get("ScriptSource") or "", include_scripts)
+            )
         elif step_class == schema.ACTION_CLASS_PLUGIN:
             plugin_id = step.get("PluginID")
             rendered["plugin_id"] = plugin_id
@@ -367,6 +378,18 @@ class _NameResolver:
         except Exception:
             entity = None
         return entity.get("name") if entity else None
+
+
+def _render_script_fields(script: str, include_scripts: bool) -> Dict[str, Any]:
+    """Shared shape for embedded Python (action steps and scripted conditions)."""
+    fields: Dict[str, Any] = {"language": "python", "script_length": len(script)}
+    if include_scripts:
+        truncated = len(script) > SCRIPT_TRUNCATE_CHARS
+        fields["script_source"] = script[:SCRIPT_TRUNCATE_CHARS] if truncated else script
+        fields["script_truncated"] = truncated
+    else:
+        fields["script_first_line"] = script.strip().splitlines()[0] if script.strip() else ""
+    return fields
 
 
 def _extract_steps(entity_type: str, struct: Dict[str, Any]) -> List[Any]:
