@@ -12,20 +12,28 @@ import time
 from typing import Dict, List, Any, Optional
 
 from .data_provider import DataProvider
+from ..common.delayed_executor import DelayedExecutor
 from ..common.json_encoder import filter_json, KEYS_TO_KEEP_MINIMAL_DEVICES
 
 
 class IndigoDataProvider(DataProvider):
     """Data provider implementation for accessing Indigo entities."""
     
-    def __init__(self, logger: Optional[logging.Logger] = None):
+    def __init__(
+        self,
+        logger: Optional[logging.Logger] = None,
+        delayed_executor: Optional[DelayedExecutor] = None,
+    ):
         """
         Initialize the Indigo data provider.
         
         Args:
             logger: Optional logger instance
+            delayed_executor: Timer queue used to emulate execute delays
+                (injectable for tests); a default one is created otherwise
         """
         self.logger = logger or logging.getLogger("Plugin")
+        self.delayed_executor = delayed_executor or DelayedExecutor(self.logger)
     
     def get_all_devices(self) -> List[Dict[str, Any]]:
         """
@@ -396,25 +404,34 @@ class IndigoDataProvider(DataProvider):
     
     def execute_action_group(self, action_group_id: int, delay: Optional[int] = None) -> Dict[str, Any]:
         """
-        Execute an action group.
+        Execute an action group now, or after a plugin-side delay.
+
+        indigo.actionGroup.execute() accepts only event_data — it has no
+        delay — so a positive `delay` is emulated with DelayedExecutor (see
+        that module for the caveats). Passing delay= to Indigo raised a
+        Boost.Python signature error on every call until 2026.9.0.
         
         Args:
             action_group_id: The action group ID
             delay: Optional delay in seconds before execution
             
         Returns:
-            Dictionary with operation results
+            Dictionary with operation results; a delayed run also carries
+            job_id and scheduled_in_seconds
         """
         try:
             if action_group_id not in indigo.actionGroups:
                 return {"error": f"Action group {action_group_id} not found"}
             
-            # Execute action group with optional delay
             if delay and delay > 0:
-                indigo.actionGroup.execute(action_group_id, delay=delay)
-            else:
-                indigo.actionGroup.execute(action_group_id)
-            
+                job_id = self.delayed_executor.schedule(
+                    int(delay),
+                    lambda: indigo.actionGroup.execute(action_group_id),
+                    f"Action group {action_group_id}",
+                )
+                return {"success": True, "job_id": job_id, "scheduled_in_seconds": int(delay)}
+
+            indigo.actionGroup.execute(action_group_id)
             return {
                 "success": True,
                 "job_id": None  # Indigo doesn't provide job IDs for action group execution
@@ -798,8 +815,15 @@ class IndigoDataProvider(DataProvider):
                 if duration:
                     result["auto_reverts_after_seconds"] = int(duration)
             elif command == "execute":
+                # trigger/schedule/actionGroup.execute() take no delay kwarg;
+                # a delay is emulated plugin-side (see DelayedExecutor).
                 if delay:
-                    namespace.execute(entity_id, delay=int(delay))
+                    result["job_id"] = self.delayed_executor.schedule(
+                        int(delay),
+                        lambda: namespace.execute(entity_id),
+                        f"{entity_type.replace('_', ' ')} {entity_id}",
+                    )
+                    result["scheduled_in_seconds"] = int(delay)
                 else:
                     namespace.execute(entity_id)
             elif command == "duplicate":

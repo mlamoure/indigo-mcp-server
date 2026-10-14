@@ -469,7 +469,7 @@ def get_tool_schemas(tool_functions):
                 },
                 "delay": {
                     "type": "integer",
-                    "description": "Optional delay in seconds"
+                    "description": "Optional delay in seconds. Emulated by the MCP Server plugin (Indigo has no delayed action-group execute): the pending run is not visible in Indigo's UI or event log, cannot be cancelled with remove_delayed_actions, and is lost if the plugin restarts."
                 }
             },
             "required": ["action_group_id"]
@@ -933,7 +933,7 @@ def get_tool_schemas(tool_functions):
         },
         "delay_seconds": {
             "type": "integer",
-            "description": "For enable/disable/execute: apply after this many seconds",
+            "description": "For enable/disable: apply after this many seconds (Indigo-native). For execute: emulated by the MCP Server plugin — the pending run is not visible in Indigo, cannot be cancelled with remove_delayed_actions, and is lost if the plugin restarts.",
             "minimum": 1,
         },
         "duplicate_name": {"type": "string", "description": "For duplicate: name for the copy"},

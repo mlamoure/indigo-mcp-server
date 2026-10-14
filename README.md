@@ -197,6 +197,11 @@ Action steps, conditions, and schedule timing are read-only in Indigo's scriptin
 Indigo UI. Since there's no API to author actions from scratch, `duplicate` (via `control_trigger`) followed by
 `update_trigger` is the supported way to make a trigger variant.
 
+`delay_seconds` on `execute` (and `delay` on `action_execute_group`) is emulated inside the MCP Server plugin —
+Indigo has no delayed execute for triggers, schedules, or action groups — so a pending delayed execute does not
+appear in Indigo's UI or event log, cannot be cancelled with `remove_delayed_actions`, and is lost if the plugin
+restarts. The reply carries `job_id` and `scheduled_in_seconds` for a delayed run.
+
 ### Device control
 
 - **device_turn_on** / **device_turn_off** — power state
@@ -209,7 +214,8 @@ Indigo UI. Since there's no API to author actions from scratch, `duplicate` (via
 ### Variables, actions, and system
 
 - **variable_create** / **variable_update** — create or update variables
-- **action_execute_group** — run an action group / scene
+- **action_execute_group** — run an action group / scene (optional `delay`, emulated plugin-side — see
+  Automation control)
 - **list_plugins** / **get_plugin_by_id** / **get_plugin_status** / **restart_plugin** — plugin management
 - **analyze_historical_data** — AI analysis of device/variable history (requires InfluxDB). Pass
   `time_range_hours` for "last N hours" questions; `time_range_days` cannot express windows shorter

@@ -138,3 +138,51 @@ class TestTurnOffDevice:
             result = provider.turn_off_device(99)
 
         assert result == {"error": "Device 99 not found"}
+
+
+class TestExecuteActionGroup:
+    """execute_action_group passes Indigo exactly the id; delays are plugin-side."""
+
+    @staticmethod
+    def fake_with_action_group(group_id):
+        fake = Mock()
+        fake.actionGroups = FakeDevices({group_id: FakeDevice(id=group_id, name="Test")})
+        return fake
+
+    def test_immediate_calls_execute_with_only_the_id(self, provider):
+        fake = self.fake_with_action_group(7)
+        with with_indigo(fake):
+            result = provider.execute_action_group(7)
+        fake.actionGroup.execute.assert_called_once_with(7)
+        assert result == {"success": True, "job_id": None}
+
+    def test_delay_is_scheduled_plugin_side_not_passed_to_indigo(self):
+        executor = Mock()
+        executor.schedule.return_value = "job-1"
+        provider = IndigoDataProvider(logger=Mock(), delayed_executor=executor)
+        fake = self.fake_with_action_group(7)
+        with with_indigo(fake):
+            result = provider.execute_action_group(7, delay=5)
+            fake.actionGroup.execute.assert_not_called()
+            seconds, fn, label = executor.schedule.call_args[0]
+            fn()  # what the timer will run later
+        assert (seconds, label) == (5, "Action group 7")
+        fake.actionGroup.execute.assert_called_once_with(7)
+        assert result == {"success": True, "job_id": "job-1", "scheduled_in_seconds": 5}
+
+    def test_not_found_schedules_nothing(self):
+        executor = Mock()
+        provider = IndigoDataProvider(logger=Mock(), delayed_executor=executor)
+        fake = Mock()
+        fake.actionGroups = FakeDevices({})
+        with with_indigo(fake):
+            result = provider.execute_action_group(99, delay=5)
+        assert result == {"error": "Action group 99 not found"}
+        executor.schedule.assert_not_called()
+        fake.actionGroup.execute.assert_not_called()
+
+    def test_exception_becomes_error_dict(self, provider):
+        fake = self.fake_with_action_group(7)
+        fake.actionGroup.execute.side_effect = RuntimeError("boom")
+        with with_indigo(fake):
+            assert provider.execute_action_group(7) == {"error": "boom", "success": False}

@@ -223,6 +223,10 @@ class MCPHandler:
         """Stop the MCP handler and cleanup resources."""
         if self.vector_store_manager:
             self.vector_store_manager.stop()
+        # Pending plugin-side delayed executes die with the plugin (documented).
+        executor = getattr(self.data_provider, "delayed_executor", None)
+        if executor is not None:
+            executor.cancel_all()
 
     @property
     def _sessions(self) -> Dict[str, Any]:

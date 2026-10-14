@@ -354,6 +354,18 @@ class TestRefactoredMCPHandler:
                 assert properties["limit"]["maximum"] == 500
                 assert properties["offset"]["minimum"] == 0
 
+    def test_execute_delay_is_documented_as_plugin_side(self):
+        """delay/delay_seconds stay on the execute tools and say they are emulated."""
+        from collections import defaultdict
+
+        tools = get_tool_schemas(defaultdict(Mock))
+
+        delay = tools["action_execute_group"]["inputSchema"]["properties"]["delay"]
+        assert "MCP Server plugin" in delay["description"]
+        for name in ("control_trigger", "control_schedule", "control_action_group"):
+            props = tools[name]["inputSchema"]["properties"]
+            assert "MCP Server plugin" in props["delay_seconds"]["description"], name
+
 
 class TestBackwardCompatibility:
     """Tests to ensure refactored code maintains backward compatibility."""

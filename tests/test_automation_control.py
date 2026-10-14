@@ -166,3 +166,40 @@ class TestProviderCommandMapping:
         fake.trigger.execute.side_effect = RuntimeError("nope")
         result = provider.automation_command("trigger", 1, "execute")
         assert result == {"error": "nope", "success": False}
+
+    @pytest.mark.parametrize("entity_type, namespace", [
+        ("trigger", "trigger"),
+        ("schedule", "schedule"),
+        ("action_group", "actionGroup"),
+    ])
+    def test_execute_calls_execute_with_only_the_id(
+        self, provider_and_indigo, entity_type, namespace
+    ):
+        provider, fake = provider_and_indigo
+        result = provider.automation_command(entity_type, 1, "execute")
+        getattr(fake, namespace).execute.assert_called_once_with(1)
+        assert result["success"] is True
+        assert "job_id" not in result
+
+    @pytest.mark.parametrize("entity_type, namespace", [
+        ("trigger", "trigger"),
+        ("schedule", "schedule"),
+        ("action_group", "actionGroup"),
+    ])
+    def test_execute_with_delay_is_scheduled_plugin_side(
+        self, provider_and_indigo, entity_type, namespace
+    ):
+        # Indigo's execute() has no delay kwarg (the 2026-09-04 failure); the
+        # delay must be emulated and the eventual call must be execute(id).
+        provider, fake = provider_and_indigo
+        provider.delayed_executor = Mock()
+        provider.delayed_executor.schedule.return_value = "job-9"
+        result = provider.automation_command(entity_type, 1, "execute", delay=10)
+        getattr(fake, namespace).execute.assert_not_called()
+        seconds, fn, _label = provider.delayed_executor.schedule.call_args[0]
+        assert seconds == 10
+        fn()
+        getattr(fake, namespace).execute.assert_called_once_with(1)
+        assert result["success"] is True
+        assert result["job_id"] == "job-9"
+        assert result["scheduled_in_seconds"] == 10

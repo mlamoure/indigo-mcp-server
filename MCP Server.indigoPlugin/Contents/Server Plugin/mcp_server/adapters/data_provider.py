@@ -198,12 +198,14 @@ class DataProvider(ABC):
 
         Args:
             action_group_id: The action group ID
-            delay: Optional delay in seconds before execution
+            delay: Optional delay in seconds before execution (emulated by
+                the plugin — Indigo has no delayed action-group execute)
 
         Returns:
             Dictionary with:
             - success: Whether execution was successful
-            - job_id: Job ID if available
+            - job_id: Job ID if available (set for a delayed run)
+            - scheduled_in_seconds: Present for a delayed run
             - error: Error message if operation failed
         """
         pass
