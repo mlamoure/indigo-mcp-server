@@ -16,6 +16,11 @@ from .result_formatter import ResultFormatter
 
 class SearchEntitiesHandler(BaseToolHandler):
     """Handler for searching Indigo entities with semantic search."""
+
+    # Candidates checked against live state when a state_filter is given
+    STATE_FILTER_WINDOW = 200
+    # Above this many results, devices are returned with minimal fields
+    FULL_FIELDS_MAX = 20
     
     def __init__(
         self, 
@@ -54,7 +59,8 @@ class SearchEntitiesHandler(BaseToolHandler):
             device_types: Optional list of device types to filter by
             entity_types: Optional list of entity types to search
             state_filter: Optional state conditions to apply after semantic search
-            limit: Maximum number of total results to return (default: no limit)
+            limit: Maximum number of results to return (default: the query's
+                own window — 10, or more for "list"/"all" queries)
             offset: Number of results to skip (default: 0)
 
         Returns:
@@ -68,21 +74,50 @@ class SearchEntitiesHandler(BaseToolHandler):
             # Parse query to determine search parameters
             search_params = self.query_parser.parse(query, device_types, entity_types)
 
-            # Expand query with LLM for better semantic matching
+            # Result window: the query parser's default, raised to cover the
+            # requested page (limit + offset). State filters run on live
+            # state after the search, so they get a wider window to filter.
+            window = search_params["top_k"]
+            if limit is not None and limit > 0:
+                window = max(window, limit + offset)
+            if state_filter is not None:
+                window = max(window, self.STATE_FILTER_WINDOW)
+            # Full device payloads are large; past a screenful, send the
+            # minimal field set (as "list"/"all" queries already do)
+            minimal_fields = search_params["minimal_fields"] or window > self.FULL_FIELDS_MAX
+
+            # Expand query with LLM for better semantic matching. Both the
+            # user's own words and the expansion are scored, keeping each
+            # entity's better score: the expansion adds reach (entryway ->
+            # foyer) without pushing exact names down.
             self.debug_log("Expanding query with AI")
             expanded_query = self.query_parser.expand_query(query, enable_llm=True)
 
-            # Perform vector search
+            # Device types are a pre-filter inside the vector query, so they
+            # cannot starve the window
+            device_classes = (
+                device_types
+                if device_types is not None and "devices" in search_params["entity_types"]
+                else None
+            )
             raw_results, search_metadata = self.vector_store.search(
-                query=expanded_query,
+                query=query,
                 entity_types=search_params["entity_types"],
-                top_k=search_params["top_k"],
-                similarity_threshold=search_params["threshold"]
+                top_k=window,
+                similarity_threshold=search_params["threshold"],
+                expanded_query=expanded_query,
+                device_classes=device_classes,
             )
 
-            # Apply device type filtering if specified
+            # Safety net for vector stores that ignore device_classes
             if device_types is not None and "devices" in search_params["entity_types"]:
                 raw_results = self._filter_devices_by_type(raw_results, device_types)
+
+            # Remember the global rank: results are grouped by type below, but
+            # pagination must cut by rank (an exact-name action group ranked
+            # first must not lose its place to devices)
+            for rank, result in enumerate(raw_results):
+                result["_rank"] = rank
 
             # Group results by entity type
             grouped_results = self._group_results_by_type(raw_results)
@@ -104,18 +139,20 @@ class SearchEntitiesHandler(BaseToolHandler):
             action_count = len(grouped_results.get("actions", []))
             trigger_count = len(grouped_results.get("triggers", []))
             schedule_count = len(grouped_results.get("schedules", []))
-            total_count = (
+            window_count = (
                 device_count + variable_count + action_count
                 + trigger_count + schedule_count
             )
+            # Without a state filter every match counts, including those past
+            # the window; with one, only the window could be checked
+            total_count = window_count
+            if state_filter is None:
+                total_count = max(window_count, search_metadata.get("total_found", 0))
 
             # Apply pagination across all result types
-            paginated_results = grouped_results
-            has_more = False
-            if limit is not None or offset > 0:
-                paginated_results, has_more = self._apply_pagination(
-                    grouped_results, limit, offset, total_count
-                )
+            paginated_results, has_more = self._apply_pagination(
+                grouped_results, limit, offset, total_count
+            )
 
             # Single line consolidated result summary
             returned_count = sum(
@@ -140,20 +177,18 @@ class SearchEntitiesHandler(BaseToolHandler):
             formatted_results = self.result_formatter.format_search_results(
                 paginated_results,
                 query,
-                minimal_fields=search_params["minimal_fields"],
+                minimal_fields=minimal_fields,
                 search_metadata=search_metadata,
                 state_detected=search_params.get("state_detected", False)
             )
 
-            # Add pagination info to results
-            if limit is not None or offset > 0:
-                formatted_results["pagination"] = {
-                    "offset": offset,
-                    "limit": limit,
-                    "total_count": total_count,
-                    "returned_count": returned_count,
-                    "has_more": has_more
-                }
+            formatted_results["pagination"] = {
+                "offset": offset,
+                "limit": limit if limit is not None else window,
+                "total_count": total_count,
+                "returned_count": returned_count,
+                "has_more": has_more
+            }
 
             return formatted_results
             
@@ -288,11 +323,12 @@ class SearchEntitiesHandler(BaseToolHandler):
         Returns:
             Tuple of (paginated_results, has_more)
         """
-        # Flatten results while maintaining order
+        # Flatten results in global rank order (type order for unranked ones)
         flat_results = []
         for entity_type in ["devices", "variables", "actions", "triggers", "schedules"]:
             for entity in grouped_results.get(entity_type, []):
                 flat_results.append((entity_type, entity))
+        flat_results.sort(key=lambda item: item[1].get("_rank", float("inf")))
 
         # Apply offset
         if offset > 0:

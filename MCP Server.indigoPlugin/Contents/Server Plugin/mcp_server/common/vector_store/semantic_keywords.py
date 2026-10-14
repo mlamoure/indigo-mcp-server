@@ -7,6 +7,7 @@ Uses hybrid approach: rule-based keywords + LLM-generated contextual keywords.
 import hashlib
 import json
 import logging
+import re
 from typing import List, Dict, Any, Set, Optional
 
 from pydantic import BaseModel
@@ -26,6 +27,20 @@ class BatchKeywordsResponse(BaseModel):
 
 # Global cache for LLM-generated keywords
 _llm_keyword_cache = {}
+
+# Shared instructions for both keyword prompts. Keywords used to list nearby
+# rooms and unrelated device kinds ("family room / media room" on a basement
+# light, "lamp" on ceiling lights), which pulled the wrong devices up for
+# exact-name queries (indigo-mcp-server#72), so they are confined to what the
+# device itself is and the room it is in.
+KEYWORD_GUIDANCE = """For each device, give 5-8 short keywords or phrases a person might type to find it:
+- other common names for what the device is or controls, judged from its name, type and model
+- the room or area in the device name, plus other common names for that same room or area
+
+Rules:
+- Use only the room or area the device name mentions. Never guess at a room, area or feature the name does not mention.
+- Never mention a kind of device that the device is not.
+- No protocol, network, address or model-number words, and nothing about the device's current state."""
 
 
 def _calculate_optimal_batch_size(entity_count: int, estimated_tokens_per_entity: int = 85) -> int:
@@ -226,121 +241,56 @@ def generate_entity_keywords(entity: Dict[str, Any], entity_type: str) -> List[s
 
 
 def _generate_device_keywords(device: Dict[str, Any]) -> Set[str]:
-    """Generate semantic keywords for a device."""
+    """
+    Rule-based keywords for a device: the room/area in its name (with other
+    names for that same room), synonyms for what its name says it is, and a
+    few stable capabilities.
+
+    Deliberately excluded (they pulled vectors toward hardware and other
+    rooms, see indigo-mcp-server#72): model numbers, protocol and address,
+    and anything that changes with device state (enabled, battery level).
+    """
     keywords = set()
-    
-    # Device type keywords
-    device_type = device.get("type", "").lower()
-    if device_type:
-        keywords.add(device_type)
-        
-        # Add related keywords based on device type
-        type_keywords = _get_device_type_keywords(device_type)
-        keywords.update(type_keywords)
-    
-    # Model keywords
-    model = device.get("model", "").lower()
-    if model:
-        keywords.add(model)
-        
-        # Add manufacturer keywords
-        manufacturer_keywords = _get_manufacturer_keywords(model)
-        keywords.update(manufacturer_keywords)
-    
-    # Protocol keywords
-    protocol = device.get("protocol", "").lower()
-    if protocol:
-        keywords.add(protocol)
-        keywords.add(f"{protocol}_device")
-    
-    # State-based keywords
-    enabled = device.get("enabled", True)
-    keywords.add("enabled" if enabled else "disabled")
-    
-    # Battery keywords
-    if device.get("batteryLevel") is not None:
-        keywords.add("battery_powered")
-        battery_level = device.get("batteryLevel", 0)
-        if battery_level < 20:
-            keywords.add("low_battery")
-    
-    # Energy keywords
-    if device.get("energyAccumTotal") is not None:
-        keywords.add("energy_meter")
-    if device.get("curEnergyLevel") is not None:
-        keywords.add("energy_monitoring")
-    
-    # Temperature keywords
-    if device.get("temperatureInput1") is not None or device.get("sensorValue") is not None:
-        keywords.add("temperature_sensor")
-    
-    # Dimmer keywords
+    name = device.get("name", "") or ""
+
+    keywords.update(_extract_location_keywords(name))
+    keywords.update(_extract_function_keywords(name))
+
     if device.get("brightness") is not None:
         keywords.add("dimmable")
-        keywords.add("lighting")
-    
-    # Location-based keywords from name
-    name = device.get("name", "").lower()
-    location_keywords = _extract_location_keywords(name)
-    keywords.update(location_keywords)
-    
-    # Function keywords from name
-    function_keywords = _extract_function_keywords(name)
-    keywords.update(function_keywords)
-    
+    if device.get("energyAccumTotal") is not None or device.get("energyCurLevel") is not None:
+        keywords.add("energy monitoring")
+    if device.get("batteryLevel") is not None:
+        keywords.add("battery powered")
+
     return keywords
 
 
 def _generate_variable_keywords(variable: Dict[str, Any]) -> Set[str]:
-    """Generate semantic keywords for a variable."""
+    """Generate semantic keywords for a variable (from its name only — the value changes)."""
     keywords = set()
-    
-    # Value type keywords
-    value = variable.get("value", "")
-    if isinstance(value, bool):
-        keywords.add("boolean")
-        keywords.add("true" if value else "false")
-    elif isinstance(value, (int, float)):
-        keywords.add("numeric")
-        if value == 0:
-            keywords.add("zero")
-    elif isinstance(value, str):
-        keywords.add("string")
-        if value.lower() in ["on", "off"]:
-            keywords.add("switch_state")
-        elif value.lower() in ["true", "false"]:
-            keywords.add("boolean_string")
-    
-    # Name-based keywords
-    name = variable.get("name", "").lower()
-    if "temp" in name:
-        keywords.add("temperature")
-    if "humidity" in name:
-        keywords.add("humidity")
-    if "status" in name:
-        keywords.add("status")
-    if "state" in name:
-        keywords.add("state")
-    if "mode" in name:
-        keywords.add("mode")
-    if "level" in name:
-        keywords.add("level")
-    
-    # Location keywords from name
-    location_keywords = _extract_location_keywords(name)
-    keywords.update(location_keywords)
-    
+    name = _humanize(variable.get("name", "") or "")
+
+    for word, keyword in (
+        ("temp", "temperature"),
+        ("humidity", "humidity"),
+        ("status", "status"),
+        ("state", "state"),
+        ("mode", "mode"),
+        ("level", "level"),
+    ):
+        if word in name:
+            keywords.add(keyword)
+
+    keywords.update(_extract_location_keywords(name))
     return keywords
 
 
 def _generate_action_keywords(action: Dict[str, Any]) -> Set[str]:
     """Generate semantic keywords for an action group."""
     keywords = set()
-    
-    # Name-based action keywords
-    name = action.get("name", "").lower()
-    
-    # Action type keywords
+    name = _humanize(action.get("name", "") or "")
+
     if any(word in name for word in ["turn", "switch", "toggle"]):
         keywords.add("switching")
     if any(word in name for word in ["dim", "bright", "light"]):
@@ -351,17 +301,12 @@ def _generate_action_keywords(action: Dict[str, Any]) -> Set[str]:
         keywords.add("security")
     if any(word in name for word in ["climate", "temp", "heat", "cool"]):
         keywords.add("climate")
-    if any(word in name for word in ["schedule", "timer", "delay"]):
-        keywords.add("automation")
     if any(word in name for word in ["morning", "evening", "night", "bedtime"]):
-        keywords.add("time_based")
+        keywords.add("time of day")
     if any(word in name for word in ["all", "house", "whole"]):
-        keywords.add("global")
+        keywords.add("whole house")
 
-    # Location keywords from name
-    location_keywords = _extract_location_keywords(name)
-    keywords.update(location_keywords)
-
+    keywords.update(_extract_location_keywords(name))
     return keywords
 
 
@@ -371,13 +316,11 @@ def _generate_trigger_keywords(trigger: Dict[str, Any]) -> Set[str]:
 
     trigger_type = trigger.get("type", "")
     if trigger_type:
-        keywords.add(trigger_type)
+        keywords.add(_humanize(str(trigger_type)))
 
-    keywords.add("enabled" if trigger.get("enabled", True) else "disabled")
-
-    name = trigger.get("name", "").lower()
+    name = _humanize(trigger.get("name", "") or "")
     if any(word in name for word in ["motion", "sensor", "door", "window"]):
-        keywords.add("sensor_driven")
+        keywords.add("sensor driven")
     if any(word in name for word in ["security", "alarm", "lock"]):
         keywords.add("security")
     keywords.update(_extract_location_keywords(name))
@@ -387,141 +330,123 @@ def _generate_trigger_keywords(trigger: Dict[str, Any]) -> Set[str]:
 
 def _generate_schedule_keywords(schedule: Dict[str, Any]) -> Set[str]:
     """Generate semantic keywords for a schedule."""
-    keywords = {"schedule", "timer", "automation", "time_based"}
+    keywords = {"schedule", "timer", "automation", "time based"}
 
     for field in ("date_type", "time_type"):
         value = schedule.get(field, "")
         if value:
-            keywords.add(str(value))
+            keywords.add(_humanize(str(value)))
 
-    keywords.add("enabled" if schedule.get("enabled", True) else "disabled")
-    keywords.update(_extract_location_keywords(schedule.get("name", "").lower()))
-
+    keywords.update(_extract_location_keywords(schedule.get("name", "") or ""))
     return keywords
 
 
-def _get_device_type_keywords(device_type: str) -> Set[str]:
-    """Get related keywords for a device type."""
-    type_map = {
-        "relay": ["switch", "switching", "on_off", "control"],
-        "dimmer": ["lighting", "dimmable", "brightness", "level"],
-        "sensor": ["monitoring", "detection", "measurement"],
-        "thermostat": ["climate", "temperature", "hvac", "heating", "cooling"],
-        "sprinkler": ["irrigation", "watering", "garden", "outdoor"],
-        "lock": ["security", "access", "door"],
-        "camera": ["security", "monitoring", "surveillance", "video"],
-        "motion": ["detection", "security", "automation", "trigger"],
-        "contact": ["door", "window", "security", "monitoring"],
-        "temperature": ["climate", "monitoring", "sensor"],
-        "humidity": ["climate", "moisture", "comfort"],
-        "light": ["lighting", "illumination", "brightness"],
-        "energy": ["power", "consumption", "monitoring", "meter"]
-    }
-    
-    keywords = set()
-    for key, values in type_map.items():
-        if key in device_type:
-            keywords.update(values)
-    
-    return keywords
+def _humanize(text: str) -> str:
+    """'alarm_enabled' / 'isNightTime' -> 'alarm enabled' / 'is night time' (lowercase)."""
+    text = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", text or "")
+    text = re.sub(r"[_\-]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip().lower()
 
 
-def _get_manufacturer_keywords(model: str) -> Set[str]:
-    """Get manufacturer/brand keywords from model string."""
-    manufacturers = {
-        "insteon": ["insteon"],
-        "z-wave": ["zwave", "z_wave"],
-        "zigbee": ["zigbee"],
-        "lutron": ["lutron", "caseta"],
-        "philips": ["philips", "hue"],
-        "nest": ["nest", "google"],
-        "ecobee": ["ecobee"],
-        "honeywell": ["honeywell"],
-        "schlage": ["schlage"],
-        "yale": ["yale"],
-        "august": ["august"],
-        "ring": ["ring"],
-        "arlo": ["arlo"],
-        "sonos": ["sonos", "audio"],
-        "roku": ["roku", "streaming"],
-        "apple": ["apple", "homekit"],
-        "amazon": ["amazon", "alexa"],
-        "google": ["google", "assistant"]
-    }
-    
+# Rooms and areas -> other common names for the SAME room/area. Never maps
+# one room to a different one (a living-room query must not drift to the
+# basement media room).
+_LOCATION_ALIASES = {
+    "living room": ["living room", "family room", "lounge"],
+    "family room": ["family room", "living room", "den"],
+    "master bedroom": ["master bedroom", "primary bedroom"],
+    "primary bedroom": ["primary bedroom", "master bedroom"],
+    "guest bedroom": ["guest bedroom", "guest room"],
+    "guest room": ["guest room", "guest bedroom"],
+    "bedroom": ["bedroom"],
+    "kitchen": ["kitchen"],
+    "pantry": ["pantry"],
+    "dining room": ["dining room"],
+    "bathroom": ["bathroom", "bath"],
+    "powder room": ["powder room", "half bath"],
+    "laundry": ["laundry room"],
+    "mudroom": ["mudroom"],
+    "office": ["office", "study"],
+    "sunroom": ["sunroom", "sun room"],
+    "tv room": ["tv room", "media room"],
+    "tv area": ["tv area", "tv room", "media room"],
+    "media room": ["media room", "tv room"],
+    "theater": ["theater", "home theater", "media room"],
+    "garage": ["garage"],
+    "basement": ["basement", "lower level"],
+    "attic": ["attic"],
+    "closet": ["closet"],
+    "hallway": ["hallway", "hall", "corridor"],
+    "foyer": ["foyer", "entryway", "entrance"],
+    "entryway": ["entryway", "foyer", "entrance"],
+    "front door": ["front door", "entrance", "front porch"],
+    "back door": ["back door", "rear entrance"],
+    "porch": ["porch"],
+    "patio": ["patio"],
+    "deck": ["deck"],
+    "yard": ["yard"],
+    "driveway": ["driveway"],
+    "outdoor": ["outdoor", "outside", "exterior"],
+    "outside": ["outside", "outdoor", "exterior"],
+    "exterior": ["exterior", "outdoor", "outside"],
+    "upstairs": ["upstairs"],
+    "downstairs": ["downstairs"],
+}
+
+# What the device is -> other names for the same kind of thing (one
+# direction only where the reverse is wrong: a lamp is a light, but a
+# ceiling light is not a lamp).
+_FUNCTION_ALIASES = {
+    "light": ["light", "lighting"],
+    "lights": ["lights", "lighting"],
+    "lamp": ["lamp", "light"],
+    "sconce": ["sconce", "wall light"],
+    "sconces": ["sconces", "wall lights"],
+    "fan": ["fan"],
+    "outlet": ["outlet", "plug"],
+    "plug": ["plug", "outlet"],
+    "lock": ["lock"],
+    "deadbolt": ["deadbolt", "lock"],
+    "camera": ["camera"],
+    "speaker": ["speaker"],
+    "tv": ["tv", "television"],
+    "thermostat": ["thermostat"],
+    "heater": ["heater", "heating"],
+    "sprinkler": ["sprinkler", "irrigation"],
+    "sprinklers": ["sprinklers", "irrigation"],
+    "vacuum": ["vacuum"],
+    "shade": ["shade", "blind"],
+    "shades": ["shades", "blinds"],
+}
+
+
+def keyword_rules_fingerprint() -> str:
+    """
+    Short hash of everything that shapes generated keywords. The search
+    index stores it, so editing the alias tables or the LLM guidance
+    rebuilds the index instead of leaving old keywords on unchanged entities.
+    """
+    rules = json.dumps([KEYWORD_GUIDANCE, _LOCATION_ALIASES, _FUNCTION_ALIASES], sort_keys=True)
+    return hashlib.sha256(rules.encode()).hexdigest()[:12]
+
+
+def _alias_keywords(name: str, aliases: Dict[str, List[str]]) -> Set[str]:
+    words = _humanize(name)
     keywords = set()
-    model_lower = model.lower()
-    for brand, brand_keywords in manufacturers.items():
-        if brand in model_lower:
-            keywords.update(brand_keywords)
-    
+    for phrase, phrase_aliases in aliases.items():
+        if re.search(rf"\b{re.escape(phrase)}\b", words):
+            keywords.update(phrase_aliases)
     return keywords
 
 
 def _extract_location_keywords(name: str) -> Set[str]:
-    """Extract location-based keywords from entity name."""
-    locations = {
-        "living": ["living_room", "family_room", "main"],
-        "bedroom": ["bedroom", "bed", "sleep"],
-        "kitchen": ["kitchen", "cook"],
-        "bathroom": ["bathroom", "bath"],
-        "garage": ["garage", "car"],
-        "basement": ["basement", "lower"],
-        "attic": ["attic", "upper"],
-        "office": ["office", "work", "study"],
-        "dining": ["dining_room", "eat"],
-        "family": ["family_room", "den"],
-        "guest": ["guest_room", "spare"],
-        "master": ["master_bedroom", "primary"],
-        "hallway": ["hallway", "corridor"],
-        "entryway": ["entryway", "foyer", "entrance"],
-        "patio": ["patio", "deck", "outdoor"],
-        "yard": ["yard", "garden", "outdoor"],
-        "driveway": ["driveway", "drive"],
-        "front": ["front_door", "entrance"],
-        "back": ["back_door", "rear"],
-        "upstairs": ["upstairs", "upper"],
-        "downstairs": ["downstairs", "lower"],
-        "closet": ["closet", "storage"]
-    }
-    
-    keywords = set()
-    name_lower = name.lower()
-    for location, location_keywords in locations.items():
-        if location in name_lower:
-            keywords.update(location_keywords)
-    
-    return keywords
+    """Rooms/areas named in the entity name, plus other names for the same room/area."""
+    return _alias_keywords(name, _LOCATION_ALIASES)
 
 
 def _extract_function_keywords(name: str) -> Set[str]:
-    """Extract function-based keywords from entity name."""
-    functions = {
-        "light": ["lighting", "illumination", "lamp"],
-        "lamp": ["lighting", "illumination", "light"],  # Bidirectional mapping for lamp
-        "switch": ["switching", "control"],
-        "fan": ["cooling", "ventilation", "air"],
-        "outlet": ["power", "plug"],
-        "door": ["access", "entry"],
-        "window": ["opening", "view"],
-        "lock": ["security", "access"],
-        "sensor": ["monitoring", "detection"],
-        "camera": ["security", "surveillance"],
-        "speaker": ["audio", "sound"],
-        "tv": ["entertainment", "media"],
-        "heater": ["heating", "warm"],
-        "cooler": ["cooling", "cold"],
-        "pump": ["water", "circulation"],
-        "valve": ["flow", "control"]
-    }
-    
-    keywords = set()
-    name_lower = name.lower()
-    for function, function_keywords in functions.items():
-        if function in name_lower:
-            keywords.update(function_keywords)
-    
-    return keywords
+    """What the entity name says the device is, plus synonyms for that same kind of thing."""
+    return _alias_keywords(name, _FUNCTION_ALIASES)
 
 
 def _generate_llm_keywords_batch_with_fallback(entities: List[Dict[str, Any]], entity_type: str, original_batch_size: int) -> Dict[str, List[str]]:
@@ -612,7 +537,7 @@ def _generate_llm_keywords_batch(entities: List[Dict[str, Any]], entity_type: st
     
     try:
         # Import here to avoid circular imports
-        from ..openai_client.main import perform_completion, SMALL_MODEL
+        from ..openai_client.main import get_small_model, low_reasoning_effort, perform_completion
         
         # Prepare batch prompt with multiple devices
         device_descriptions = []
@@ -652,24 +577,22 @@ def _generate_llm_keywords_batch(entities: List[Dict[str, Any]], entity_type: st
         logger.debug(f"Batch processing {len(device_descriptions)} devices for LLM keywords")
         
         # Create batch prompt for structured response
-        batch_prompt = f"""Generate semantic search keywords for these {len(device_descriptions)} home automation devices.
+        batch_prompt = f"""Generate search keywords for these {len(device_descriptions)} home automation devices.
 
 {chr(10).join(device_descriptions)}
 
-For each device, generate 5-10 relevant keywords focusing on:
-- Synonyms for device name and function
-- Location-based terms  
-- Device category and usage terms
-- Related automation concepts
+{KEYWORD_GUIDANCE}
 
 Return the results as a structured JSON response with device numbers (1-based) and their corresponding keywords."""
 
         # Call LLM with structured response model
+        small_model = get_small_model()
         response = perform_completion(
             messages=batch_prompt,
-            model=SMALL_MODEL,
+            model=small_model,
             response_model=BatchKeywordsResponse,
-            response_token_reserve=500  # More tokens for JSON response
+            response_token_reserve=500,  # More tokens for JSON response
+            reasoning_effort=low_reasoning_effort(small_model),
         )
         
         if not response:
@@ -940,29 +863,26 @@ def _generate_llm_keywords(entity: Dict[str, Any], entity_type: str) -> List[str
             return []
         
         # Import here to avoid circular imports
-        from ..openai_client.main import perform_completion, SMALL_MODEL
+        from ..openai_client.main import get_small_model, low_reasoning_effort, perform_completion
         
         # Create prompt for LLM keyword generation
-        prompt = f"""Generate semantic search keywords for this home automation device:
+        prompt = f"""Generate search keywords for this home automation device:
 
 Name: {name}
 Model: {model}
 Type: {device_type}
 Description: {description}
 
-Generate 5-10 relevant keywords focusing on:
-- Synonyms for device name and function
-- Location-based terms
-- Device category and usage terms
-- Related automation concepts
+{KEYWORD_GUIDANCE}
 
 Return only the keywords as a comma-separated list, no explanations."""
 
-        # Call LLM with small model for efficiency
+        small_model = get_small_model()
         response = perform_completion(
             messages=prompt,
-            model=SMALL_MODEL,
-            response_token_reserve=100
+            model=small_model,
+            response_token_reserve=100,
+            reasoning_effort=low_reasoning_effort(small_model),
         )
         
         if not response:

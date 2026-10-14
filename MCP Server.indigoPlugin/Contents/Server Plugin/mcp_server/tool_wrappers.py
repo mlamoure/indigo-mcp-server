@@ -146,7 +146,7 @@ class ToolWrappers:
         device_types: List[str] = None,
         entity_types: List[str] = None,
         state_filter: Dict = None,
-        limit: int = 50,
+        limit: int = None,
         offset: int = 0
     ) -> str:
         """Search entities tool implementation with pagination."""

@@ -23,7 +23,8 @@ control your [Indigo](https://www.indigodomo.com/) home automation system throug
 1. Install the **MCP Server** plugin in Indigo via the Plugin Manager.
 2. Enter your **OpenAI API key** in the plugin's preferences.
 3. Add a new **MCP Server** device in Indigo (this creates the actual server; one per install).
-4. Wait for the plugin to **index your database** — the first run takes a while.
+4. Wait for the plugin to **index your database** — the first run takes a minute or two (longer for
+   very large databases). The index rebuilds itself the same way after an upgrade that changes it.
 5. **Connect an MCP client** — see below.
 
 Optional integrations, all off by default:
@@ -34,6 +35,10 @@ Optional integrations, all off by default:
 - **Event Webhooks** — real-time outbound push notifications; requires a server you run, **not** stock
   Claude Desktop. See [Event Subscriptions & Webhooks](#event-subscriptions--webhooks). *(v2026.1.0)*
 - **LangSmith** — AI prompt tracing for debugging; most people don't need it.
+
+The **Model** setting (default `gpt-6-luna`) picks the OpenAI model the plugin uses for its own small
+jobs: search keywords, search query expansion, and choosing history properties. Search embeddings
+always use `text-embedding-3-large`.
 
 ## Connecting an MCP Client
 
@@ -143,12 +148,18 @@ What the plugin can and can't do with each kind of Indigo entity.
 
 ## Available Tools
 
-Most list and search tools paginate with `limit` (default 50, max 500) and `offset`, and return
-`total_count` / `has_more` for navigation.
+Most list tools paginate with `limit` (default 50, max 500) and `offset`, and return
+`total_count` / `has_more` for navigation. `search_entities` returns its 10 best matches unless
+you pass a larger `limit`.
 
 ### Search and query
 
-- **search_entities** — natural-language search across devices, variables, action groups, triggers, and schedules
+- **search_entities** — natural-language search across devices, variables, action groups, triggers, and
+  schedules. An exact name ("living room lamp" → *Living Room Lamp*) is always the first result; otherwise
+  results rank by both the name and the meaning, so other words for the same thing also work ("entryway
+  light" → *Foyer Light*). `device_types` (dimmer, relay, sensor, …) filters before ranking, so
+  `limit` really returns that many devices of the type. Above 20 results, devices come back with minimal
+  fields.
 - **list_devices** — all devices, with optional state filtering
 - **list_variables** / **list_variable_folders** — variables (with values) and their folders
 - **list_action_groups** — action groups / scenes
@@ -236,14 +247,27 @@ Other Indigo plugins can contribute their own MCP tools to this server. A provid
 ships a small manifest in its bundle; this server discovers it automatically, lists the
 tools to AI clients under the provider's prefix (e.g. `autolights_update_zone` from the
 [Auto Lights](https://github.com/mlamoure/indigo-auto-lights) plugin), and forwards calls
-to the provider. No configuration is needed on this server.
+to the provider.
 
+- **Which plugins may provide tools**: the plugin config menu "Plugins that may provide
+  MCP tools" chooses between **All plugins** (the default, and the behavior of earlier
+  releases), **Only the plugins selected below** (an allowlist) and **All plugins except
+  those selected below** (a blocklist). The two lists are kept separately, so switching
+  the mode never reinterprets a saved selection. Each list shows every installed plugin;
+  plugins marked "MCP tools: N" ship tools today, and you can select any plugin so one
+  that adds tools later is already covered. An empty allowlist turns off every
+  plugin-provided tool. A provider the setting excludes is left out completely: its
+  tools are not listed, it never claims its tool prefix, and the MCP Server never calls
+  it; a client that calls one of its tools from a cached tool list is told the provider
+  is blocked in the plugin config. Takes effect immediately. Built-in tools are not
+  affected.
 - **Write gate**: the plugin config checkbox "Allow plugin-provided tools to make changes"
-  (default on) controls whether provider *write* tools work; read tools always do. Takes
-  effect immediately.
+  (default on) controls whether provider *write* tools work; read tools always do. It
+  applies to the providers the setting above allows. Takes effect immediately.
 - **Refresh**: provider tools register automatically when the provider starts or updates.
-  The menu item **Plugins → MCP Server → Rescan Plugin-Provided MCP Tools** forces a
-  re-discovery.
+  A provider installed for the first time while the MCP Server is running appears on the
+  client's next `tools/list` (at most a minute later). The menu item **Plugins → MCP
+  Server → Rescan Plugin-Provided MCP Tools** forces a re-discovery.
 - **Client cache caveat**: `tools/list` responses carry a 1-hour cache hint, so an
   already-connected MCP client may not see newly installed provider tools until it starts
   a fresh session.
@@ -478,9 +502,11 @@ HTTPServer(("0.0.0.0", 8888), Handler).serve_forever()
 
 ## Privacy & Security
 
-**Sent to OpenAI** (only to generate search embeddings, stored locally on your Indigo server): device
-name/description/model/type/address, variable name/description, and action-group name/description — sent on
-install and when entities are added or changed. **Never sent:** device states or values, credentials, URLs,
+**Sent to OpenAI** (only to build the search index, which is stored locally on your Indigo server): device
+name/description/model/type, variable name/description, action-group name/description, and trigger and
+schedule names — sent on install and when entities are added or changed. Search queries are sent too, to
+expand and embed them, and analyze_historical_data sends the question and a device's property names to pick
+the properties to chart. **Never sent:** device states or values, device addresses, credentials, URLs,
 IP/network configuration, or historical/usage data.
 
 **Network** — every MCP connection requires Bearer-token authentication. Local HTTP stays on your LAN; use the

@@ -1005,16 +1005,22 @@ User query: "{user_query}"
 Recommend 1-3 most relevant properties:"""
 
             # Import here to avoid circular imports
-            from ...common.openai_client.main import perform_completion, SMALL_MODEL
+            from ...common.openai_client.main import (
+                get_small_model,
+                low_reasoning_effort,
+                perform_completion,
+            )
             from ...common.response_utils import extract_text_content
 
+            small_model = get_small_model()
             response = perform_completion(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                model=SMALL_MODEL,
-                response_token_reserve=50
+                model=small_model,
+                response_token_reserve=50,
+                reasoning_effort=low_reasoning_effort(small_model),
             )
 
             recommendations = extract_text_content(

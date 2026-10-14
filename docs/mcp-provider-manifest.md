@@ -152,11 +152,22 @@ def startup(self):
         pass
 ```
 
-The MCP Server subscribes to this key and re-reads your manifest on receipt, so
-your tools register (or refresh after an update) the moment your plugin starts —
-no MCP Server restart needed. Also broadcast it any time your effective tool
-set changes at runtime. Without the broadcast, tools are still picked up at MCP
-Server startup or via its "Rescan Plugin-Provided MCP Tools" menu item.
+The MCP Server subscribes to this key from every installed plugin (and from any
+plugin id the user has allowlisted, installed or not), and re-reads your manifest
+on receipt, so your tools register (or refresh after an update) the moment your
+plugin starts — no MCP Server restart needed, and no allowlist entry on the MCP
+Server side. That includes a provider upgrade that adds a manifest to an
+already-installed plugin. A plugin installed for the first time while the MCP
+Server is running is subscribed to on the next `tools/list` (checked at most once
+a minute), which also registers its tools. Also broadcast the key any time your
+effective tool set changes at runtime. Without the broadcast, tools are still
+picked up at MCP Server startup or via its "Rescan Plugin-Provided MCP Tools"
+menu item.
+
+The MCP Server's plugin config can exclude providers ("Plugins that may provide
+MCP tools": all, an allowlist or a blocklist). An excluded provider's manifest is
+ignored entirely — its tools are not listed and its invoke action is never
+called — so a provider needs no special handling for it.
 
 ## Conduct rules
 

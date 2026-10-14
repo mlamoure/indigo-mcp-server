@@ -108,6 +108,7 @@ def load_validation_data(table, logger) -> Dict[int, Dict[str, Any]]:
                     "hash": row.get("hash", ""),
                     "text": row.get("text", ""),
                     "embedding": row.get("embedding", []),
+                    "name_embedding": row.get("name_embedding", []),
                     "name": row.get("name", ""),
                     "data": row.get("data", "{}")
                 }
@@ -136,9 +137,14 @@ def detect_keyword_completeness(text: str, entity_name: str) -> bool:
     """
     if not text or not text.strip():
         return False
-    
+
+    # Current format (index format 2): natural-language text ending in a
+    # "Keywords: ..." clause when keywords were generated
+    if not text.lstrip().startswith("{"):
+        return "Keywords:" in text
+
     try:
-        # Try to parse as JSON first (basic format)
+        # Legacy format: JSON blob of fields followed by keywords
         text_data = json.loads(text)
         
         # If it's just basic JSON without enhancement, keywords are missing
@@ -172,8 +178,7 @@ def detect_keyword_completeness(text: str, entity_name: str) -> bool:
         return semantic_count >= 2
         
     except json.JSONDecodeError:
-        # If it's not JSON, it might be enhanced text with keywords
-        # Non-JSON text likely indicates keyword enhancement
+        # Legacy JSON prefix followed by keywords
         return len(text.split()) > len(entity_name.split()) + 5
     except Exception:
         # On any error, assume keywords are missing to be safe
@@ -287,11 +292,13 @@ def perform_comprehensive_validation(
             result.add_issue(entity_id, ValidationIssueType.CORRUPTED_DATA, "Cannot parse stored entity data")
             entity_issues.append("corrupted_data")
         
-        # Validate embedding
+        # Validate both vectors (document and name)
         embedding = stored_data.get("embedding", [])
-        if not validate_embedding(embedding):
-            result.add_issue(entity_id, ValidationIssueType.INVALID_EMBEDDING, 
-                           f"Invalid embedding (length: {len(embedding) if embedding else 0})")
+        name_embedding = stored_data.get("name_embedding", [])
+        if not validate_embedding(embedding) or not validate_embedding(name_embedding):
+            result.add_issue(entity_id, ValidationIssueType.INVALID_EMBEDDING,
+                           f"Invalid embedding (length: {len(embedding) if embedding else 0}, "
+                           f"name: {len(name_embedding) if name_embedding else 0})")
             entity_issues.append("invalid_embedding")
         
         # Validate keyword completeness (for devices)

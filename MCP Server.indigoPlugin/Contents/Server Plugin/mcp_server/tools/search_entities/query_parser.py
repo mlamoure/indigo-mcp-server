@@ -11,8 +11,25 @@ from ...common.state_filter import StateFilter
 
 logger = logging.getLogger("Plugin")
 
-# Global cache for query expansions
+# Global cache for query expansions (bounded; oldest entries evicted first)
 _query_expansion_cache = {}
+_QUERY_EXPANSION_CACHE_MAX = 500
+
+# The search runs the user's own words AND this expansion, keeping each
+# entity's better score, so the expansion only has to add reach (entryway ->
+# foyer, porch -> front door), never preserve the exact name. The previous
+# prompt listed example synonyms and rooms that models copied into every
+# query ("living room lounge family room" on a sunroom query), which pushed
+# exact names down (indigo-mcp-server#72). No example word lists here.
+EXPANSION_PROMPT = """You help search a home-automation system for devices, variables, action groups, triggers and schedules.
+
+Rewrite the search query below as search words: start with the query exactly as written, then add synonyms and alternative names for the words it contains.
+
+- For each thing the query names, add the other words people commonly use for that same thing, such as other names for the same room or the same kind of device.
+- Only expand words that are in the query. Never add a room, area, floor or kind of device that the query does not mention.
+- Keep the whole answer under 20 words. Return plain text only, with no quotes, lists or explanations.
+
+Query: {query}"""
 
 
 class QueryParser:
@@ -136,7 +153,8 @@ class QueryParser:
                 return query
             
             # Check cache first
-            cache_key = hashlib.sha256(query.encode()).hexdigest()
+            from ...common.openai_client.main import get_small_model
+            cache_key = hashlib.sha256(f"{get_small_model()}|{query}".encode()).hexdigest()
             if cache_key in _query_expansion_cache:
                 expanded = _query_expansion_cache[cache_key]
                 logger.debug(f"Using cached query expansion for: '{query}'")
@@ -145,6 +163,8 @@ class QueryParser:
             # Generate expanded query with LLM
             expanded = self._generate_llm_query_expansion(query)
             if expanded and expanded != query:
+                if len(_query_expansion_cache) >= _QUERY_EXPANSION_CACHE_MAX:
+                    _query_expansion_cache.pop(next(iter(_query_expansion_cache)))
                 _query_expansion_cache[cache_key] = expanded
                 logger.debug(f"Query expanded: '{query}' -> '{expanded}'")
                 return expanded
@@ -167,27 +187,18 @@ class QueryParser:
         """
         try:
             # Import here to avoid circular imports
-            from ...common.openai_client.main import perform_completion, SMALL_MODEL
-            
-            # Create prompt for query expansion
-            prompt = f"""Expand this home automation search query with relevant synonyms and related terms:
+            from ...common.openai_client.main import (
+                get_small_model,
+                low_reasoning_effort,
+                perform_completion,
+            )
 
-Original query: "{query}"
-
-Generate an expanded version that includes:
-- Synonyms for device types (light/lamp/illumination, switch/control, sensor/detector)
-- Related location terms (living room/lounge/family room)
-- Function synonyms (dimmer/brightness/lighting)
-
-Keep the expansion concise and focused. Return only the expanded query text, no explanations.
-Example: "living room light" -> "living room light lamp illumination lighting fixture"
-"""
-
-            # Call LLM with small model for efficiency
+            small_model = get_small_model()
             response = perform_completion(
-                messages=prompt,
-                model=SMALL_MODEL,
-                response_token_reserve=50
+                messages=EXPANSION_PROMPT.replace("{query}", query),
+                model=small_model,
+                response_token_reserve=50,
+                reasoning_effort=low_reasoning_effort(small_model),
             )
             
             if not response:

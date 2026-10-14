@@ -3,7 +3,6 @@ Parallel embedding generation utilities for improved performance.
 """
 
 import logging
-import os
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -25,7 +24,7 @@ def emb_texts_batch_parallel(texts: List[str], entity_names: List[str] = None, p
     Returns:
         List of embedding vectors (empty list for failed embeddings)
     """
-    from .main import _get_embedding_client
+    from .main import _get_embedding_client, embedding_request_params
     
     if not texts or len(texts) == 0:
         logger.warning("⚠️ Empty text list provided for parallel batch embedding, returning empty list")
@@ -94,12 +93,11 @@ def emb_texts_batch_parallel(texts: List[str], entity_names: List[str] = None, p
             pass
         try:
             client = _get_embedding_client()
-            model = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
-            
+
             # Add timeout to prevent hanging
             response = client.embeddings.create(
-                model=model, 
-                input=batch_texts, 
+                **embedding_request_params(),
+                input=batch_texts,
                 timeout=60.0
             )
 

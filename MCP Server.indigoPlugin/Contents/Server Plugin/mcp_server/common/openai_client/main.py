@@ -1,11 +1,10 @@
 import functools
 import logging
 import os
-from pathlib import Path
-from typing import Any, Dict, Optional, Sequence, Type, Union, Iterable
+import re
+from typing import Any, Dict, Optional, Sequence, Type, Union
 
 import tiktoken
-from jinja2 import Environment, FileSystemLoader
 from langsmith.wrappers import wrap_openai
 from openai import OpenAI
 from pydantic import BaseModel
@@ -15,27 +14,78 @@ logger = logging.getLogger("Plugin")
 DEFAULT_SYSTEM_PROMPT = (
     "You are an automation assistant supporting a home automation system called Indigo."
 )
-DEFAULT_MODEL = os.environ.get("LARGE_MODEL", "gpt-5.4")
-SMALL_MODEL = os.environ.get("SMALL_MODEL", "gpt-5.4-mini")
+# Defaults used when the plugin has not exported a model choice. The plugin
+# sets SMALL_MODEL / OPENAI_EMBEDDING_MODEL in os.environ from its prefs; they
+# are read at call time (never cached at import) because this module is
+# imported before the plugin's startup() applies its configuration.
+DEFAULT_SMALL_MODEL = "gpt-6-luna"
+DEFAULT_EMBEDDING_MODEL = "text-embedding-3-large"
 
-# hard-coded model limits and defaults
+# text-embedding-3-large is 3072-dimensional natively; requesting 1536 keeps
+# the index width (and storage) of the old text-embedding-3-small tables.
+EMBEDDING_DIMENSIONS = 1536
+
+# Total context per model. A guard against runaway prompts only (every prompt
+# this plugin builds is a few thousand tokens), so unknown models fall back
+# to a conservative bound instead of raising KeyError.
 MODEL_TOKEN_LIMITS = {
-    "gpt-5.4": 1000000,  # GPT-5.4: 1M total context
-    "gpt-5.4-mini": 400000,  # GPT-5.4-mini: 400k total context
+    "gpt-6-luna": 400000,
+    "gpt-5.4": 1000000,
+    "gpt-5.4-mini": 400000,
+    "gpt-5.4-nano": 400000,
+    "gpt-5-mini": 400000,
 }
+DEFAULT_TOKEN_LIMIT = 128000
 DEFAULT_RESPONSE_TOKEN_RESERVE = int(
     os.environ.get("OPENAI_RESPONSE_TOKEN_RESERVE", 2000)
 )
-DEFAULT_MAX_ITEMS_PER_CHUNK = int(os.environ.get("OPENAI_MAX_ITEMS_PER_CHUNK", 100))
-DEFAULT_SUMMARIZATION_MODEL = os.environ.get(
-    "OPENAI_SUMMARIZATION_MODEL", DEFAULT_MODEL
-)
 
-# initialize summarization template environment
-_template_dir = Path(__file__).parent.parent.parent / "prompts"
-_env = Environment(
-    loader=FileSystemLoader(str(_template_dir), encoding="utf-8"), autoescape=False
-)
+
+def get_small_model() -> str:
+    """The small model for keyword generation, query expansion and property picking."""
+    return os.environ.get("SMALL_MODEL") or DEFAULT_SMALL_MODEL
+
+
+def get_embedding_model() -> str:
+    """The embedding model for the search index and query vectors."""
+    return os.environ.get("OPENAI_EMBEDDING_MODEL") or DEFAULT_EMBEDDING_MODEL
+
+
+def embedding_request_params() -> Dict[str, Any]:
+    """Model (and fixed output width) for every embeddings.create call."""
+    model = get_embedding_model()
+    params: Dict[str, Any] = {"model": model}
+    # Only the text-embedding-3 family accepts `dimensions`
+    if model.startswith("text-embedding-3"):
+        params["dimensions"] = EMBEDDING_DIMENSIONS
+    return params
+
+
+def low_reasoning_effort(model: str) -> Optional[str]:
+    """
+    The lowest reasoning effort a model accepts, for short utility calls
+    (keyword generation, query expansion, property picking) where thinking
+    only adds latency.
+
+    gpt-5.1+ and gpt-6 accept "none" (except the gpt-6 Sol and Astra tiers,
+    whose lowest is "low"); the original gpt-5 family's lowest is "minimal";
+    o-series models start at "low". Non-reasoning models take no effort.
+    """
+    m = (model or "").lower()
+    if m.startswith("gpt-6"):
+        return "low" if ("sol" in m or "astra" in m) else "none"
+    if re.match(r"gpt-5\.\d", m):
+        return "none"
+    if m.startswith("gpt-5"):
+        return "minimal"
+    if re.match(r"o\d", m):
+        return "low"
+    return None
+
+
+def _token_limit(model: str) -> int:
+    return MODEL_TOKEN_LIMITS.get(model, DEFAULT_TOKEN_LIMIT)
+
 
 # Lazy-initialize the OpenAI client
 _client = None
@@ -51,6 +101,9 @@ def _get_token_encoder(model: str):
     try:
         return tiktoken.encoding_for_model(model)
     except KeyError:
+        # tiktoken has no mapping for gpt-6 yet; it uses o200k_base like gpt-5
+        if model.startswith(("gpt-6", "gpt-5", "o")):
+            return tiktoken.get_encoding("o200k_base")
         return tiktoken.get_encoding("cl100k_base")
 
 
@@ -64,78 +117,6 @@ def _count_message_tokens(
         content = m["content"] if isinstance(m, dict) else getattr(m, "content", "")
         total += len(enc.encode(content))
     return total
-
-
-def select_optimal_model(
-    messages: Union[str, Sequence[Any], Dict[str, Any]],
-    default_model: Optional[str] = None,
-    small_model: Optional[str] = None,
-) -> str:
-    """
-    Select optimal model based on token count.
-
-    Automatically selects between small and large models based on their token limits.
-    Raises an error if the token count exceeds the large model's limit.
-
-    Args:
-        messages: The messages to analyze
-        default_model: Large model to use for complex tasks
-        small_model: Small model to use for simple tasks
-
-    Returns:
-        The optimal model name to use
-
-    Raises:
-        RuntimeError: If token count exceeds the large model's limit
-    """
-    default_model = default_model or DEFAULT_MODEL
-    small_model = small_model or SMALL_MODEL
-
-    # Count tokens in all messages
-    enc = _get_token_encoder(small_model)
-    token_count = 0
-
-    if isinstance(messages, str):
-        token_count = len(enc.encode(messages))
-    elif isinstance(messages, dict):
-        # Sum tokens from all values in the dict
-        for value in messages.values():
-            token_count += len(enc.encode(str(value)))
-    elif isinstance(messages, (list, tuple)):
-        # Sum tokens from all messages in the list
-        for msg in messages:
-            if isinstance(msg, dict):
-                # Sum tokens from all content in the message dict
-                for value in msg.values():
-                    token_count += len(enc.encode(str(value)))
-            else:
-                # Handle message objects or strings
-                content = getattr(msg, "content", str(msg))
-                token_count += len(enc.encode(str(content)))
-    else:
-        # Handle single message object
-        content = getattr(messages, "content", str(messages))
-        token_count += len(enc.encode(str(content)))
-
-    # Get token limits for models
-    small_model_limit = MODEL_TOKEN_LIMITS.get(small_model, 200000)
-    large_model_limit = MODEL_TOKEN_LIMITS.get(default_model, 1047576)
-
-    # Check if token count exceeds large model limit
-    if token_count > large_model_limit:
-        raise RuntimeError(
-            f"Token count ({token_count:,}) exceeds large model limit ({large_model_limit:,}) for {default_model}"
-        )
-
-    # Select model based on token count vs small model limit
-    selected_model = small_model if token_count < small_model_limit else default_model
-
-    logger.debug(
-        f"🧠 Model selection: {token_count:,} tokens → {selected_model} "
-        f"(small limit: {small_model_limit:,}, large limit: {large_model_limit:,})"
-    )
-
-    return selected_model
 
 
 def _get_client():
@@ -227,7 +208,7 @@ def _emb_texts_batch_sequential(texts: list, entity_names: list = None, progress
     for attempt in range(max_retries):
         try:
             client = _get_embedding_client()  # Use embedding client without LangSmith
-            model = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+            embedding_params = embedding_request_params()
 
             # Calculate total batches for progress tracking
             total_batches = (len(valid_texts) + batch_size - 1) // batch_size
@@ -261,8 +242,8 @@ def _emb_texts_batch_sequential(texts: list, entity_names: list = None, progress
                     pass
                 # Add timeout to prevent hanging
                 response = client.embeddings.create(
-                    model=model, 
-                    input=batch_texts, 
+                    **embedding_params,
+                    input=batch_texts,
                     timeout=60.0  # Longer timeout for batch processing
                 )
 
@@ -319,11 +300,10 @@ def emb_text(text: str) -> list:
     for attempt in range(max_retries):
         try:
             client = _get_embedding_client()  # Use embedding client without LangSmith
-            model = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
             # Add timeout to prevent hanging
             response = client.embeddings.create(
-                model=model, input=text, timeout=30.0  # 30 second timeout
+                **embedding_request_params(), input=text, timeout=30.0  # 30 second timeout
             )
 
             # Validate response structure
@@ -351,97 +331,70 @@ def emb_text(text: str) -> list:
                 return []
 
 
+def _create_with_effort(create, kwargs: Dict[str, Any]):
+    """
+    Call a chat-completions method, retrying once without reasoning_effort
+    when the model rejects the value (each model family accepts a different
+    set, and a stale or unknown model choice must not break the call).
+    """
+    try:
+        return create(**kwargs)
+    except Exception as e:
+        if "reasoning_effort" in kwargs and "reasoning_effort" in str(e):
+            logger.debug(
+                f"{kwargs.get('model')} rejected reasoning_effort="
+                f"{kwargs['reasoning_effort']!r}; retrying without it"
+            )
+            retry = dict(kwargs)
+            retry.pop("reasoning_effort")
+            return create(**retry)
+        raise
+
+
 def perform_completion(
-    messages: Union[str, Sequence[Any], Dict[str, Any]],
+    messages: Union[str, Sequence[Any]],
+    model: str,
     response_model: Optional[Type[BaseModel]] = None,
     tools: Optional[Union[Dict[str, Any], Sequence[Any]]] = None,
-    model: Optional[str] = None,
     response_token_reserve: Optional[int] = None,
-    stream: bool = False,
-    config: Optional[Dict[str, Any]] = None,
-) -> Union[str, BaseModel, Iterable[str]]:
+    reasoning_effort: Optional[str] = None,
+) -> Union[str, BaseModel, Dict[str, Any]]:
     """
-    Perform a completion using OpenAI or LangSmith endpoints.
-    - If tools/functions are provided, returns a string (OpenAI chat completion message content).
-    - If streaming, returns an Iterable[str].
-    - If using LangSmith with a response_model, returns a BaseModel.
+    Perform a chat completion.
+
+    - With tools, returns {"content": ..., "tool_calls": [...]}.
+    - With a response_model, returns the parsed model (or the raw content
+      string when parsing is unavailable).
+    - Otherwise returns the message content ("" on failure).
 
     Args:
-        messages: The messages to send to the model
+        messages: A user prompt string, or a list of chat messages
+        model: The model to use (required: every caller names its model)
         response_model: Optional Pydantic model for structured output
         tools: Optional tools/functions to make available
-        model: The model to use
-        response_token_reserve: Token reserve for response
-        stream: Whether to stream the response
-        config: Optional RunnableConfig for trace context propagation
+        response_token_reserve: Token reserve for the response
+        reasoning_effort: Optional reasoning effort; dropped automatically
+            if the model rejects it
     """
+    if not model:
+        raise ValueError("perform_completion requires a model")
+
     # reserve tokens for the model's response
     response_token_reserve = response_token_reserve or DEFAULT_RESPONSE_TOKEN_RESERVE
 
-    # determine the model
-    model = model or DEFAULT_MODEL
-
-    # Reduced logging verbosity - only log model selection for debugging
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"OpenAI completion: {model}")
+        logger.debug(f"OpenAI completion: {model} (effort: {reasoning_effort or 'default'})")
 
-    # multi-stage RAG if structured input
-    if isinstance(messages, dict) and "context" in messages and "question" in messages:
-        context_list = messages["context"]
-        question = messages["question"]
-        instruction = messages.get("instruction", DEFAULT_SYSTEM_PROMPT)
-        summarization_model = messages.get(
-            "summarization_model", DEFAULT_SUMMARIZATION_MODEL
-        )
-        max_items = messages.get("max_items_per_chunk", DEFAULT_MAX_ITEMS_PER_CHUNK)
-
-        logger.debug(
-            f"📚 Multi-stage RAG: {len(context_list)} context items, {max_items} items per chunk"
-        )
-
-        # chunk context by object boundaries
-        chunks = [
-            context_list[i : i + max_items]
-            for i in range(0, len(context_list), max_items)
-        ]
-
-        # summarize each chunk
-        summaries = []
-        template = _env.get_template("summarize_context.jinja2")
-        for i, chunk in enumerate(chunks):
-            logger.debug(
-                f"Summarizing chunk {i+1}/{len(chunks)} ({len(chunk)} items)"
-            )
-            prompt_content = template.render(context=chunk)
-            summary = perform_completion(
-                messages=prompt_content,
-                model=summarization_model,
-                response_token_reserve=response_token_reserve,
-                config=config,  # Pass config through for trace context
-            )
-            summaries.append(summary)
-
-        # merge summaries
-        merged = "\n\n".join(summaries)
-        logger.debug(f"Merged {len(summaries)} summaries into final context")
-
-        # build final messages
+    # normalize into `msgs`
+    if isinstance(messages, str):
         msgs = [
-            {"role": "system", "content": instruction},
-            {"role": "user", "content": merged},
-            {"role": "user", "content": question},
+            {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
+            {"role": "user", "content": messages},
         ]
     else:
-        # normalize into `msgs`
-        if isinstance(messages, str):
-            msgs = [
-                {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
-                {"role": "user", "content": messages},
-            ]
-        else:
-            msgs = messages
-            if not isinstance(msgs, (list, tuple)):
-                msgs = [msgs]
+        msgs = messages
+        if not isinstance(msgs, (list, tuple)):
+            msgs = [msgs]
 
     # normalize any message objects into simple dicts
     normalized_msgs = []
@@ -465,63 +418,35 @@ def perform_completion(
     msgs = normalized_msgs
 
     # enforce token limit
+    token_limit = _token_limit(model)
     total_tokens = _count_message_tokens(msgs, model)
-    # Only log token counts in debug mode for troubleshooting
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"Tokens: {total_tokens:,} (limit: {MODEL_TOKEN_LIMITS[model]:,})")
+        logger.debug(f"Tokens: {total_tokens:,} (limit: {token_limit:,})")
 
-    if total_tokens + response_token_reserve > MODEL_TOKEN_LIMITS[model]:
+    if total_tokens + response_token_reserve > token_limit:
         raise RuntimeError(
-            f"Prompt too large: needs {total_tokens + response_token_reserve:,} tokens (limit {MODEL_TOKEN_LIMITS[model]:,})."
+            f"Prompt too large: needs {total_tokens + response_token_reserve:,} tokens (limit {token_limit:,})."
         )
 
-    # initialize client
     client = _get_client()
-
-    # Handle client initialization failure
     if client is None:
         logger.error("❌ Failed to initialize OpenAI client")
         return ""
 
-    # STREAMING MODE (no response_model, no tools)
-    if stream:
-        logger.debug(f"🌊 Streaming completion with {model}")
-
-        def _stream_tokens():
-            params = {
-                "model": model or DEFAULT_MODEL,
-                "messages": msgs,
-                "stream": True,
-            }
-            for chunk in client.chat.completions.create(**params):
-                token = chunk.choices[0].delta.content or ""
-                yield token
-
-        return _stream_tokens()
+    base_params: Dict[str, Any] = {"model": model, "messages": msgs}
+    if reasoning_effort:
+        base_params["reasoning_effort"] = reasoning_effort
 
     # If tools provided, call OpenAI Chat Completions endpoint
     if tools is not None:
-        # If tools is a dict, convert to a list of tool definitions
-        if isinstance(tools, dict):
-            tools_list = list(tools.values())
-        else:
-            tools_list = tools
-
-        # Use the modern tools format instead of deprecated functions
-        params = {
-            "model": model,
-            "messages": msgs,
-            "tools": tools_list,
-            "tool_choice": "auto",
-        }
-        chat_resp = client.chat.completions.create(**params)
+        tools_list = list(tools.values()) if isinstance(tools, dict) else tools
+        params = dict(base_params, tools=tools_list, tool_choice="auto")
+        chat_resp = _create_with_effort(client.chat.completions.create, params)
         if chat_resp is None:
             return ""
 
-        # Return the full message object instead of just content when tools are used
         if chat_resp.choices and chat_resp.choices[0].message:
             message = chat_resp.choices[0].message
-            # Convert to dict format for consistency
             result = {"content": message.content, "tool_calls": []}
 
             # Handle function_call (older format)
@@ -554,25 +479,16 @@ def perform_completion(
 
         return ""
 
-    # Use OpenAI Chat Completions API for all completions
-    params = {
-        "model": model,
-        "messages": msgs,
-    }
-    
-    # Handle structured output with OpenAI's native support
+    chat_resp = None
     if response_model:
-        # Use OpenAI's structured outputs with parse() method
+        # Structured output via chat.completions.parse()
         logger.debug(f"🔧 Using structured output with {response_model.__name__}")
         try:
-            # Use chat.completions.parse() for structured outputs with BaseModel
-            chat_resp = client.chat.completions.parse(
-                model=model,
-                messages=msgs,
-                response_format=response_model
+            chat_resp = _create_with_effort(
+                client.chat.completions.parse,
+                dict(base_params, response_format=response_model),
             )
-            
-            # Check if we got a parsed object from the API
+
             if hasattr(chat_resp, 'choices') and chat_resp.choices:
                 choice = chat_resp.choices[0]
                 if hasattr(choice, 'message') and hasattr(choice.message, 'parsed'):
@@ -581,22 +497,17 @@ def perform_completion(
                         return parsed_obj
                     else:
                         logger.warning("⚠️ Parsed object is None, trying content fallback")
-                
+
                 # Fallback to content if parsed is not available
                 if hasattr(choice.message, 'content') and choice.message.content:
-                    content = choice.message.content
-                    return content
-                    
+                    return choice.message.content
+
         except Exception as e:
-            # More specific error handling for different failure modes
-            if "BaseModel" in str(e) and "parse()" in str(e):
-                logger.warning(f"⚠️ Structured output API usage error (using parse() method now): {e}")
-            else:
-                logger.warning(f"⚠️ Structured output parse failed, falling back to regular completion: {e}")
-            
+            logger.warning(f"⚠️ Structured output parse failed, falling back to regular completion: {e}")
+
             # Fallback to regular completion if structured output fails
             try:
-                chat_resp = client.chat.completions.create(model=model, messages=msgs)
+                chat_resp = _create_with_effort(client.chat.completions.create, base_params)
                 if chat_resp and chat_resp.choices and chat_resp.choices[0].message:
                     content = chat_resp.choices[0].message.content
                     if content:
@@ -607,7 +518,7 @@ def perform_completion(
     else:
         # Standard chat completion
         try:
-            chat_resp = client.chat.completions.create(**params)
+            chat_resp = _create_with_effort(client.chat.completions.create, base_params)
         except Exception as e:
             logger.error(f"❌ Standard completion failed: {e}")
             return ""

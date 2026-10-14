@@ -20,7 +20,22 @@ import openai
 from mcp_server.adapters.indigo_data_provider import IndigoDataProvider
 from mcp_server.common import log_style
 from mcp_server.common.openai_client.langsmith_config import get_langsmith_config
+from mcp_server.common.openai_client.main import (
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_SMALL_MODEL,
+    embedding_request_params,
+)
+from mcp_server.external_tools.discovery import SELF_PLUGIN_ID, discover_manifests
 from mcp_server.external_tools.manager import ExternalToolManager
+from mcp_server.external_tools.policy import (
+    PREF_ALLOWLIST,
+    PREF_BLOCKLIST,
+    ProviderPolicy,
+    build_plugin_list_options,
+    describe_policy_result,
+    normalize_plugin_ids,
+    provider_subscription_ids,
+)
 from mcp_server.mcp_handler import MCPHandler
 
 
@@ -50,8 +65,7 @@ class Plugin(indigo.PluginBase):
 
         # Plugin configuration
         self.openai_api_key = plugin_prefs.get("openai_api_key", "")
-        self.large_model = plugin_prefs.get("large_model", "gpt-5.4")
-        self.small_model = plugin_prefs.get("small_model", "gpt-5.4-mini")
+        self.small_model = self._resolve_small_model(plugin_prefs.get("small_model"))
 
         # LangSmith configuration
         self.enable_langsmith = plugin_prefs.get("enable_langsmith", False)
@@ -83,6 +97,20 @@ class Plugin(indigo.PluginBase):
             "enable_external_tool_writes", True
         )
 
+        # Which plugins may provide MCP tools (read on every rescan). Missing
+        # prefs (an upgrade) mean "all plugins", the previous behavior. The
+        # saved allowlist is kept even in the other modes: its ids are
+        # subscribed to so an allowlisted provider is picked up on install.
+        self.external_tool_policy = ProviderPolicy.from_prefs(
+            plugin_prefs, logger=self.logger
+        )
+        self.external_tool_allowlist_ids = normalize_plugin_ids(
+            plugin_prefs.get(PREF_ALLOWLIST)
+        )
+        # Plugin ids already subscribed to for 'mcp_tools_updated' (Indigo has
+        # no unsubscribe call, and repeat subscriptions should not pile up)
+        self._subscribed_provider_ids = set()
+
         # Component instances
         self.data_provider = None
         self.mcp_handler = None
@@ -100,6 +128,29 @@ class Plugin(indigo.PluginBase):
         self.plugin_file_handler.setLevel(self.log_level)
         logging.getLogger("Plugin").setLevel(self.log_level)
         log_style.set_verbose_activity(plugin_prefs.get("log_mcp_activity", False))
+
+    # Small-model values the config menu once offered but no longer does.
+    # gpt-5-mini was the only option before 2026.10.1 (and was never actually
+    # used: the model was read at import time, before prefs were applied), so
+    # a saved gpt-5-mini is moved to the current default.
+    LEGACY_SMALL_MODELS = ("gpt-5-mini",)
+
+    def _resolve_small_model(self, saved) -> str:
+        if not saved:
+            return DEFAULT_SMALL_MODEL
+        if saved in self.LEGACY_SMALL_MODELS:
+            self.logger.info(
+                f"Small model {saved} is no longer offered — using {DEFAULT_SMALL_MODEL} "
+                f"(change it in Plugins → MCP Server → Configure)"
+            )
+            try:
+                self.pluginPrefs["small_model"] = DEFAULT_SMALL_MODEL
+                # Saved now, not at shutdown, so the notice is logged once
+                indigo.server.savePluginPrefs()
+            except Exception as e:
+                self.logger.debug(f"Could not save the migrated small model: {e}")
+            return DEFAULT_SMALL_MODEL
+        return saved
 
     def test_connections(self) -> bool:
         """
@@ -127,7 +178,7 @@ class Plugin(indigo.PluginBase):
                 try:
                     # Use a very small embedding request to test the connection
                     response = test_client.embeddings.create(
-                        model="text-embedding-3-small", input="test", timeout=10.0
+                        **embedding_request_params(), input="test", timeout=10.0
                     )
                     if response and response.data:
                         self.logger.info("✅ OpenAI connected")
@@ -343,30 +394,71 @@ class Plugin(indigo.PluginBase):
     ########################################
     # Plugin-provided (external) MCP tools
 
-    # Known providers subscribed to even before their manifest first appears:
-    # broadcast subscriptions are registered server-side by (pluginId, key)
-    # and survive the broadcaster not being installed yet, so a first-time
-    # install of a known provider is picked up live without a manual rescan.
-    EXTERNAL_TOOL_PROVIDER_ALLOWLIST = ("com.vtmikel.autolights",)
+    def _installed_plugins(self) -> list:
+        """
+        Every installed plugin, enabled or disabled, as
+        (plugin_id, display_name, enabled) tuples; None if Indigo can't say.
+        """
+        try:
+            plugin_list = indigo.server.getPluginList(includeDisabled=True)
+        except Exception as e:
+            self.logger.warning(f"⚠️ Could not enumerate installed plugins: {e}")
+            return None
+        plugins = []
+        for plugin in plugin_list:
+            try:
+                plugins.append(
+                    (plugin.pluginId, plugin.pluginDisplayName, bool(plugin.isEnabled()))
+                )
+            except Exception as e:
+                self.logger.debug(f"Skipping an unreadable plugin entry: {e}")
+        return plugins
 
-    def _subscribe_to_provider_broadcasts(self, external_tool_manager) -> None:
+    def _subscribe_to_provider_broadcasts(self) -> set:
         """
-        Subscribe to the 'mcp_tools_updated' broadcast for every discovered
-        provider plus the static allowlist. Providers broadcast it from their
-        startup() and whenever their tool set changes.
+        Subscribe to the 'mcp_tools_updated' broadcast from every installed
+        plugin plus every allowlisted id (subscriptions are registered
+        server-side by (pluginId, key) and survive the broadcaster not being
+        installed yet). Providers broadcast it from their startup() and
+        whenever their tool set changes, so a provider upgrade that adds a
+        manifest registers live. Only ids not subscribed yet are subscribed.
+
+        Returns:
+            The plugin ids newly subscribed by this call.
         """
-        provider_ids = set(external_tool_manager.provider_ids())
-        provider_ids.update(self.EXTERNAL_TOOL_PROVIDER_ALLOWLIST)
-        for plugin_id in sorted(provider_ids):
+        installed = self._installed_plugins()
+        installed_ids = [p[0] for p in installed] if installed is not None else []
+        if self.mcp_handler and self.mcp_handler.external_tool_manager:
+            # Known providers, in case the plugin list was unavailable
+            manager = self.mcp_handler.external_tool_manager
+            installed_ids += manager.provider_ids() + manager.blocked_provider_ids()
+
+        wanted = provider_subscription_ids(
+            installed_ids, self.external_tool_allowlist_ids, SELF_PLUGIN_ID
+        )
+        newly_subscribed = set()
+        for plugin_id in sorted(wanted - self._subscribed_provider_ids):
             try:
                 indigo.server.subscribeToBroadcast(
                     plugin_id, "mcp_tools_updated", "external_tools_updated_broadcast"
                 )
+                self._subscribed_provider_ids.add(plugin_id)
+                newly_subscribed.add(plugin_id)
                 self.logger.debug(f"Subscribed to mcp_tools_updated from {plugin_id}")
             except Exception as e:
                 self.logger.warning(
                     f"⚠️ Could not subscribe to mcp_tools_updated from {plugin_id}: {e}"
                 )
+        return newly_subscribed
+
+    def _check_for_new_provider_plugins(self) -> bool:
+        """
+        Called by the MCP handler from tools/list (throttled there to once a
+        minute): a plugin installed for the first time after startup has not
+        been subscribed to, so its startup broadcast was lost. Subscribe to
+        it now and report True so the handler rescans before answering.
+        """
+        return bool(self._subscribe_to_provider_broadcasts())
 
     def external_tools_updated_broadcast(self, arg=None) -> None:
         """
@@ -383,7 +475,57 @@ class Plugin(indigo.PluginBase):
         if not self.mcp_handler:
             self.logger.error("❌ MCP Server is not running — nothing to rescan")
             return
-        self.mcp_handler.refresh_external_tools()
+        self._subscribe_to_provider_broadcasts()
+        self.mcp_handler.refresh_external_tools(announce=True)
+
+    def external_tool_plugin_list(
+        self, filter="", valuesDict=None, typeId="", targetId=0
+    ) -> list:
+        """
+        Dynamic list for the allowlist/blocklist config fields: every
+        installed plugin (enabled or disabled) except this one, labelled with
+        its MCP tool count and enabled state, plus saved ids whose plugin is
+        no longer installed (so a save does not silently drop them). Tool
+        counts come from a fresh discovery each time the dialog opens.
+        """
+        installed = self._installed_plugins() or []
+        try:
+            tool_counts = {
+                m.plugin_id: len(m.tools) for m in discover_manifests(self.logger)
+            }
+        except Exception as e:
+            self.logger.debug(f"MCP tool manifest discovery failed: {e}")
+            tool_counts = {}
+        saved_ids = []
+        if valuesDict is not None:
+            for key in (PREF_ALLOWLIST, PREF_BLOCKLIST):
+                try:
+                    saved_ids += normalize_plugin_ids(valuesDict.get(key))
+                except Exception as e:
+                    self.logger.debug(f"Could not read saved {key}: {e}")
+        return build_plugin_list_options(installed, tool_counts, saved_ids, SELF_PLUGIN_ID)
+
+    def _apply_external_tool_policy(self) -> None:
+        """
+        Apply a changed provider policy right away: subscribe to newly
+        allowlisted ids, swap the registry in place (the same path broadcasts
+        and the Rescan menu item use), and log one line describing the result.
+        """
+        if not self.mcp_handler or not self.mcp_handler.external_tool_manager:
+            self.logger.info(
+                describe_policy_result(self.external_tool_policy, [], [])
+                + " (applies when the MCP Server starts)"
+            )
+            return
+        try:
+            self._subscribe_to_provider_broadcasts()
+            self.mcp_handler.refresh_external_tools(announce=False)
+            self.logger.info(self.mcp_handler.external_tool_manager.policy_summary())
+        except Exception as e:
+            self.logger.error(
+                f"❌ Could not apply the plugin-provided tools setting: {e} — use "
+                f"Plugins → MCP Server → Rescan Plugin-Provided MCP Tools"
+            )
 
     ########################################
     def _apply_environment(self) -> None:
@@ -396,10 +538,10 @@ class Plugin(indigo.PluginBase):
         """
         os.environ["OPENAI_API_KEY"] = self.openai_api_key
 
-        # Model selection
-        os.environ["LARGE_MODEL"] = self.large_model
+        # Model selection (read at call time by the openai_client helpers).
+        # The embedding model is fixed: changing it rebuilds the whole index.
         os.environ["SMALL_MODEL"] = self.small_model
-        os.environ["OPENAI_EMBEDDING_MODEL"] = "text-embedding-3-small"
+        os.environ["OPENAI_EMBEDDING_MODEL"] = DEFAULT_EMBEDDING_MODEL
 
         # LangSmith tracing
         if self.enable_langsmith:
@@ -516,6 +658,7 @@ class Plugin(indigo.PluginBase):
                 write_gate_supplier=lambda: self._automation_gate(
                     "enable_external_tool_writes"
                 ),
+                policy_supplier=lambda: self.external_tool_policy,
             )
             self.mcp_handler = MCPHandler(
                 data_provider=self.data_provider,
@@ -524,8 +667,9 @@ class Plugin(indigo.PluginBase):
                 server_version=self.pluginVersion,
                 automation_delete_supplier=lambda: self._automation_gate("enable_automation_delete"),
                 external_tool_manager=external_tool_manager,
+                provider_scan_supplier=self._check_for_new_provider_plugins,
             )
-            self._subscribe_to_provider_broadcasts(external_tool_manager)
+            self._subscribe_to_provider_broadcasts()
 
             # Log MCP client connection information (full list in the menu action)
             urls = self._get_mcp_client_urls()
@@ -1103,8 +1247,7 @@ class Plugin(indigo.PluginBase):
 
             # Core configuration
             self.openai_api_key = values_dict.get("openai_api_key", "")
-            self.large_model = values_dict.get("large_model", "gpt-5")
-            self.small_model = values_dict.get("small_model", "gpt-5-mini")
+            self.small_model = values_dict.get("small_model") or DEFAULT_SMALL_MODEL
 
             # LangSmith configuration
             self.enable_langsmith = values_dict.get("enable_langsmith", False)
@@ -1147,6 +1290,19 @@ class Plugin(indigo.PluginBase):
                     f"Plugin-provided write tools "
                     f"{'enabled' if new_external_write_gate else 'disabled'}"
                 )
+
+            # Which plugins may provide MCP tools (takes effect immediately).
+            # Both lists are kept as saved; only the active mode's list counts.
+            self.external_tool_allowlist_ids = normalize_plugin_ids(
+                values_dict.get(PREF_ALLOWLIST)
+            )
+            new_policy = ProviderPolicy.from_prefs(values_dict, logger=self.logger)
+            if new_policy != self.external_tool_policy:
+                self.external_tool_policy = new_policy
+                self._apply_external_tool_policy()
+            elif self.mcp_handler:
+                # An edit to the inactive allowlist still gets subscribed to
+                self._subscribe_to_provider_broadcasts()
 
             # Apply configuration to environment (same as startup)
             self._apply_environment()

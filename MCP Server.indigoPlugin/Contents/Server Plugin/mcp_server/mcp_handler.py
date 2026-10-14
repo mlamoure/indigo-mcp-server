@@ -6,7 +6,8 @@ Implements standards-compliant MCP protocol over Indigo's built-in web server.
 import json
 import logging
 import os
-from typing import Any, Dict, Optional, TYPE_CHECKING
+import time
+from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .events.subscription_handler import SubscriptionHandler
@@ -60,6 +61,10 @@ class MCPHandler:
     # by server/discover.
     ALL_PROTOCOL_VERSIONS = MODERN_PROTOCOL_VERSIONS + LegacyEra.PROTOCOL_VERSIONS
 
+    # Minimum seconds between tools/list-triggered checks for newly installed
+    # plugins (see _maybe_scan_for_new_providers)
+    PROVIDER_SCAN_INTERVAL = 60.0
+
     def __init__(
         self,
         data_provider: DataProvider,
@@ -68,6 +73,8 @@ class MCPHandler:
         server_version: str = "unknown",
         automation_delete_supplier=None,
         external_tool_manager=None,
+        provider_scan_supplier: Optional[Callable[[], bool]] = None,
+        clock: Callable[[], float] = time.monotonic,
     ):
         """
         Initialize the MCP handler.
@@ -82,6 +89,11 @@ class MCPHandler:
             external_tool_manager: Optional ExternalToolManager serving
                 plugin-provided tools; without one, behavior is identical to
                 a build without the feature
+            provider_scan_supplier: Optional callable run from tools/list (at
+                most once per PROVIDER_SCAN_INTERVAL) that subscribes to any
+                newly installed plugin and returns True when it found one, so
+                a provider installed after startup appears without a restart
+            clock: Monotonic time source (injectable for tests)
         """
         self.data_provider = data_provider
         self.logger = logger or logging.getLogger("Plugin")
@@ -89,6 +101,11 @@ class MCPHandler:
         self.server_version = server_version
         self.automation_delete_supplier = automation_delete_supplier or (lambda: False)
         self.external_tool_manager = external_tool_manager
+        self.provider_scan_supplier = provider_scan_supplier
+        self._clock = clock
+        self._last_provider_scan: Optional[float] = None
+        # Last registered plugin-provided tool set, for change-only logging
+        self._external_signature = None
 
         # Legacy (session-based) era support — delete when legacy is retired
         self.legacy = LegacyEra(
@@ -475,6 +492,10 @@ class MCPHandler:
         params: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle tools/list request."""
+        # A client asking for the tool list wants a fresh set: pick up a
+        # provider installed since startup (throttled)
+        self._maybe_scan_for_new_providers()
+
         # Convert tool functions to tool descriptions. Registry insertion order
         # is fixed, giving the deterministic ordering the spec asks for.
         tools = []
@@ -497,6 +518,17 @@ class MCPHandler:
         tool_args = params.get("arguments", {})
         
         if tool_name not in self._tools:
+            blocked_by = self._blocked_tool_provider(tool_name)
+            if blocked_by:
+                # tools/list carries a 1-hour cache hint, so a client can call
+                # a tool the plugin config blocked a minute ago
+                return self._json_error(
+                    msg_id,
+                    -32602,
+                    f"Tool '{tool_name}' is provided by {blocked_by}, which is "
+                    f"blocked in the MCP Server plugin config (\"Plugins that "
+                    f"may provide MCP tools\")."
+                )
             return self._json_error(msg_id, -32602, f"Unknown tool: {tool_name}")
         
         try:
@@ -786,7 +818,37 @@ class MCPHandler:
         self._static_tools = get_tool_schemas(tool_functions)
         self._tools = self._static_tools
 
-    def refresh_external_tools(self):
+    def _blocked_tool_provider(self, tool_name: Any) -> Optional[str]:
+        """Display name of the blocked provider that would serve tool_name, if any."""
+        if not self.external_tool_manager or not isinstance(tool_name, str):
+            return None
+        return getattr(self.external_tool_manager, "blocked_tool_names", {}).get(tool_name)
+
+    def _maybe_scan_for_new_providers(self) -> None:
+        """
+        From tools/list: at most once per PROVIDER_SCAN_INTERVAL, ask the
+        plugin whether a plugin was installed since it last subscribed, and
+        rescan when one was. Runs on the plugin's single callback thread, like
+        broadcasts and prefs callbacks, so the in-place swap needs no lock.
+        """
+        if not self.provider_scan_supplier or not self.external_tool_manager:
+            return
+        now = self._clock()
+        if (
+            self._last_provider_scan is not None
+            and now - self._last_provider_scan < self.PROVIDER_SCAN_INTERVAL
+        ):
+            return
+        self._last_provider_scan = now
+        try:
+            found_new = self.provider_scan_supplier()
+        except Exception as e:
+            self.logger.debug(f"Installed-plugin check failed: {e}")
+            return
+        if found_new:
+            self.refresh_external_tools()
+
+    def refresh_external_tools(self, announce: Optional[bool] = None) -> bool:
         """
         Re-discover plugin-provided tools and swap the merged registry in.
 
@@ -795,9 +857,19 @@ class MCPHandler:
         (_handle_tools_list/_handle_tools_call) pick up on their next access.
         With no manager configured this is a no-op and the registry stays
         exactly the static tool set.
+
+        Args:
+            announce: True logs the summary at INFO (explicit rescans), False
+                at DEBUG (the caller logs its own line); None (startup,
+                broadcasts, tools/list) logs at INFO only when the registered
+                set changed, so a chatty provider or a busy client does not
+                flood the event log.
+
+        Returns:
+            Whether the registered set (tools or blocked providers) changed.
         """
         if not self.external_tool_manager:
-            return
+            return False
 
         entries = self.external_tool_manager.rescan_and_build(self.external_tool_handler)
         merged = dict(self._static_tools)
@@ -812,17 +884,42 @@ class MCPHandler:
             merged[name] = entry
         self._tools = merged
 
-        external_count = len(merged) - len(self._static_tools)
+        external_names = sorted(n for n in merged if n not in self._static_tools)
+        external_count = len(external_names)
         providers = self.external_tool_manager.manifests
-        if external_count or providers:
-            provider_names = ", ".join(m.display_name for m in providers) or "none"
-            self.logger.info(
-                f"🔌 {external_count} plugin-provided tool"
-                f"{'s' if external_count != 1 else ''} registered "
-                f"(providers: {provider_names})"
-            )
+        blocked = getattr(self.external_tool_manager, "blocked", [])
+        signature = (
+            tuple(external_names),
+            tuple(sorted(m.plugin_id for m in blocked)),
+        )
+        first = self._external_signature is None
+        changed = signature != self._external_signature
+        self._external_signature = signature
+
+        if not (external_count or providers or blocked):
+            message = "No plugin-provided MCP tools registered"
+            # Nothing worth an INFO line at startup; say so when tools just
+            # went away or when explicitly asked
+            if announce or (announce is None and changed and not first):
+                self.logger.info(f"🔌 {message}")
+            else:
+                self.logger.debug(message)
+            return changed
+
+        provider_names = ", ".join(m.display_name for m in providers) or "none"
+        message = (
+            f"🔌 {external_count} plugin-provided tool"
+            f"{'s' if external_count != 1 else ''} registered "
+            f"(providers: {provider_names}"
+        )
+        if blocked:
+            message += f"; blocked by config: {', '.join(m.display_name for m in blocked)}"
+        message += ")"
+        if announce or (announce is None and changed):
+            self.logger.info(message)
         else:
-            self.logger.debug("No plugin-provided MCP tool manifests found")
+            self.logger.debug(message)
+        return changed
 
     def _register_resources(self):
         """Register all available resources using extracted resource registry."""

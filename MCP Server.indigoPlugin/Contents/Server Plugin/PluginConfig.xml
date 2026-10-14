@@ -15,19 +15,16 @@
     <Field id="separator1" type="separator"/>
 
     <!-- Model Configuration -->
-    <Field id="large_model" type="menu" defaultValue="gpt-5">
-        <Label>Large Model:</Label>
+    <Field id="small_model" type="menu" defaultValue="gpt-6-luna">
+        <Label>Model:</Label>
         <List>
-            <Option value="gpt-5">gpt-5</Option>
-            <Option value="o3">o3</Option>
+            <Option value="gpt-6-luna">gpt-6-luna (recommended)</Option>
+            <Option value="gpt-5.4-mini">gpt-5.4-mini</Option>
         </List>
     </Field>
 
-    <Field id="small_model" type="menu" defaultValue="gpt-5-mini">
-        <Label>Small Model:</Label>
-        <List>
-            <Option value="gpt-5-mini">gpt-5-mini</Option>
-        </List>
+    <Field id="small_model_help" type="label" fontSize="small" alignWithControl="true">
+        <Label>Used for search keywords, search query expansion and picking history properties.</Label>
     </Field>
 
     <Field id="separator2" type="separator"/>
@@ -108,6 +105,36 @@
     </Field>
 
     <!-- Plugin-Provided Tools -->
+    <!-- Option values must not contain one another: visibleBindingValue
+         matches by substring. The two lists are separate on purpose so that
+         switching the mode never reinterprets a saved selection. -->
+    <Field id="external_tool_policy" type="menu" defaultValue="all">
+        <Label>Plugins that may provide MCP tools:</Label>
+        <List>
+            <Option value="all">All plugins</Option>
+            <Option value="allowlist">Only the plugins selected below</Option>
+            <Option value="blocklist">All plugins except those selected below</Option>
+        </List>
+    </Field>
+
+    <Field id="external_tool_allowlist" type="list" rows="10"
+           visibleBindingId="external_tool_policy" visibleBindingValue="allowlist"
+           alwaysUseInDialogHeightCalc="true">
+        <Label>Allowed plugins:</Label>
+        <List class="self" method="external_tool_plugin_list"/>
+    </Field>
+
+    <Field id="external_tool_blocklist" type="list" rows="10"
+           visibleBindingId="external_tool_policy" visibleBindingValue="blocklist"
+           alwaysUseInDialogHeightCalc="true">
+        <Label>Blocked plugins:</Label>
+        <List class="self" method="external_tool_plugin_list"/>
+    </Field>
+
+    <Field id="external_tool_policy_help" type="label" fontSize="small" alignWithControl="true">
+        <Label>Plugins marked "MCP tools: N" ship tools today. You can select any plugin, so a plugin that adds tools later is already covered. Takes effect immediately.</Label>
+    </Field>
+
     <Field type="checkbox" id="enable_external_tool_writes" defaultValue="true">
         <Label>Allow plugin-provided tools to make changes:</Label>
         <Description>Other Indigo plugins can contribute MCP tools (e.g. Auto Lights

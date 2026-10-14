@@ -74,8 +74,7 @@ def get_tool_schemas(tool_functions):
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Maximum number of results to return (default: 50)",
-                    "default": 50,
+                    "description": "Maximum number of results to return (default: 10, or more when the query asks for a list). Results are ranked best first; an exact name match is always first. Above 20 results, devices come back with minimal fields.",
                     "minimum": 1,
                     "maximum": 500
                 },
