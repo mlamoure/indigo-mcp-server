@@ -395,3 +395,98 @@ def test_large_windows_use_minimal_device_fields():
     handler, _ = _handler(hits[:5])
     result = handler.search("lights", limit=5)
     assert "pluginProps" in result["results"]["devices"][0]
+
+
+# ----------------------------------------------------------------------
+# Indigo 2026.1 tags in the index
+
+
+def test_document_text_lists_tags_sorted_and_spelled_out():
+    text = build_document_text(dict(LAMP, tags=["living-room", "lighting"]), "devices", ["lamp"])
+    assert "Tags: lighting, living room." in text
+    assert text.endswith("Keywords: lamp.")
+    assert "Tags" not in build_document_text(LAMP, "devices")
+
+
+def test_tags_column_and_filter_sql():
+    assert vs_main.tags_column({"tags": ["b", "a"]}) == "|a|b|"
+    assert vs_main.tags_column({}) == ""
+    assert vs_main.tag_filter_sql(["a", "b-c"]) == "(tags LIKE '%|a|%' AND tags LIKE '%|b-c|%')"
+    assert vs_main.tag_filter_sql(["a", "b"], "any") == "(tags LIKE '%|a|%' OR tags LIKE '%|b|%')"
+    assert vs_main.tag_filter_sql(["x'; DROP TABLE devices; --"]) is None
+    assert vs_main.tag_filter_sql(None) is None
+
+
+def test_static_hash_follows_tags_not_their_order(tmp_path):
+    store = vs_main.VectorStore.__new__(vs_main.VectorStore)
+    base = dict(LAMP, tags=["a", "b"])
+    assert store._hash_static_fields(base, "devices") == store._hash_static_fields(
+        dict(LAMP, tags=["b", "a"]), "devices")
+    assert store._hash_static_fields(base, "devices") != store._hash_static_fields(
+        dict(LAMP, tags=["a"]), "devices")
+    for table in vs_main.ENTITY_TABLES:
+        assert "tags" in vs_main.STATIC_FIELDS[table]
+
+
+TAGGED = [
+    _device(1, "Living Room Ceiling Lights", "indigo.DimmerDevice", tags=["lighting", "main-level"]),
+    _device(2, "Living Room Lamp", tags=["lighting", "main-level"]),
+    _device(4, "Basement TV Area Ceiling Light", "indigo.DimmerDevice", tags=["lighting", "basement"]),
+    _device(6, "Basement Freezer", tags=["basement"]),
+]
+
+
+@needs_lancedb
+def test_tag_prefilter_all_any_and_with_device_class(store):
+    _sync(store, TAGGED)
+    names = lambda results: {r["name"] for r in results}  # noqa: E731
+    results, _ = _search(store, "lights", tags=["basement"], top_k=40)
+    assert names(results) == {"Basement TV Area Ceiling Light", "Basement Freezer"}
+    results, _ = _search(store, "lights", tags=["basement", "lighting"], top_k=40)
+    assert names(results) == {"Basement TV Area Ceiling Light"}
+    results, _ = _search(store, "lights", tags=["basement", "main-level"], tag_match="any", top_k=40)
+    assert len(results) == 4
+    results, _ = _search(store, "lights", entity_types=["devices"], tags=["lighting"],
+                         device_classes=["relay"], top_k=40)
+    assert names(results) == {"Living Room Lamp"}
+    row = store.db.open_table("devices").search().where("id = 6").limit(1).to_list()[0]
+    assert row["tags"] == "|basement|" and "Tags: basement" in row["text"]
+
+
+@needs_lancedb
+def test_tag_change_reindexes_on_sync(store):
+    _sync(store, [_device(2, "Living Room Lamp")])
+    _sync(store, [_device(2, "Living Room Lamp", tags=["lighting"])])
+    results, _ = _search(store, "lamp", tags=["lighting"], top_k=5)
+    assert [r["name"] for r in results] == ["Living Room Lamp"]
+
+
+def test_handler_passes_tags_and_trusts_live_tags():
+    hits = [_hit(1, "device", "A", 0.9), _hit(2, "device", "B", 0.8)]
+    handler, store = _handler(hits)
+    handler.data_provider.get_device.side_effect = lambda i: {
+        1: {"id": 1, "name": "A", "tags": ["basement"]},
+        2: {"id": 2, "name": "B", "tags": []},  # untagged since the last sync
+    }[i]
+    result = handler.search("x", tags=["basement"], tag_match="all")
+    assert store.search.call_args.kwargs["tags"] == ["basement"]
+    assert store.search.call_args.kwargs["tag_match"] == "all"
+    assert [d["name"] for d in result["results"]["devices"]] == ["A"]
+    assert result["results"]["devices"][0]["tags"] == ["basement"]
+
+
+def test_handler_rejects_invalid_tag_filter():
+    handler, store = _handler([])
+    result = handler.search("x", tags=["Basement"])
+    assert "Invalid tag name" in result["error"]
+    store.search.assert_not_called()
+
+
+def test_minimal_and_whitelisted_results_carry_tags():
+    from mcp_server.tools.search_entities.result_formatter import ResultFormatter
+    formatter = ResultFormatter()
+    assert formatter._format_device_fields({"name": "x", "tags": ["a"], "pluginProps": {}}, True)["tags"] == ["a"]
+    for method in ("_format_variable_fields", "_format_action_fields",
+                   "_format_trigger_fields", "_format_schedule_fields"):
+        assert getattr(formatter, method)({"tags": ["a"]})["tags"] == ["a"]
+        assert getattr(formatter, method)({})["tags"] == []

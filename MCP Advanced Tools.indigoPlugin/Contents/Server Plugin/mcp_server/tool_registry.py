@@ -17,6 +17,8 @@ WRITE_TOOLS = frozenset({
     "update_trigger",
     "update_schedule",
     "update_action_group",
+    "manage_tags",
+    "tag_objects",
 })
 
 # Tools this plugin served before Indigo 2026.1, mapped to the built-in
@@ -102,9 +104,23 @@ def get_tool_schemas(tool_functions):
     """
     tools = {}
 
+    # Tag filter shared by search_entities, list_triggers and list_schedules
+    _tag_filter_props = {
+        "tags": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Only entities carrying these Indigo tags (names from MCP Control's list_tags)",
+        },
+        "tag_match": {
+            "type": "string",
+            "enum": ["all", "any"],
+            "description": "With tags: 'all' (default) requires every tag, 'any' at least one",
+        },
+    }
+
     # Search entities tool
     tools["search_entities"] = {
-        "description": "Search for Indigo entities using natural language with pagination support. Covers every device, variable, action group, trigger and schedule, including ones not published for remote display. To act on a result (turn on, dim, set a variable, run an action group), use Indigo MCP Control's tools (turn_on, set_brightness, update_variable, execute_action_group, ...).",
+        "description": "Search for Indigo entities using natural language with pagination support. Covers every device, variable, action group, trigger and schedule, including ones not published for remote display. Each result carries its Indigo tags; tags narrows the search to tagged entities ('basement lighting' -> tags [basement, lighting]). To act on a result (turn on, dim, set a variable, run an action group), use Indigo MCP Control's tools (turn_on, set_brightness, update_variable, execute_action_group, ...).",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -137,7 +153,8 @@ def get_tool_schemas(tool_functions):
                     "description": "Number of results to skip (default: 0)",
                     "default": 0,
                     "minimum": 0
-                }
+                },
+                **_tag_filter_props,
             },
             "required": ["query"]
         },
@@ -194,7 +211,7 @@ def get_tool_schemas(tool_functions):
     # ------------------------------------------------------------------
 
     tools["list_triggers"] = {
-        "description": "List Indigo triggers with a one-line summary of what each one watches (device state, variable, plugin event, ...). Filter by name, enabled state, type, or folder. Use get_trigger_details for a trigger's conditions and actions.",
+        "description": "List Indigo triggers with a one-line summary of what each one watches (device state, variable, plugin event, ...) and their tags. Filter by name, enabled state, type, folder, or tags. Use get_trigger_details for a trigger's conditions and actions.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -214,6 +231,7 @@ def get_tool_schemas(tool_functions):
                     "type": "integer",
                     "description": "Only triggers in this folder"
                 },
+                **_tag_filter_props,
                 "limit": {
                     "type": "integer",
                     "description": "Maximum number of triggers to return (default: 50)",
@@ -233,7 +251,7 @@ def get_tool_schemas(tool_functions):
     }
 
     tools["list_schedules"] = {
-        "description": "List Indigo schedules (time/date events) including each schedule's next execution time and a human-readable timing summary. Sorted by next execution by default. Use get_schedule_details for a schedule's conditions and actions.",
+        "description": "List Indigo schedules (time/date events) including each schedule's next execution time, a human-readable timing summary and its tags. Filter by name, enabled state, folder, or tags. Sorted by next execution by default. Use get_schedule_details for a schedule's conditions and actions.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -249,6 +267,7 @@ def get_tool_schemas(tool_functions):
                     "type": "integer",
                     "description": "Only schedules in this folder"
                 },
+                **_tag_filter_props,
                 "sort_by": {
                     "type": "string",
                     "enum": ["next_execution", "name"],
@@ -273,9 +292,9 @@ def get_tool_schemas(tool_functions):
     }
 
     _DETAILS_COMMON = (
-        " Action steps and conditions come from Indigo's database file, which can lag "
-        "live edits by a few minutes (see meta.structure_source). Entity IDs are "
-        "resolved to names."
+        " Includes its folder and tags. Action steps and conditions come from Indigo's "
+        "database file, which can lag live edits by a few minutes (see "
+        "meta.structure_source). Entity IDs are resolved to names."
     )
     _include_scripts_prop = {
         "type": "boolean",
@@ -399,6 +418,12 @@ def get_tool_schemas(tool_functions):
         " Deleting is irreversible and requires confirm=true AND the 'Allow AI to "
         "delete automations' plugin preference. All other actions are always available."
     )
+    # The confirmation tag (plugin preference, default ask-first)
+    _gate_note = (
+        " An element carrying the house's confirmation tag (plugin preference, "
+        "default 'ask-first') returns requires_confirmation instead: call again with "
+        "confirm=true only if the user themselves asked for this change."
+    )
     _control_props = {
         "duration_seconds": {
             "type": "integer",
@@ -412,7 +437,10 @@ def get_tool_schemas(tool_functions):
         },
         "duplicate_name": {"type": "string", "description": "For duplicate: name for the copy"},
         "folder_id": {"type": "integer", "description": "For move_to_folder: destination folder ID"},
-        "confirm": {"type": "boolean", "description": "Required true for delete (irreversible)"},
+        "confirm": {
+            "type": "boolean",
+            "description": "Required true for delete (irreversible) and for an element carrying the confirmation tag",
+        },
     }
 
     def _control_schema(id_name, actions, can_enable=True):
@@ -437,17 +465,17 @@ def get_tool_schemas(tool_functions):
                                  "move_to_folder", "remove_delayed_actions", "delete"]
 
     tools["control_trigger"] = {
-        "description": "Trigger lifecycle: enable/disable (optionally with duration_seconds to auto-revert — 'disable this trigger for 2 hours'), duplicate (duplicate-then-edit is the supported way to make a variant, since Indigo has no API to author a trigger's actions/conditions from scratch), move_to_folder, remove_delayed_actions, or delete." + _delete_note + _run_note.format(tool="execute_trigger"),
+        "description": "Trigger lifecycle: enable/disable (optionally with duration_seconds to auto-revert — 'disable this trigger for 2 hours'), duplicate (duplicate-then-edit is the supported way to make a variant, since Indigo has no API to author a trigger's actions/conditions from scratch), move_to_folder, remove_delayed_actions, or delete." + _delete_note + _gate_note + _run_note.format(tool="execute_trigger"),
         "inputSchema": _control_schema("trigger_id", _trigger_schedule_actions),
         "function": tool_functions["control_trigger"],
     }
     tools["control_schedule"] = {
-        "description": "Schedule lifecycle: enable/disable (with optional duration_seconds auto-revert), duplicate, move_to_folder, remove_delayed_actions, or delete." + _delete_note + _run_note.format(tool="execute_schedule"),
+        "description": "Schedule lifecycle: enable/disable (with optional duration_seconds auto-revert), duplicate, move_to_folder, remove_delayed_actions, or delete." + _delete_note + _gate_note + _run_note.format(tool="execute_schedule"),
         "inputSchema": _control_schema("schedule_id", _trigger_schedule_actions),
         "function": tool_functions["control_schedule"],
     }
     tools["control_action_group"] = {
-        "description": "Action-group lifecycle: duplicate, move_to_folder, or delete. (Action groups have no enable/disable or delayed-action queue.)" + _delete_note + _run_note.format(tool="execute_action_group"),
+        "description": "Action-group lifecycle: duplicate, move_to_folder, or delete. (Action groups have no enable/disable or delayed-action queue.)" + _delete_note + _gate_note + _run_note.format(tool="execute_action_group"),
         "inputSchema": _control_schema(
             "action_group_id", ["duplicate", "move_to_folder", "delete"],
             can_enable=False),
@@ -457,7 +485,11 @@ def get_tool_schemas(tool_functions):
     _update_note = (
         " Action steps and conditions can NEVER be modified (Indigo has no API); to "
         "change what an automation does, edit it in the Indigo UI. Returns a before/after diff."
-    )
+    ) + _gate_note
+    _update_confirm = {
+        "type": "boolean",
+        "description": "Required true for an element carrying the confirmation tag",
+    }
     tools["update_trigger"] = {
         "description": "Edit a trigger's basic fields: name, description, and its event settings — what it watches (device_id, state_selector, state_change_type, state_value; or variable_id, variable_change_type, variable_value). Enum values use the normalized names the read tools return (becomes_true, becomes_equal, changes, …)." + _update_note,
         "inputSchema": {
@@ -468,6 +500,7 @@ def get_tool_schemas(tool_functions):
                     "type": "object",
                     "description": "Field → new value, e.g. {\"name\": \"New name\"}, {\"state_value\": \"PLAYING\"}, {\"device_id\": 123456, \"state_change_type\": \"becomes_false\"}.",
                 },
+                "confirm": _update_confirm,
             },
             "required": ["trigger_id", "fields"],
         },
@@ -483,6 +516,7 @@ def get_tool_schemas(tool_functions):
                     "type": "object",
                     "description": "Field → new value, e.g. {\"name\": \"…\", \"description\": \"…\"}.",
                 },
+                "confirm": _update_confirm,
             },
             "required": ["schedule_id", "fields"],
         },
@@ -498,10 +532,64 @@ def get_tool_schemas(tool_functions):
                     "type": "object",
                     "description": "Field → new value, e.g. {\"name\": \"…\", \"description\": \"…\"}.",
                 },
+                "confirm": _update_confirm,
             },
             "required": ["action_group_id", "fields"],
         },
         "function": tool_functions["update_action_group"],
+    }
+
+    # ------------------------------------------------------------------
+    # Tags (Indigo 2026.1). MCP Control reads tags (list_tags, the tag
+    # filter on its list_* tools); these create, edit and assign them.
+    # ------------------------------------------------------------------
+
+    tools["manage_tags"] = {
+        "description": "Maintain Indigo's server-wide tag library: create a tag (name + color), update one (rename and/or recolor; a rename carries to every object that has the tag), or delete one. Tag names are lowercase letters in words joined by single dashes ('kitchen', 'holiday-lighting'). Only the background color is set; Indigo derives the text and border colors. Deleting removes the tag from every object carrying it and cannot be undone: it needs the 'Allow AI to delete tags' plugin preference AND confirm=true (the first call returns how many objects carry the tag). List the library with MCP Control's list_tags; put tags on objects with tag_objects.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["create", "update", "delete"], "description": "What to do"},
+                "tag": {"type": "string", "description": "The tag name (for create: the new tag)"},
+                "new_tag": {"type": "string", "description": "For update: the new name"},
+                "color": {"type": "string", "description": "For create (required) and update: six hex digits, e.g. '4A90D9' (a leading # is fine)"},
+                "confirm": {"type": "boolean", "description": "Required true for delete, and for renaming the confirmation tag"},
+            },
+            "required": ["action", "tag"],
+        },
+        "function": tool_functions["manage_tags"],
+    }
+
+    tools["tag_objects"] = {
+        "description": "Put an Indigo tag on, or take it off, up to 200 objects of any type at once: devices, variables, triggers, schedules, action groups and control pages. The tag must already exist (create it with manage_tags). Returns one outcome per object (added, already, removed, not_present, not_found, error), which is also the list to reverse the change with. dry_run=true reports what would change without writing. Removing a tag from more than 25 objects, or removing the confirmation tag (plugin preference, default 'ask-first'), needs confirm=true.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "tag": {"type": "string", "description": "The tag name"},
+                "action": {"type": "string", "enum": ["add", "remove"], "description": "Put the tag on or take it off"},
+                "objects": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["device", "variable", "trigger", "schedule", "action_group", "control_page"],
+                            },
+                            "id": {"type": "integer"},
+                        },
+                        "required": ["type", "id"],
+                    },
+                    "description": "The objects, e.g. [{\"type\": \"device\", \"id\": 123}]",
+                },
+                "dry_run": {"type": "boolean", "description": "Report what would change without writing (default: false)"},
+                "confirm": {"type": "boolean", "description": "Required true for a bulk removal (> 25 objects) or removing the confirmation tag"},
+            },
+            "required": ["tag", "action", "objects"],
+        },
+        "function": tool_functions["tag_objects"],
     }
 
     # ------------------------------------------------------------------

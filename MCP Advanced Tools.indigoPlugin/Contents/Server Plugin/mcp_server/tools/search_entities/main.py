@@ -10,6 +10,7 @@ from ...adapters.vector_store_interface import VectorStoreInterface
 from ...common.indigo_device_types import DeviceClassifier
 from ...common.state_filter import StateFilter
 from ..base_handler import BaseToolHandler
+from ..tags.tag_rules import matches_tags, normalize_tag_filter
 from .query_parser import QueryParser
 from .result_formatter import ResultFormatter
 
@@ -49,7 +50,9 @@ class SearchEntitiesHandler(BaseToolHandler):
         entity_types: Optional[List[str]] = None,
         state_filter: Optional[Dict[str, Any]] = None,
         limit: Optional[int] = None,
-        offset: int = 0
+        offset: int = 0,
+        tags: Optional[List[str]] = None,
+        tag_match: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Search for Indigo entities using natural language with optional filtering and pagination.
@@ -62,11 +65,17 @@ class SearchEntitiesHandler(BaseToolHandler):
             limit: Maximum number of results to return (default: the query's
                 own window — 10, or more for "list"/"all" queries)
             offset: Number of results to skip (default: 0)
+            tags: Optional Indigo tag names; only entities carrying them match
+            tag_match: "all" (default) or "any" of the tags
 
         Returns:
             Dictionary with formatted search results including pagination info
         """
         try:
+            wanted_tags, tag_mode, tag_error = normalize_tag_filter(tags, tag_match)
+            if tag_error:
+                return {"error": tag_error, "query": query}
+
             # DEBUG level query logging
             query_short = query[:50] + "..." if len(query) > 50 else query
             self.debug_log(f"Searching: '{query_short}'")
@@ -107,6 +116,8 @@ class SearchEntitiesHandler(BaseToolHandler):
                 similarity_threshold=search_params["threshold"],
                 expanded_query=expanded_query,
                 device_classes=device_classes,
+                tags=wanted_tags or None,
+                tag_match=tag_mode,
             )
 
             # Safety net for vector stores that ignore device_classes
@@ -127,6 +138,14 @@ class SearchEntitiesHandler(BaseToolHandler):
             # fields change, so its state values can be arbitrarily old — the
             # store matches entities, it does not report on them.
             grouped_results = self._refresh_with_live_state(grouped_results)
+
+            # The index's tags can trail a change by one sync; the live
+            # record decides
+            if wanted_tags:
+                grouped_results = {
+                    kind: [e for e in entities if matches_tags(e.get("tags"), wanted_tags, tag_mode)]
+                    for kind, entities in grouped_results.items()
+                }
 
             # Apply state filtering if specified
             if state_filter is not None and grouped_results.get("devices"):

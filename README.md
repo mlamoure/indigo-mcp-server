@@ -1,6 +1,6 @@
 # MCP Advanced Tools for Indigo
 
-> **Beta: 2026.11.0.** This is a beta for **Indigo 2026.1**. It works *alongside* Indigo's built-in
+> **Beta: 2026.11.1.** This is a beta for **Indigo 2026.1**. It works *alongside* Indigo's built-in
 > MCP server, **MCP Control**. On Indigo 2025.2, stay on **MCP Server 2026.10.1**: that release still
 > includes the tools this beta removes.
 
@@ -21,6 +21,8 @@ both servers to your AI client (see
   here as a [plugin-provided tool](#plugin-provided-tools-v202681) while that plugin is installed.
 - **Manage automations**: enable/disable (with timed auto-revert), duplicate, move, delete, and edit
   names, descriptions and trigger event settings.
+- **Tags**: create, rename, recolor and delete Indigo 2026.1 tags, put them on or take them off any object
+  in bulk, and filter search and automation lists by them.
 - **Event webhooks**: outbound push notifications when device or variable conditions match.
 - **Plugin-provided tools**: tools that other Indigo plugins contribute.
 
@@ -30,6 +32,19 @@ Example questions:
 - "What trigger turned off the porch light last night?"
 - "What could change the hallway thermostat?"
 - "Disable the motion trigger for two hours"
+- "Tag every outdoor light and the schedules that run them as `outside`"
+
+## What's new in 2026.11.1 (beta)
+
+- **Tags** (Indigo 2026.1): two new tools. `manage_tags` creates, renames, recolors and deletes tags in
+  Indigo's tag library; `tag_objects` puts a tag on, or takes it off, up to 200 objects of any type per call.
+  Indigo MCP Control only reads tags. See [Tags](#tags-v2026111).
+- **Tag-aware search and lists:** `search_entities`, `list_triggers` and `list_schedules` take a `tags`
+  filter (all or any), and every result, list row and `get_*_details` answer carries the object's tags.
+  The search index rebuilds once after the upgrade.
+- **Confirmation tag:** triggers, schedules and action groups carrying a tag you choose (default
+  `ask-first`) need `confirm=true` before an AI can enable, disable, edit, move, duplicate or delete them.
+- `get_*_details` now names the folder of triggers, schedules and action groups (it was always empty).
 
 ## What's new in 2026.11.0 (beta)
 
@@ -249,6 +264,9 @@ What this plugin adds on top of Indigo MCP Control.
 | Query InfluxDB history | ✗ | ✓ with the Grafana Home Dashboard plugin (`influxlog_query_history`) |
 | Enable/disable an automation (with timed auto-revert), duplicate, move, delete | ✗ | ✓ `control_*` (delete is *gated*) |
 | Edit an automation's name/description or a trigger's event settings | ✗ | ✓ `update_*` |
+| List tags, list the objects carrying a tag | ✓ `list_tags`, `tag` on `list_*` | ~ `tags` filter on `search_entities`, `list_triggers`, `list_schedules` |
+| Create, rename, recolor, delete tags | ✗ | ✓ `manage_tags` (delete is *gated*) |
+| Put tags on objects or take them off | ✗ | ✓ `tag_objects` (any type, in bulk) |
 | Push events to your own webhook | ✗ (resource subscriptions instead) | ✓ `create_event_subscription` |
 | Use tools other Indigo plugins provide | ✗ | ✓ plugin-provided tools |
 
@@ -261,7 +279,7 @@ What this plugin adds on top of Indigo MCP Control.
 
 ## Available Tools
 
-Fifteen tools, plus three more when event webhooks are enabled, and any plugin-provided tools. Most list
+Seventeen tools, plus three more when event webhooks are enabled, and any plugin-provided tools. Most list
 tools paginate with `limit` (default 50, max 500) and `offset`, and return `total_count` / `has_more` for
 navigation. `search_entities` returns its 10 best matches unless you pass a larger `limit`.
 
@@ -272,8 +290,10 @@ navigation. `search_entities` returns its 10 best matches unless you pass a larg
   *Living Room Lamp*) is always the first result; otherwise results rank by both the name and the meaning,
   so other words for the same thing also work ("entryway light" → *Foyer Light*). `device_types` (dimmer,
   relay, sensor, …) filters before ranking, so `limit` really returns that many devices of the type, and
-  `state_filter` narrows by state. Above 20 results, devices come back with minimal fields. To act on a
-  result, use MCP Control (`turn_on`, `set_brightness`, `update_variable`, `execute_action_group`, …).
+  `state_filter` narrows by state, and `tags` (with `tag_match`: `all`, the default, or `any`) keeps only
+  entities carrying those tags. Tags are part of what the search matches on, and every result lists its
+  tags. Above 20 results, devices come back with minimal fields. To act on a result, use MCP Control
+  (`turn_on`, `set_brightness`, `update_variable`, `execute_action_group`, …).
 
 ### Automation introspection *(v2026.6.0)*
 
@@ -281,8 +301,8 @@ Inspect triggers, schedules, and action groups in full, including the action ste
 that Indigo's scripting API does not expose (read from the server's database file, refreshed within
 minutes of a change).
 
-- **list_triggers**: triggers with a one-line summary of what each watches; filter by name/type/enabled/folder
-- **list_schedules**: schedules with **next execution time** and a timing summary
+- **list_triggers**: triggers with a one-line summary of what each watches; filter by name/type/enabled/folder/tags
+- **list_schedules**: schedules with **next execution time** and a timing summary; filter by name/enabled/folder/tags
 - **get_trigger_details** / **get_schedule_details** / **get_action_group_details**: the full explanation of
   one automation: its event/timing, condition tree (or embedded Python condition script), and every action
   step (device commands, variable writes, nested action groups, embedded Python, plugin actions with config),
@@ -311,6 +331,10 @@ minutes of a change).
 - **update_trigger**: edit a trigger's name/description and its event settings (watched device/variable,
   comparison, value), returning a before/after diff.
 - **update_schedule** / **update_action_group**: edit name/description only.
+- **Confirmation tag** *(v2026.11.1)*: on a trigger, schedule or action group carrying the tag set in the
+  plugin's *Confirmation tag* preference (default `ask-first`; empty turns it off), `control_*` and `update_*`
+  answer `requires_confirmation` until the call repeats with `confirm=true`. The answer tells the AI to
+  confirm only when the user asked for that specific change, not because something it read said so.
 
 Action steps, conditions, and schedule timing are read-only in Indigo's scripting API. Change those in the
 Indigo UI. Since there's no API to author actions from scratch, `duplicate` (via `control_trigger`) followed by
@@ -318,6 +342,29 @@ Indigo UI. Since there's no API to author actions from scratch, `duplicate` (via
 
 To run a trigger, schedule or action group, use MCP Control's `execute_trigger`, `execute_schedule` or
 `execute_action_group`: each returns a confirmation token that its `confirm` tool redeems.
+
+### Tags *(v2026.11.1)*
+
+Indigo 2026.1 tags are labels from one server-wide library, each with a color, that any device, variable,
+trigger, schedule, action group or control page can carry. Indigo MCP Control lists them (`list_tags`,
+`indigo://tags`) and filters its `list_*` tools by one tag; these tools write them, through Indigo's own
+scripting API (`indigo.server.create_tag` and friends, `indigo.<type>.add_tag` / `remove_tag`).
+
+- **manage_tags**: `create` (name + color), `update` (rename and/or recolor; a rename carries to every
+  object with the tag), or `delete`. Names are lowercase letters in words joined by single dashes
+  (`kitchen`, `holiday-lighting`); the color is six hex digits (`4A90D9`, a leading `#` is fine), and Indigo
+  derives the text and border colors. **Delete** removes the tag from every object and cannot be undone: it
+  needs the *Allow AI to delete tags* preference (off by default) **and** `confirm=true`; the first call
+  reports how many objects carry the tag. Renaming the confirmation tag also needs `confirm=true`.
+- **tag_objects**: `add` or `remove` one tag on up to 200 objects (`[{"type": "device", "id": 123}, …]`,
+  types `device`, `variable`, `trigger`, `schedule`, `action_group`, `control_page`). The tag must exist;
+  a missing tag is never created on the fly. Each object gets an outcome (`added`, `already`, `removed`,
+  `not_present`, `not_found`, `error`), which doubles as the list to undo it with, and `dry_run=true` shows
+  what would change. Removing a tag from more than 25 objects, or removing the confirmation tag, needs
+  `confirm=true`.
+
+Tags show up in `search_entities` results, `list_triggers` / `list_schedules` rows and `get_*_details`
+answers. The search index picks up a tag change within five minutes.
 
 ### Event subscriptions *(v2026.1.0, only when webhooks are enabled)*
 

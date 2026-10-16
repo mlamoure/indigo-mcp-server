@@ -314,3 +314,14 @@ class TestFindReferences:
 
     def test_invalid_entity_type(self, handler):
         assert "error" in handler.find_references("trigger", 4000001)
+
+
+class TestTagsInDetails:
+    def test_details_carry_live_tags(self, handler, data_provider):
+        data_provider.get_trigger.return_value = dict(LIVE_TRIGGER, tags=["security", "ask-first"])
+        doc = handler.get_details("trigger", 4000001)
+        assert doc["tags"] == ["security", "ask-first"]
+        assert doc["folder"] == {"id": 7000001, "name": "Security"}
+
+    def test_untagged_details_have_empty_tags(self, handler):
+        assert handler.get_details("schedule", 5000001)["tags"] == []

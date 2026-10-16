@@ -37,6 +37,7 @@ from mcp_server.external_tools.policy import (
     provider_subscription_ids,
 )
 from mcp_server.mcp_handler import MCPHandler
+from mcp_server.tools.tags.tag_rules import is_valid_tag_name
 
 
 ################################################################################
@@ -81,6 +82,11 @@ class Plugin(indigo.PluginBase):
         # Automation delete gate (checked at call time — no restart needed).
         # Editing (names/descriptions/trigger event settings) is not gated.
         self.enable_automation_delete = plugin_prefs.get("enable_automation_delete", False)
+
+        # Tags (checked at call time). Deleting a tag is gated like deleting an
+        # automation; elements carrying the confirmation tag need confirm=true.
+        self.enable_tag_delete = plugin_prefs.get("enable_tag_delete", False)
+        self.confirm_tag = plugin_prefs.get("confirm_tag", "ask-first")
 
         # Plugin-provided (external) tool write gate (checked at call time).
         # Default TRUE: provider writes are the point of the feature, and
@@ -623,6 +629,8 @@ class Plugin(indigo.PluginBase):
                 subscription_handler=subscription_handler,
                 server_version=self.pluginVersion,
                 automation_delete_supplier=lambda: self._automation_gate("enable_automation_delete"),
+                tag_delete_supplier=lambda: self._automation_gate("enable_tag_delete"),
+                confirm_tag_supplier=lambda: self.confirm_tag,
                 external_tool_manager=external_tool_manager,
                 provider_scan_supplier=self._check_for_new_provider_plugins,
             )
@@ -970,6 +978,14 @@ class Plugin(indigo.PluginBase):
             errors_dict["openai_api_key"] = "Please enter a valid OpenAI API key"
 
 
+        # Confirmation tag: empty, or a valid Indigo tag name
+        confirm_tag = (values_dict.get("confirm_tag", "") or "").strip()
+        if confirm_tag and not is_valid_tag_name(confirm_tag):
+            errors_dict["confirm_tag"] = (
+                "Tag names are lowercase letters in words joined by single dashes "
+                "(e.g. ask-first), or leave it empty"
+            )
+
         # Validate log level
         try:
             log_level = int(values_dict.get("log_level", 20))
@@ -1179,6 +1195,19 @@ class Plugin(indigo.PluginBase):
                 self.enable_automation_delete = new_delete_gate
                 self.logger.info(
                     f"Automation delete via MCP {'enabled' if new_delete_gate else 'disabled'}"
+                )
+
+            # Tag delete gate and confirmation tag (take effect immediately)
+            new_tag_delete = values_dict.get("enable_tag_delete", False)
+            if new_tag_delete != self.enable_tag_delete:
+                self.enable_tag_delete = new_tag_delete
+                self.logger.info(f"Tag delete via MCP {'enabled' if new_tag_delete else 'disabled'}")
+            new_confirm_tag = (values_dict.get("confirm_tag", "") or "").strip()
+            if new_confirm_tag != self.confirm_tag:
+                self.confirm_tag = new_confirm_tag
+                self.logger.info(
+                    f"Confirmation tag set to '{new_confirm_tag}'"
+                    if new_confirm_tag else "Confirmation tag turned off"
                 )
 
             # External tool write gate (takes effect immediately — checked per call)

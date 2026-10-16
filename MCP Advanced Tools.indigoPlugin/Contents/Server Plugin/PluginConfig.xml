@@ -66,6 +66,22 @@
             trigger's event settings — are always available and do not need this.</Description>
     </Field>
 
+    <!-- Tags (Indigo 2026.1) -->
+    <Field type="checkbox" id="enable_tag_delete" defaultValue="false">
+        <Label>Allow AI to delete tags:</Label>
+        <Description>Allow MCP clients to delete a tag from Indigo's tag library, which removes it
+            from every object carrying it (irreversible; each call also requires confirm=true).
+            Creating, renaming, recoloring and assigning tags are always available.</Description>
+    </Field>
+    <Field id="confirm_tag" type="textfield" defaultValue="ask-first">
+        <Label>Confirmation tag:</Label>
+    </Field>
+    <Field id="confirm_tag_help" type="label" fontSize="small" alignWithControl="true">
+        <Label>An AI must pass confirm=true to enable, disable, edit, move, duplicate or delete a
+            trigger, schedule or action group carrying this tag, and to remove or rename the tag
+            itself. Leave empty to turn this off.</Label>
+    </Field>
+
     <!-- Plugin-Provided Tools -->
     <!-- Option values must not contain one another: visibleBindingValue
          matches by substring. The two lists are separate on purpose so that

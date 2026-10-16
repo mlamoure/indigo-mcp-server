@@ -171,7 +171,7 @@ class IndigoDataProvider(DataProvider):
         try:
             if action_id in indigo.actionGroups:
                 action = indigo.actionGroups[action_id]
-                return dict(action)
+                return self._with_folder_name(dict(action), indigo.actionGroups)
         except Exception as e:
             self.logger.debug(f"Error getting action {action_id}: {e}", exc_info=True)
             
@@ -304,6 +304,16 @@ class IndigoDataProvider(DataProvider):
             self.logger.debug(f"Error building folder map: {e}", exc_info=True)
         return folder_map
 
+    def _with_folder_name(self, entry: Dict[str, Any], collection) -> Dict[str, Any]:
+        """Add folderName to a single-object record in a folder (the list
+        methods do this with one folder map for the whole collection)."""
+        folder_id = entry.get("folderId")
+        if folder_id:
+            entry["folderName"] = self._folder_name_map(collection).get(
+                folder_id, f"Unknown Folder ({folder_id})"
+            )
+        return entry
+
     def _trigger_to_dict(self, trigger, include_props: bool = False) -> Dict[str, Any]:
         """Build a plain dict from a typed IOM trigger object. dict(trigger)
         only carries base fields, so the event spec is read via getattr."""
@@ -313,6 +323,7 @@ class IndigoDataProvider(DataProvider):
             "description": trigger.description,
             "enabled": trigger.enabled,
             "folderId": trigger.folderId,
+            "tags": self._tags_of(trigger),
             "type": self._TRIGGER_TYPE_MAP.get(
                 type(trigger).__name__, self._enum_label(type(trigger).__name__)
             ),
@@ -345,6 +356,7 @@ class IndigoDataProvider(DataProvider):
             "description": schedule.description,
             "enabled": schedule.enabled,
             "folderId": schedule.folderId,
+            "tags": self._tags_of(schedule),
             "type": "schedule",
             "date_type": self._enum_label(getattr(schedule, "dateType", None)),
             "time_type": self._enum_label(getattr(schedule, "timeType", None)),
@@ -406,7 +418,8 @@ class IndigoDataProvider(DataProvider):
         """
         try:
             if trigger_id in indigo.triggers:
-                return self._trigger_to_dict(indigo.triggers[trigger_id], include_props=True)
+                entry = self._trigger_to_dict(indigo.triggers[trigger_id], include_props=True)
+                return self._with_folder_name(entry, indigo.triggers)
         except Exception as e:
             self.logger.debug(f"Error getting trigger {trigger_id}: {e}", exc_info=True)
 
@@ -437,7 +450,8 @@ class IndigoDataProvider(DataProvider):
         """
         try:
             if schedule_id in indigo.schedules:
-                return self._schedule_to_dict(indigo.schedules[schedule_id])
+                entry = self._schedule_to_dict(indigo.schedules[schedule_id])
+                return self._with_folder_name(entry, indigo.schedules)
         except Exception as e:
             self.logger.debug(f"Error getting schedule {schedule_id}: {e}", exc_info=True)
 
@@ -675,6 +689,112 @@ class IndigoDataProvider(DataProvider):
                 f"Error updating {entity_type} {entity_id}: {e}", exc_info=True
             )
             return {"error": str(e), "success": False}
+
+    # ------------------------------------------------------------------
+    # Tags (Indigo 2026.1, API 3.9)
+    # ------------------------------------------------------------------
+
+    # object type -> (collection attribute, command namespace attribute)
+    _TAG_NAMESPACES = {
+        "device": ("devices", "device"),
+        "variable": ("variables", "variable"),
+        "trigger": ("triggers", "trigger"),
+        "schedule": ("schedules", "schedule"),
+        "action_group": ("actionGroups", "actionGroup"),
+        "control_page": ("controlPages", "controlPage"),
+    }
+
+    @staticmethod
+    def _tags_of(elem) -> List[str]:
+        """An IOM object's tags as a plain list (indigo.List otherwise)."""
+        return [str(tag) for tag in (getattr(elem, "tags", None) or [])]
+
+    def _tag_object(self, object_type: str, object_id: int):
+        collection_attr, _ = self._TAG_NAMESPACES[object_type]
+        collection = getattr(indigo, collection_attr)
+        if object_id not in collection:
+            return None
+        return collection[object_id]
+
+    def get_tag_library(self) -> Dict[str, Dict[str, str]]:
+        return {
+            str(name): {key: str(value) for key, value in dict(record).items()}
+            for name, record in dict(indigo.server.tags).items()
+        }
+
+    def create_tag(self, name: str, color: str) -> Dict[str, Any]:
+        try:
+            indigo.server.create_tag(name, color)
+            return {"success": True}
+        except Exception as e:
+            return {"error": str(e), "success": False}
+
+    def update_tag(
+        self, name: str, new_name: Optional[str] = None, new_color: Optional[str] = None
+    ) -> Dict[str, Any]:
+        kwargs = {}
+        if new_name is not None:
+            kwargs["new_tag"] = new_name
+        if new_color is not None:
+            kwargs["new_color"] = new_color
+        try:
+            indigo.server.update_tag(name, **kwargs)
+            return {"success": True}
+        except Exception as e:
+            return {"error": str(e), "success": False}
+
+    def delete_tag(self, name: str) -> Dict[str, Any]:
+        try:
+            indigo.server.delete_tag(name)
+            return {"success": True}
+        except Exception as e:
+            return {"error": str(e), "success": False}
+
+    def get_object_tags(self, object_type: str, object_id: int) -> Optional[List[str]]:
+        if object_type not in self._TAG_NAMESPACES:
+            return None
+        try:
+            elem = self._tag_object(object_type, int(object_id))
+        except Exception as e:
+            self.logger.debug(f"Error reading tags of {object_type} {object_id}: {e}", exc_info=True)
+            return None
+        return None if elem is None else self._tags_of(elem)
+
+    def get_object_name(self, object_type: str, object_id: int) -> Optional[str]:
+        if object_type not in self._TAG_NAMESPACES:
+            return None
+        try:
+            elem = self._tag_object(object_type, int(object_id))
+        except Exception:
+            return None
+        return None if elem is None else elem.name
+
+    def _object_tag_command(self, command: str, object_type: str, object_id: int, tag: str) -> Dict[str, Any]:
+        if object_type not in self._TAG_NAMESPACES:
+            return {"error": f"Unsupported object type: {object_type}", "success": False}
+        try:
+            namespace = getattr(indigo, self._TAG_NAMESPACES[object_type][1])
+            getattr(namespace, command)(int(object_id), tag)
+            return {"success": True}
+        except Exception as e:
+            return {"error": str(e), "success": False}
+
+    def add_object_tag(self, object_type: str, object_id: int, tag: str) -> Dict[str, Any]:
+        return self._object_tag_command("add_tag", object_type, object_id, tag)
+
+    def remove_object_tag(self, object_type: str, object_id: int, tag: str) -> Dict[str, Any]:
+        return self._object_tag_command("remove_tag", object_type, object_id, tag)
+
+    def find_objects_with_tag(self, tag: str) -> List[Dict[str, Any]]:
+        found = []
+        for object_type, (collection_attr, _) in self._TAG_NAMESPACES.items():
+            try:
+                for elem in getattr(indigo, collection_attr):
+                    if tag in self._tags_of(elem):
+                        found.append({"type": object_type, "id": elem.id, "name": elem.name})
+            except Exception as e:
+                self.logger.debug(f"Error scanning {collection_attr} for tag {tag}: {e}", exc_info=True)
+        return found
 
     def get_db_file_path(self) -> Optional[str]:
         """

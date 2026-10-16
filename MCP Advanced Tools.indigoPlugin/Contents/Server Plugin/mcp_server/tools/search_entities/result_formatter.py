@@ -123,6 +123,9 @@ class ResultFormatter:
             # Use minimal fields + states for large result sets
             minimal_keys = KEYS_TO_KEEP_MINIMAL_DEVICES + ["states"]
             filtered_device = filter_json(device, minimal_keys)
+            # Tags are copied as-is: filter_json recurses into lists and would
+            # drop their plain-string items
+            filtered_device["tags"] = list(device.get("tags") or [])
             # Remove internal fields
             return {k: v for k, v in filtered_device.items() if not k.startswith('_')}
         else:
@@ -134,14 +137,16 @@ class ResultFormatter:
         return {
             "value": variable.get("value", ""),
             "folder_id": variable.get("folderId", 0),
-            "read_only": variable.get("readOnly", False)
+            "read_only": variable.get("readOnly", False),
+            "tags": list(variable.get("tags") or []),
         }
     
     def _format_action_fields(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """Format action-specific fields."""
         return {
             "folder_id": action.get("folderId", 0),
-            "description": action.get("description", "")
+            "description": action.get("description", ""),
+            "tags": list(action.get("tags") or []),
         }
 
     def _format_trigger_fields(self, trigger: Dict[str, Any]) -> Dict[str, Any]:
@@ -150,7 +155,8 @@ class ResultFormatter:
             "type": trigger.get("type", ""),
             "enabled": trigger.get("enabled"),
             "folder_id": trigger.get("folderId", 0),
-            "description": trigger.get("description", "")
+            "description": trigger.get("description", ""),
+            "tags": list(trigger.get("tags") or []),
         }
         for key in ("deviceId", "stateSelector", "stateValue", "variableId", "pluginId"):
             if trigger.get(key) not in (None, ""):
@@ -165,5 +171,6 @@ class ResultFormatter:
             "description": schedule.get("description", ""),
             "date_type": schedule.get("date_type"),
             "time_type": schedule.get("time_type"),
-            "next_execution": schedule.get("next_execution")
+            "next_execution": schedule.get("next_execution"),
+            "tags": list(schedule.get("tags") or []),
         }

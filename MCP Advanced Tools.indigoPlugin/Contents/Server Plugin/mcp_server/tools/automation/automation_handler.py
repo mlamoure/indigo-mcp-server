@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from ...adapters.data_provider import DataProvider
 from ...adapters.indidb import IndiDbStructureStore
 from ..base_handler import BaseToolHandler
+from ..tags.tag_rules import confirm_challenge, is_valid_tag_name, matches_tags, normalize_tag_filter
 from .explain_renderer import ExplainRenderer
 
 AUTOMATION_ENTITY_TYPES = ("trigger", "schedule", "action_group")
@@ -43,12 +44,34 @@ class AutomationHandler(BaseToolHandler):
         structure_store: IndiDbStructureStore,
         logger: Optional[logging.Logger] = None,
         delete_enabled_supplier=None,
+        confirm_tag_supplier=None,
     ):
         super().__init__(tool_name="automation", logger=logger)
         self.data_provider = data_provider
         self.structure_store = structure_store
         self.renderer = ExplainRenderer(data_provider, structure_store, logger=logger)
         self.delete_enabled_supplier = delete_enabled_supplier or (lambda: False)
+        # Name of the tag that makes control_*/update_* ask for confirm=true
+        # ('' turns the gate off)
+        self.confirm_tag_supplier = confirm_tag_supplier or (lambda: "")
+
+    def _gate_challenge(
+        self, entity_type: str, entity_id: int, confirm: bool, what: str
+    ) -> Optional[Dict[str, Any]]:
+        """The requires_confirmation result when the element carries the
+        confirmation tag and the call did not confirm; otherwise None."""
+        if confirm:
+            return None
+        gate_tag = (self.confirm_tag_supplier() or "").strip()
+        if not is_valid_tag_name(gate_tag):
+            return None
+        tags = self.data_provider.get_object_tags(entity_type, entity_id) or []
+        if gate_tag not in tags:
+            return None
+        name = self._entity_name(entity_type, entity_id)
+        return confirm_challenge(
+            gate_tag, [{"type": entity_type, "id": entity_id, "name": name}], what
+        )
 
     # ------------------------------------------------------------------
     # list_triggers
@@ -60,10 +83,15 @@ class AutomationHandler(BaseToolHandler):
         enabled_only: bool = False,
         trigger_type: Optional[str] = None,
         folder_id: Optional[int] = None,
+        tags: Optional[List[str]] = None,
+        tag_match: Optional[str] = None,
         limit: Optional[int] = 50,
         offset: int = 0,
     ) -> Dict[str, Any]:
         try:
+            wanted_tags, mode, error = normalize_tag_filter(tags, tag_match)
+            if error:
+                return {"error": error, "success": False}
             triggers = self.data_provider.get_all_triggers()
 
             if name_contains:
@@ -75,6 +103,8 @@ class AutomationHandler(BaseToolHandler):
                 triggers = [t for t in triggers if t.get("type") == trigger_type]
             if folder_id is not None:
                 triggers = [t for t in triggers if t.get("folderId") == folder_id]
+            if wanted_tags:
+                triggers = [t for t in triggers if matches_tags(t.get("tags"), wanted_tags, mode)]
 
             for trigger in triggers:
                 trigger["watching"] = self._trigger_event_summary(trigger)
@@ -148,10 +178,15 @@ class AutomationHandler(BaseToolHandler):
         enabled_only: bool = False,
         folder_id: Optional[int] = None,
         sort_by: str = "next_execution",
+        tags: Optional[List[str]] = None,
+        tag_match: Optional[str] = None,
         limit: Optional[int] = 50,
         offset: int = 0,
     ) -> Dict[str, Any]:
         try:
+            wanted_tags, mode, error = normalize_tag_filter(tags, tag_match)
+            if error:
+                return {"error": error, "success": False}
             schedules = self.data_provider.get_all_schedules()
 
             if name_contains:
@@ -161,6 +196,8 @@ class AutomationHandler(BaseToolHandler):
                 schedules = [s for s in schedules if s.get("enabled")]
             if folder_id is not None:
                 schedules = [s for s in schedules if s.get("folderId") == folder_id]
+            if wanted_tags:
+                schedules = [s for s in schedules if matches_tags(s.get("tags"), wanted_tags, mode)]
 
             for sched in schedules:
                 sched["timing_summary"] = self._schedule_timing_summary(sched)
@@ -348,6 +385,12 @@ class AutomationHandler(BaseToolHandler):
             if action == "move_to_folder" and folder_id is None:
                 return {"error": "move_to_folder requires folder_id", "success": False}
 
+            challenge = self._gate_challenge(
+                entity_type, entity_id, confirm, f"{action} this {entity_type.replace('_', ' ')}"
+            )
+            if challenge:
+                return challenge
+
             name = self._entity_name(entity_type, entity_id)
             command = action
             value = None
@@ -398,6 +441,7 @@ class AutomationHandler(BaseToolHandler):
         entity_type: str,
         entity_id: int,
         fields: Optional[Dict[str, Any]] = None,
+        confirm: bool = False,
     ) -> Dict[str, Any]:
         try:
             if entity_type not in AUTOMATION_ENTITY_TYPES:
@@ -424,6 +468,13 @@ class AutomationHandler(BaseToolHandler):
                             f"existing {kind}",
                             "success": False,
                         }
+
+            challenge = self._gate_challenge(
+                entity_type, entity_id, confirm,
+                f"edit {', '.join(sorted(fields))} of this {entity_type.replace('_', ' ')}",
+            )
+            if challenge:
+                return challenge
 
             name = self._entity_name(entity_type, entity_id)
             result = self.data_provider.update_automation_fields(

@@ -273,7 +273,7 @@ class TestCacheableResults:
 
         result = rpc(post_modern(handler, "tools/list"))["result"]
 
-        assert len(result["tools"]) == 15
+        assert len(result["tools"]) == 17
         assert result["resultType"] == "complete"
         assert result["_meta"][META_SERVER_INFO]["name"] == "MCP Advanced Tools"
         assert result["ttlMs"] == 3600000
@@ -439,7 +439,7 @@ class TestDualEraCoexistence:
 
         assert modern_response["status"] == 200
         assert legacy_response["status"] == 200
-        assert len(rpc(legacy_response)["result"]["tools"]) == 15
+        assert len(rpc(legacy_response)["result"]["tools"]) == 17
 
     @patch('mcp_server.mcp_handler.VectorStoreManager')
     def test_legacy_results_share_the_modern_native_shape(self, mock_vsm):

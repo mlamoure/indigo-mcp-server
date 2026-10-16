@@ -64,6 +64,9 @@ class ExplainRenderer:
         folder_id = live.get("folderId", struct.get("FolderID"))
         if folder_id:
             doc["folder"] = {"id": folder_id, "name": live.get("folderName")}
+        # Tags come from the live object (the IOM is authoritative; the
+        # database file can lag)
+        doc["tags"] = list(live.get("tags") or [])
 
         if entity_type == "trigger":
             doc["trigger_event"] = self._render_trigger_event(live, struct, names)

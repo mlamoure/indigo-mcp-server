@@ -46,6 +46,8 @@ STATIC_TOOLS = {
     "update_trigger",
     "update_schedule",
     "update_action_group",
+    "manage_tags",
+    "tag_objects",
 }
 
 # Registered only when event webhooks are enabled
@@ -119,13 +121,13 @@ class TestToolSet:
     """The registered tool set is exactly the companion scope."""
 
     def test_expected_counts(self):
-        assert len(STATIC_TOOLS) == 15
-        assert len(STATIC_TOOLS | WEBHOOK_TOOLS) == 18
+        assert len(STATIC_TOOLS) == 17
+        assert len(STATIC_TOOLS | WEBHOOK_TOOLS) == 20
         assert len(REMOVED_TOOLS) == 28
         assert not (STATIC_TOOLS | WEBHOOK_TOOLS) & (REMOVED_TOOLS | MOVED_TOOLS)
 
     @patch('mcp_server.mcp_handler.VectorStoreManager')
-    def test_exactly_18_tools_with_webhooks_and_none_removed(self, mock_vsm):
+    def test_exactly_20_tools_with_webhooks_and_none_removed(self, mock_vsm):
         handler = make_handler(mock_vsm, subscription_handler=Mock())
 
         names = set(handler._tools)
@@ -134,7 +136,7 @@ class TestToolSet:
         assert not names & (REMOVED_TOOLS | MOVED_TOOLS)
 
     @patch('mcp_server.mcp_handler.VectorStoreManager')
-    def test_exactly_15_tools_without_webhooks(self, mock_vsm):
+    def test_exactly_17_tools_without_webhooks(self, mock_vsm):
         handler = make_handler(mock_vsm)
 
         assert set(handler._tools) == STATIC_TOOLS

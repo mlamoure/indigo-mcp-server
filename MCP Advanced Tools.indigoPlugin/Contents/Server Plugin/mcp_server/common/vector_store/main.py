@@ -43,17 +43,21 @@ ENTITY_TABLES = ["devices", "variables", "actions", "triggers", "schedules"]
 # keyword rules rebuild without a bump.
 #   1: JSON blob + keywords, one vector (through 2026.10.0)
 #   2: natural-language text, name vector, device_class column
-INDEX_FORMAT_VERSION = "2"
+#   3: Indigo 2026.1 tags in the text and a tags filter column
+INDEX_FORMAT_VERSION = "3"
 
 # Field classification constants - define which fields are static vs dynamic
+# Tags are static: a tag put on or taken off an object re-indexes it on the
+# next sync (at most update_interval later).
 STATIC_FIELDS = {
     "devices": {"id", "name", "description", "model", "deviceTypeId", "pluginId",
-                "address", "protocol", "class"},
-    "variables": {"id", "name", "description", "folderId"},
-    "actions": {"id", "name", "description", "folderId"},
+                "address", "protocol", "class", "tags"},
+    "variables": {"id", "name", "description", "folderId", "tags"},
+    "actions": {"id", "name", "description", "folderId", "tags"},
     "triggers": {"id", "name", "description", "folderId", "type", "deviceId",
-                 "stateSelector", "stateValue", "variableId", "pluginId", "pluginTypeId"},
-    "schedules": {"id", "name", "description", "folderId", "date_type", "time_type", "absolute_time"},
+                 "stateSelector", "stateValue", "variableId", "pluginId", "pluginTypeId", "tags"},
+    "schedules": {"id", "name", "description", "folderId", "date_type", "time_type",
+                  "absolute_time", "tags"},
 }
 
 # Scoring knobs (see combine_scores()). Similarities are 1 - cosine_distance / 2,
@@ -164,6 +168,33 @@ def device_kind(entity: Dict[str, Any]) -> str:
     return ", ".join(parts)
 
 
+def entity_tags(entity: Dict[str, Any]) -> List[str]:
+    """An entity's tag names, sorted (records from before Indigo 2026.1 have none)."""
+    return sorted({str(t) for t in (entity.get("tags") or []) if t})
+
+
+def tags_column(entity: Dict[str, Any]) -> str:
+    """'|kitchen|upstairs|' — the filter column; '' when untagged. Tag names are
+    lowercase letters and dashes only, so they can't collide with '|' or LIKE
+    wildcards."""
+    tags = entity_tags(entity)
+    return "|" + "|".join(tags) + "|" if tags else ""
+
+
+def tag_filter_sql(tags: Optional[Sequence[str]], tag_match: str = "all") -> Optional[str]:
+    """
+    SQL predicate over the tags column: every tag (all) or any tag (any).
+    Callers validate the names first (tag_rules.normalize_tag_filter); anything
+    that is not a valid tag name is dropped here as a second guard.
+    """
+    names = [t for t in (tags or []) if re.fullmatch(r"[a-z]+(-[a-z]+)*", t or "")]
+    if not names:
+        return None
+    clauses = [f"tags LIKE '%|{t}|%'" for t in names]
+    joiner = " OR " if tag_match == "any" else " AND "
+    return "(" + joiner.join(clauses) + ")"
+
+
 def build_name_text(entity: Dict[str, Any], entity_type: str) -> str:
     """Text for the name vector: the entity's name, as words."""
     name = entity.get("name", "") or ""
@@ -202,6 +233,10 @@ def build_document_text(
     description = (entity.get("description") or "").strip()
     if description:
         parts.append(description.rstrip("."))
+
+    tags = entity_tags(entity)
+    if tags:
+        parts.append("Tags: " + ", ".join(t.replace("-", " ") for t in tags))
 
     unique_keywords = sorted({k.strip() for k in (keywords or []) if k and k.strip()})
     if unique_keywords:
@@ -284,6 +319,7 @@ class VectorStore(VectorStoreInterface):
             pa.field("data", pa.string()),  # JSON representation of full entity
             pa.field("hash", pa.string()),  # Hash of static fields for change detection
             pa.field("device_class", pa.string()),  # dimmer/relay/...; '' for non-devices
+            pa.field("tags", pa.string()),  # '|tag|tag|' (see tags_column); '' untagged
             pa.field("embedding", pa.list_(pa.float32(), self.dimension)),
             pa.field("name_embedding", pa.list_(pa.float32(), self.dimension)),
         ])
@@ -393,7 +429,10 @@ class VectorStore(VectorStoreInterface):
 
     def _get_static_fields_only(self, entity: Dict[str, Any], entity_type: str) -> Dict[str, Any]:
         static_fields = STATIC_FIELDS.get(entity_type, set())
-        return {k: v for k, v in entity.items() if k in static_fields}
+        static = {k: v for k, v in entity.items() if k in static_fields}
+        if "tags" in static:
+            static["tags"] = entity_tags(entity)  # order-insensitive
+        return static
 
     def _hash_static_fields(self, entity: Dict[str, Any], entity_type: str) -> str:
         """SHA256 of the static fields only (state changes do not re-embed)."""
@@ -461,6 +500,7 @@ class VectorStore(VectorStoreInterface):
                 "data": json.dumps(entity, cls=DateTimeJSONEncoder),
                 "hash": self._hash_static_fields(entity, table_name),
                 "device_class": device_class_for(entity, table_name),
+                "tags": tags_column(entity),
                 "embedding": doc_vec,
                 "name_embedding": name_vec,
             })
@@ -680,6 +720,8 @@ class VectorStore(VectorStoreInterface):
         similarity_threshold: float = 0.7,
         expanded_query: Optional[str] = None,
         device_classes: Optional[Sequence[str]] = None,
+        tags: Optional[Sequence[str]] = None,
+        tag_match: str = "all",
     ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Search for entities.
@@ -693,6 +735,8 @@ class VectorStore(VectorStoreInterface):
                 original and each entity keeps its better score
             device_classes: Optional logical device types (dimmer, relay, ...)
                 applied as a pre-filter inside the devices query
+            tags: Optional Indigo tag names, a pre-filter in every table
+            tag_match: "all" (every tag, the default) or "any"
 
         Returns:
             Tuple of (results with _similarity_score/_entity_type, metadata).
@@ -721,7 +765,10 @@ class VectorStore(VectorStoreInterface):
             if entity_type not in ENTITY_TABLES:
                 continue
             try:
-                scored.extend(self._score_table(entity_type, query, query_norm, vectors, device_classes))
+                scored.extend(self._score_table(
+                    entity_type, query, query_norm, vectors, device_classes,
+                    tag_filter_sql(tags, tag_match),
+                ))
             except Exception as e:
                 self.logger.error(f"❌ Search failed for {entity_type}: {e}")
 
@@ -754,10 +801,16 @@ class VectorStore(VectorStoreInterface):
         query_norm: str,
         vectors: List[List[float]],
         device_classes: Optional[Sequence[str]],
+        tag_where: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Score every row of one table against every query vector."""
         table = self.db.open_table(entity_type)
-        where = self._device_class_filter(device_classes) if entity_type == "devices" else None
+        filters = [tag_where] if tag_where else []
+        if entity_type == "devices":
+            class_where = self._device_class_filter(device_classes)
+            if class_where:
+                filters.append(class_where)
+        where = " AND ".join(filters) if filters else None
 
         row_count = table.count_rows(where) if where else table.count_rows()
         if row_count == 0:

@@ -254,6 +254,59 @@ class DataProvider(ABC):
         """
         pass
 
+    # ------------------------------------------------------------------
+    # Tags (Indigo 2026.1, API 3.9). Object types use the plugin's names:
+    # device, variable, trigger, schedule, action_group, control_page.
+    # Mutators return {"success": True, ...} or {"error": ...}.
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def get_tag_library(self) -> Dict[str, Dict[str, str]]:
+        """The whole tag library: {name: {color, text_color, border_color}}."""
+        pass
+
+    @abstractmethod
+    def create_tag(self, name: str, color: str) -> Dict[str, Any]:
+        """Add a tag to the library (it is put on no object)."""
+        pass
+
+    @abstractmethod
+    def update_tag(
+        self, name: str, new_name: Optional[str] = None, new_color: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Rename and/or recolor a tag; a rename carries to every object."""
+        pass
+
+    @abstractmethod
+    def delete_tag(self, name: str) -> Dict[str, Any]:
+        """Remove a tag from the library and from every object carrying it."""
+        pass
+
+    @abstractmethod
+    def get_object_tags(self, object_type: str, object_id: int) -> Optional[List[str]]:
+        """Tag names on one object, or None when the object does not exist."""
+        pass
+
+    @abstractmethod
+    def get_object_name(self, object_type: str, object_id: int) -> Optional[str]:
+        """Name of one object of any taggable type, or None when it does not exist."""
+        pass
+
+    @abstractmethod
+    def add_object_tag(self, object_type: str, object_id: int, tag: str) -> Dict[str, Any]:
+        """Put a library tag on one object."""
+        pass
+
+    @abstractmethod
+    def remove_object_tag(self, object_type: str, object_id: int, tag: str) -> Dict[str, Any]:
+        """Take a tag off one object."""
+        pass
+
+    @abstractmethod
+    def find_objects_with_tag(self, tag: str) -> List[Dict[str, Any]]:
+        """Every object carrying the tag: [{type, id, name}] across all six types."""
+        pass
+
     @abstractmethod
     def get_db_file_path(self) -> Optional[str]:
         """

@@ -25,7 +25,8 @@ class ToolWrappers:
         automation_handler=None,
         log_search_handler=None,
         subscription_handler=None,
-        logger: Optional[logging.Logger] = None
+        logger: Optional[logging.Logger] = None,
+        tag_handler=None,
     ):
         """
         Initialize tool wrappers with handler dependencies.
@@ -36,11 +37,13 @@ class ToolWrappers:
             log_search_handler: Event-log query and investigation handler
             subscription_handler: Event subscription handler (webhooks enabled)
             logger: Optional logger instance
+            tag_handler: Tag library / tag assignment handler
         """
         self.search_handler = search_handler
         self.automation_handler = automation_handler
         self.log_search_handler = log_search_handler
         self.subscription_handler = subscription_handler
+        self.tag_handler = tag_handler
         self.logger = logger or logging.getLogger(__name__)
 
     ########################################
@@ -105,7 +108,9 @@ class ToolWrappers:
         entity_types: List[str] = None,
         state_filter: Dict = None,
         limit: int = None,
-        offset: int = 0
+        offset: int = 0,
+        tags: List[str] = None,
+        tag_match: str = None,
     ) -> str:
         """Search entities tool implementation with pagination."""
         if device_types:
@@ -129,6 +134,7 @@ class ToolWrappers:
             f"device_types: {device_types}, "
             f"entity_types: {entity_types}, "
             f"state_filter: {state_filter}, "
+            f"tags: {tags} ({tag_match or 'all'}), "
             f"limit: {limit}, offset: {offset}"
         )
 
@@ -141,6 +147,8 @@ class ToolWrappers:
             state_filter=state_filter,
             limit=limit,
             offset=offset,
+            tags=tags,
+            tag_match=tag_match,
             _error_extra={"query": query},
         )
 
@@ -170,7 +178,9 @@ class ToolWrappers:
         trigger_type: str = None,
         folder_id: int = None,
         limit: int = 50,
-        offset: int = 0
+        offset: int = 0,
+        tags: List[str] = None,
+        tag_match: str = None,
     ) -> str:
         """List triggers tool implementation."""
         return self._call(
@@ -178,6 +188,7 @@ class ToolWrappers:
             self.automation_handler.list_triggers,
             name_contains=name_contains, enabled_only=enabled_only,
             trigger_type=trigger_type, folder_id=folder_id,
+            tags=tags, tag_match=tag_match,
             limit=limit, offset=offset
         )
 
@@ -188,14 +199,17 @@ class ToolWrappers:
         folder_id: int = None,
         sort_by: str = "next_execution",
         limit: int = 50,
-        offset: int = 0
+        offset: int = 0,
+        tags: List[str] = None,
+        tag_match: str = None,
     ) -> str:
         """List schedules tool implementation."""
         return self._call(
             "List schedules",
             self.automation_handler.list_schedules,
             name_contains=name_contains, enabled_only=enabled_only,
-            folder_id=folder_id, sort_by=sort_by, limit=limit, offset=offset
+            folder_id=folder_id, sort_by=sort_by, tags=tags, tag_match=tag_match,
+            limit=limit, offset=offset
         )
 
     def tool_get_trigger_details(self, trigger_id: int, include_scripts: bool = True) -> str:
@@ -287,25 +301,47 @@ class ToolWrappers:
         return self._control("action_group", action_group_id, action, None,
                              None, duplicate_name, folder_id, confirm)
 
-    def tool_update_trigger(self, trigger_id: int, fields: Dict = None) -> str:
+    def tool_update_trigger(self, trigger_id: int, fields: Dict = None, confirm: bool = False) -> str:
         """Edit a trigger's name/description and event settings."""
         return self._call(
             "Update trigger", self.automation_handler.update,
-            entity_type="trigger", entity_id=trigger_id, fields=fields
+            entity_type="trigger", entity_id=trigger_id, fields=fields, confirm=confirm
         )
 
-    def tool_update_schedule(self, schedule_id: int, fields: Dict = None) -> str:
+    def tool_update_schedule(self, schedule_id: int, fields: Dict = None, confirm: bool = False) -> str:
         """Edit a schedule's name/description."""
         return self._call(
             "Update schedule", self.automation_handler.update,
-            entity_type="schedule", entity_id=schedule_id, fields=fields
+            entity_type="schedule", entity_id=schedule_id, fields=fields, confirm=confirm
         )
 
-    def tool_update_action_group(self, action_group_id: int, fields: Dict = None) -> str:
+    def tool_update_action_group(
+        self, action_group_id: int, fields: Dict = None, confirm: bool = False
+    ) -> str:
         """Edit an action group's name/description."""
         return self._call(
             "Update action group", self.automation_handler.update,
-            entity_type="action_group", entity_id=action_group_id, fields=fields
+            entity_type="action_group", entity_id=action_group_id, fields=fields, confirm=confirm
+        )
+
+    def tool_manage_tags(
+        self, action: str, tag: str, new_tag: str = None, color: str = None,
+        confirm: bool = False
+    ) -> str:
+        """Create, rename/recolor, or delete a tag in Indigo's tag library."""
+        return self._call(
+            "Manage tags", self.tag_handler.manage_tags,
+            action=action, tag=tag, new_tag=new_tag, color=color, confirm=confirm
+        )
+
+    def tool_tag_objects(
+        self, tag: str, action: str, objects: List[Dict] = None,
+        dry_run: bool = False, confirm: bool = False
+    ) -> str:
+        """Put a tag on, or take it off, objects of any type."""
+        return self._call(
+            "Tag objects", self.tag_handler.tag_objects,
+            tag=tag, action=action, objects=objects, dry_run=dry_run, confirm=confirm
         )
 
     # Event subscription wrapper methods

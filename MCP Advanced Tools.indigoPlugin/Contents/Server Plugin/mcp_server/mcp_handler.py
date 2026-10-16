@@ -35,6 +35,7 @@ from .tool_wrappers import ToolWrappers
 from .tools.automation import AutomationHandler
 from .tools.log_search import LogSearchHandler
 from .tools.search_entities import SearchEntitiesHandler
+from .tools.tags import TagHandler
 
 
 class MCPHandler:
@@ -54,8 +55,12 @@ class MCPHandler:
         "steps, condition trees and reverse references (get_*_details, "
         "find_automation_references); event investigation and full event-log "
         "history (investigate_event, query_event_log); automation lifecycle "
-        "and edits (control_*, update_*); event webhooks when enabled; "
-        "and tools provided by other Indigo plugins."
+        "and edits (control_*, update_*); creating, editing and assigning "
+        "Indigo tags (manage_tags, tag_objects; MCP Control's list_tags reads "
+        "them); event webhooks when enabled; and tools provided by other "
+        "Indigo plugins. An element carrying the house's confirmation tag "
+        "(default ask-first) answers requires_confirmation: confirm only when "
+        "the user asked for that specific change."
     )
 
     # Legacy (session-based) protocol versions, newest first. Aliased here for
@@ -78,6 +83,8 @@ class MCPHandler:
         subscription_handler: "Optional[SubscriptionHandler]" = None,
         server_version: str = "unknown",
         automation_delete_supplier=None,
+        tag_delete_supplier=None,
+        confirm_tag_supplier=None,
         external_tool_manager=None,
         provider_scan_supplier: Optional[Callable[[], bool]] = None,
         clock: Callable[[], float] = time.monotonic,
@@ -92,6 +99,10 @@ class MCPHandler:
             server_version: Plugin version reported in serverInfo
             automation_delete_supplier: Callable returning whether the
                 "allow AI to delete automations" preference is on (checked per call)
+            tag_delete_supplier: Callable returning whether the "allow AI to
+                delete tags" preference is on (checked per call)
+            confirm_tag_supplier: Callable returning the confirmation tag name
+                ('' for none); elements carrying it need confirm=true
             external_tool_manager: Optional ExternalToolManager serving
                 plugin-provided tools; without one, behavior is identical to
                 a build without the feature
@@ -106,6 +117,8 @@ class MCPHandler:
         self.subscription_handler = subscription_handler
         self.server_version = server_version
         self.automation_delete_supplier = automation_delete_supplier or (lambda: False)
+        self.tag_delete_supplier = tag_delete_supplier or (lambda: False)
+        self.confirm_tag_supplier = confirm_tag_supplier or (lambda: "")
         self.external_tool_manager = external_tool_manager
         self.provider_scan_supplier = provider_scan_supplier
         self._clock = clock
@@ -175,6 +188,13 @@ class MCPHandler:
             structure_store=self.structure_store,
             logger=self.logger,
             delete_enabled_supplier=self.automation_delete_supplier,
+            confirm_tag_supplier=self.confirm_tag_supplier,
+        )
+        self.tag_handler = TagHandler(
+            data_provider=self.data_provider,
+            logger=self.logger,
+            delete_enabled_supplier=self.tag_delete_supplier,
+            confirm_tag_supplier=self.confirm_tag_supplier,
         )
         self.log_search_handler = LogSearchHandler(
             data_provider=self.data_provider,
@@ -192,7 +212,8 @@ class MCPHandler:
             automation_handler=self.automation_handler,
             log_search_handler=self.log_search_handler,
             subscription_handler=self.subscription_handler,
-            logger=self.logger
+            logger=self.logger,
+            tag_handler=self.tag_handler,
         )
     
     def stop(self):
@@ -695,6 +716,8 @@ class MCPHandler:
             "update_trigger": self.tool_wrappers.tool_update_trigger,
             "update_schedule": self.tool_wrappers.tool_update_schedule,
             "update_action_group": self.tool_wrappers.tool_update_action_group,
+            "manage_tags": self.tool_wrappers.tool_manage_tags,
+            "tag_objects": self.tool_wrappers.tool_tag_objects,
         }
 
         # Event subscription tools (only when webhooks are enabled)
