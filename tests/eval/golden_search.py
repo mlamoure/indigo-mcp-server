@@ -108,7 +108,7 @@ class LocalBackend:
     """The plugin's own VectorStore + QueryParser against a local index."""
 
     def __init__(self, db_path: str, key: str, expand: bool):
-        plugin = Path(__file__).resolve().parents[2] / "MCP Server.indigoPlugin/Contents/Server Plugin"
+        plugin = Path(__file__).resolve().parents[2] / "MCP Advanced Tools.indigoPlugin/Contents/Server Plugin"
         sys.path.insert(0, str(plugin))
         os.environ["OPENAI_API_KEY"] = key
         os.environ.setdefault("SMALL_MODEL", "gpt-6-luna")

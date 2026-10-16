@@ -4,8 +4,7 @@ Contract tests for ToolWrappers.
 These pin the wrapper-layer behavior that the MCP dispatch relies on:
 - every wrapper returns a JSON string,
 - handler exceptions become {"error": ...} payloads (never raise),
-- per-tool extra error fields (query, device_type) are preserved,
-- get_*_by_id None results become "not found" errors,
+- per-tool extra error fields (query) are preserved,
 - and crucially: calling a wrapper with a wrong keyword argument raises
   TypeError OUT of the wrapper — mcp_handler routes that TypeError to an
   MCP "Tool Execution Error" (isError) result so the model can self-correct.
@@ -18,7 +17,7 @@ import sys
 from pathlib import Path
 
 # Add plugin to path
-plugin_path = Path(__file__).parent.parent / "MCP Server.indigoPlugin/Contents/Server Plugin"
+plugin_path = Path(__file__).parent.parent / "MCP Advanced Tools.indigoPlugin/Contents/Server Plugin"
 sys.path.insert(0, str(plugin_path))
 
 from mcp_server.tool_wrappers import ToolWrappers
@@ -28,16 +27,6 @@ def make_wrappers(**overrides):
     """Build a ToolWrappers with Mock handlers (override any by name)."""
     kwargs = dict(
         search_handler=Mock(),
-        get_devices_by_type_handler=Mock(),
-        device_control_handler=Mock(),
-        rgb_control_handler=Mock(),
-        thermostat_control_handler=Mock(),
-        variable_control_handler=Mock(),
-        action_control_handler=Mock(),
-        historical_analysis_handler=Mock(),
-        list_handlers=Mock(),
-        plugin_control_handler=Mock(),
-        data_provider=Mock(),
         automation_handler=Mock(),
         log_search_handler=Mock(),
         subscription_handler=Mock(),
@@ -52,46 +41,32 @@ class TestReturnContract:
 
     def test_success_returns_json_string(self):
         wrappers = make_wrappers()
-        wrappers.device_control_handler.turn_on.return_value = {"success": True, "device_id": 1}
+        wrappers.automation_handler.get_details.return_value = {"id": 1, "name": "T"}
 
-        result = wrappers.tool_device_turn_on(1)
+        result = wrappers.tool_get_trigger_details(1)
 
         assert isinstance(result, str)
-        assert json.loads(result) == {"success": True, "device_id": 1}
+        assert json.loads(result) == {"id": 1, "name": "T"}
 
     def test_all_simple_wrappers_return_json_string(self):
         wrappers = make_wrappers()
         calls = [
-            (wrappers.tool_device_turn_on, (1,)),
-            (wrappers.tool_device_turn_off, (1,)),
-            (wrappers.tool_device_set_brightness, (1, 0.5)),
-            (wrappers.tool_device_set_rgb_color, (1, 255, 0, 0)),
-            (wrappers.tool_device_set_rgb_percent, (1, 100.0, 0.0, 0.0)),
-            (wrappers.tool_device_set_hex_color, (1, "#ff0000")),
-            (wrappers.tool_device_set_named_color, (1, "red")),
-            (wrappers.tool_device_set_white_levels, (1,)),
-            (wrappers.tool_thermostat_set_heat_setpoint, (1, 68.0)),
-            (wrappers.tool_thermostat_set_cool_setpoint, (1, 75.0)),
-            (wrappers.tool_thermostat_set_hvac_mode, (1, "heat")),
-            (wrappers.tool_thermostat_set_fan_mode, (1, "auto")),
-            (wrappers.tool_variable_update, (1, "x")),
-            (wrappers.tool_variable_create, ("name",)),
-            (wrappers.tool_action_execute_group, (1,)),
-            (wrappers.tool_analyze_historical_data, ("q", ["d"])),
-            (wrappers.tool_list_devices, ()),
-            (wrappers.tool_list_variables, ()),
-            (wrappers.tool_list_action_groups, ()),
-            (wrappers.tool_list_variable_folders, ()),
             (wrappers.tool_query_event_log, ()),
-            (wrappers.tool_list_plugins, ()),
-            (wrappers.tool_get_plugin_by_id, ("a.b",)),
-            (wrappers.tool_restart_plugin, ("a.b",)),
-            (wrappers.tool_get_plugin_status, ("a.b",)),
+            (wrappers.tool_list_triggers, ()),
+            (wrappers.tool_list_schedules, ()),
+            (wrappers.tool_get_trigger_details, (1,)),
+            (wrappers.tool_get_schedule_details, (1,)),
+            (wrappers.tool_get_action_group_details, (1,)),
+            (wrappers.tool_find_automation_references, ("device", 1)),
+            (wrappers.tool_investigate_event, ()),
+            (wrappers.tool_control_trigger, (1, "enable")),
+            (wrappers.tool_control_schedule, (1, "disable")),
+            (wrappers.tool_control_action_group, (1, "duplicate")),
+            (wrappers.tool_update_trigger, (1, {"name": "x"})),
+            (wrappers.tool_update_schedule, (1, {"name": "x"})),
+            (wrappers.tool_update_action_group, (1, {"name": "x"})),
             (wrappers.tool_list_event_subscriptions, ()),
             (wrappers.tool_delete_event_subscription, ("01ABC",)),
-            (wrappers.resource_list_devices, ()),
-            (wrappers.resource_list_variables, ()),
-            (wrappers.resource_list_actions, ()),
         ]
         for fn, args in calls:
             result = fn(*args)
@@ -104,9 +79,9 @@ class TestErrorContract:
 
     def test_handler_exception_becomes_error_payload(self):
         wrappers = make_wrappers()
-        wrappers.device_control_handler.turn_on.side_effect = RuntimeError("boom")
+        wrappers.automation_handler.control.side_effect = RuntimeError("boom")
 
-        payload = json.loads(wrappers.tool_device_turn_on(1))
+        payload = json.loads(wrappers.tool_control_trigger(1, "enable"))
 
         assert payload["error"] == "boom"
 
@@ -118,15 +93,6 @@ class TestErrorContract:
 
         assert payload["error"] == "index down"
         assert payload["query"] == "kitchen"
-
-    def test_get_devices_by_type_error_preserves_device_type(self):
-        wrappers = make_wrappers()
-        wrappers.get_devices_by_type_handler.get_devices.side_effect = RuntimeError("nope")
-
-        payload = json.loads(wrappers.tool_get_devices_by_type("dimmer"))
-
-        assert payload["error"] == "nope"
-        assert payload["device_type"] == "dimmer"
 
     def test_invalid_device_type_error_includes_suggestions_context(self):
         wrappers = make_wrappers()
@@ -146,41 +112,25 @@ class TestErrorContract:
         wrappers.search_handler.search.assert_not_called()
 
 
-class TestNotFoundContract:
-    """get_*_by_id / resource_get_* None results become not-found errors."""
+class TestControlActionGroup:
+    """control_action_group has no execute and no delay (MCP Control runs action groups)."""
 
-    def test_get_device_by_id_not_found(self):
+    def test_duplicate_reaches_the_automation_handler(self):
         wrappers = make_wrappers()
-        wrappers.data_provider.get_device.return_value = None
+        wrappers.automation_handler.control.return_value = {"success": True}
 
-        payload = json.loads(wrappers.tool_get_device_by_id(42))
+        wrappers.tool_control_action_group(7, "duplicate", duplicate_name="Copy")
 
-        assert "not found" in payload["error"]
+        kwargs = wrappers.automation_handler.control.call_args.kwargs
+        assert kwargs["entity_type"] == "action_group"
+        assert kwargs["action"] == "duplicate"
+        assert kwargs["delay_seconds"] is None
 
-    def test_get_variable_by_id_not_found(self):
+    def test_delay_seconds_is_not_accepted(self):
         wrappers = make_wrappers()
-        wrappers.data_provider.get_variable.return_value = None
 
-        payload = json.loads(wrappers.tool_get_variable_by_id(42))
-
-        assert "not found" in payload["error"]
-
-    def test_get_action_group_by_id_not_found(self):
-        wrappers = make_wrappers()
-        wrappers.data_provider.get_action_group.return_value = None
-
-        payload = json.loads(wrappers.tool_get_action_group_by_id(42))
-
-        assert "not found" in payload["error"]
-
-    def test_resource_get_device_coerces_string_id(self):
-        wrappers = make_wrappers()
-        wrappers.data_provider.get_device.return_value = {"id": 42}
-
-        payload = json.loads(wrappers.resource_get_device("42"))
-
-        wrappers.data_provider.get_device.assert_called_once_with(42)
-        assert payload == {"id": 42}
+        with pytest.raises(TypeError):
+            wrappers.tool_control_action_group(7, "duplicate", delay_seconds=30)
 
 
 class TestTypeErrorEscapes:
@@ -195,10 +145,10 @@ class TestTypeErrorEscapes:
         wrappers = make_wrappers()
 
         with pytest.raises(TypeError):
-            wrappers.tool_device_turn_on(device_idd=1)
+            wrappers.tool_get_trigger_details(trigger_idd=1)
 
     def test_missing_required_arg_raises_typeerror(self):
         wrappers = make_wrappers()
 
         with pytest.raises(TypeError):
-            wrappers.tool_thermostat_set_heat_setpoint(device_id=1)
+            wrappers.tool_find_automation_references(entity_type="device")

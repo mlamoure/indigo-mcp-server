@@ -6,7 +6,7 @@
   ],
   "packageRules": [
     {
-      "description": "CI Python must match the interpreter Indigo bundles, not the newest release. This plugin only ever runs inside Indigo's embedded Python -- Indigo 2025.2 ships Python 3.13 (docs.indigodomo.com, and the header comment in requirements.txt) -- so testing on 3.14 would prove nothing about production. Bump the workflow's python-version by hand when Perceptive Automation ships a new Python with Indigo.",
+      "description": "CI Python must match the interpreter Indigo bundles, not the newest release. This plugin only ever runs inside Indigo's embedded Python -- Indigo 2025.2 and 2026.1 both ship Python 3.13 (Indigo's docs, and the header comment in requirements.txt) -- so testing on 3.14 would prove nothing about production. Bump the workflow's python-version by hand when Perceptive Automation ships a new Python with Indigo.",
       "matchManagers": [
         "github-actions"
       ],

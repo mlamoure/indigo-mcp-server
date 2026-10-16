@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-PLUGIN_SRC = Path(__file__).parent.parent / "MCP Server.indigoPlugin/Contents/Server Plugin"
+PLUGIN_SRC = Path(__file__).parent.parent / "MCP Advanced Tools.indigoPlugin/Contents/Server Plugin"
 BASE = PLUGIN_SRC / "mcp_server"
 
 

@@ -5,7 +5,7 @@ Tests for Subscription.to_dict / from_dict round-trip (used for persistence).
 import sys
 from pathlib import Path
 
-plugin_path = Path(__file__).parent.parent / "MCP Server.indigoPlugin/Contents/Server Plugin"
+plugin_path = Path(__file__).parent.parent / "MCP Advanced Tools.indigoPlugin/Contents/Server Plugin"
 sys.path.insert(0, str(plugin_path))
 
 from mcp_server.events.subscription_model import Subscription

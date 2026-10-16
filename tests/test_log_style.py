@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 # Add plugin to path
-plugin_path = Path(__file__).parent.parent / "MCP Server.indigoPlugin/Contents/Server Plugin"
+plugin_path = Path(__file__).parent.parent / "MCP Advanced Tools.indigoPlugin/Contents/Server Plugin"
 sys.path.insert(0, str(plugin_path))
 
 # conftest installs MagicMock package stubs for mcp_server.common, so a

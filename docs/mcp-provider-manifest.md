@@ -1,22 +1,23 @@
 # MCP Provider Manifest — contributing tools from your Indigo plugin
 
-Any Indigo plugin can contribute tools to the Indigo MCP Server (v2026.8.1+),
+Any Indigo plugin can contribute tools to MCP Advanced Tools (formerly the MCP
+Server plugin; v2026.8.1+),
 making its functionality available to AI assistants as first-class, typed MCP
 tools. A provider needs three things: a **manifest file**, a **hidden action**,
 and (recommended) a **startup broadcast**. No MCP protocol knowledge is
-required — the MCP Server handles discovery, tool listing, and dispatch.
+required — MCP Advanced Tools handles discovery, tool listing, and dispatch.
 
 Reference implementation: the [Auto Lights plugin](https://github.com/mlamoure/indigo-auto-lights)
 (`com.vtmikel.autolights`), which contributes 15 config-authoring tools.
 
-## No MCP Server? No problem
+## No MCP Advanced Tools? No problem
 
-**A provider plugin must work perfectly for users who do not have the MCP
-Server plugin installed** — and does, when built as described here:
+**A provider plugin must work perfectly for users who do not have MCP
+Advanced Tools installed** — and does, when built as described here:
 
-1. The manifest is inert data. Nothing reads it unless the MCP Server is
+1. The manifest is inert data. Nothing reads it unless MCP Advanced Tools is
    installed and scans for it.
-2. The hidden action is only ever called by the MCP Server. Import your
+2. The hidden action is only ever called by MCP Advanced Tools. Import your
    tool-handler modules **lazily inside the action callback**, never at plugin
    import/startup time — then a bug in tool code can never break normal plugin
    startup.
@@ -24,7 +25,7 @@ Server plugin installed** — and does, when built as described here:
    try/except anyway so it can never affect startup.
 
 Net: zero hard dependency, zero errors, zero behavior change for users without
-the MCP Server.
+MCP Advanced Tools.
 
 ## 1. The manifest file
 
@@ -72,22 +73,22 @@ Ship `Contents/Resources/mcp-manifest.json` in your plugin bundle:
 | `provider.plugin_id` | yes | Must equal your bundle's `CFBundleIdentifier`. A mismatch rejects the whole manifest (spoof guard). |
 | `provider.display_name` | no | Shown in logs and appended to tool descriptions. Defaults to the plugin id. |
 | `tool_prefix` | no | Optional override, `^[a-z][a-z0-9_]{0,31}$`. Defaults to the last dot-segment of your plugin id, snake-cased. |
-| `invoke_action_id` | no | The hidden action the MCP Server calls. Default `mcp_tool_invoke`. Per-tool `action_id` overrides are allowed. |
+| `invoke_action_id` | no | The hidden action MCP Advanced Tools calls. Default `mcp_tool_invoke`. Per-tool `action_id` overrides are allowed. |
 | `tools[].name` | yes | `^[a-z][a-z0-9_]{0,40}$`, unique within the manifest. |
 | `tools[].description` | yes | Shown to AI clients. Describe behavior, side effects, and argument semantics — the AI relies on this. |
 | `tools[].inputSchema` | yes | A real JSON Schema object with `"type": "object"`; served to MCP clients verbatim. Good schemas (types, enums, descriptions, `required`) are what let the AI call your tool correctly and self-correct. |
-| `tools[].write` | no | Whether the tool changes state. **Defaults to `true`** (fail safe): write tools are refused when the user unchecks "Allow plugin-provided tools to make changes" in the MCP Server config. |
+| `tools[].write` | no | Whether the tool changes state. **Defaults to `true`** (fail safe): write tools are refused when the user unchecks "Allow plugin-provided tools to make changes" in the MCP Advanced Tools config. |
 | `tools[].timeout_seconds` | no | Dispatch deadline, clamped to 5–120. Default 30. |
 
 ### Tool naming — enforced prefixes
 
 Every exposed tool name is **always** `{prefix}_{name}` (e.g.
 `myplugin_get_status`). There is no opt-out: the prefix is computed and
-enforced by the MCP Server, never trusted from the manifest. Prefixes are
+enforced by MCP Advanced Tools, never trusted from the manifest. Prefixes are
 claimed **first-come across providers**: if a second plugin declares a prefix
 another plugin already holds, its whole manifest is rejected with an ERROR
-naming both plugin ids. Names that would collide with a built-in MCP Server
-tool are skipped.
+naming both plugin ids. Names that would collide with a built-in MCP Advanced
+Tools tool are skipped.
 
 ## 2. The invoke action
 
@@ -100,7 +101,7 @@ Declare a hidden action in `Actions.xml`:
 </Action>
 ```
 
-The MCP Server calls it via
+MCP Advanced Tools calls it via
 `plugin.executeAction("mcp_tool_invoke", props={"tool": <bare name>, "arguments": <JSON string>}, waitUntilDone=True)`.
 
 Your handler receives the bare tool name (no prefix) and the arguments as a
@@ -111,7 +112,7 @@ values or `$`-prefixed keys), and must return a **JSON string** envelope:
 def handle_mcp_tool_invoke(self, action, dev=None, caller_waiting_for_result=True):
     import json
     try:
-        from my_tools import dispatch  # lazy import — see "No MCP Server? No problem"
+        from my_tools import dispatch  # lazy import — see "No MCP Advanced Tools? No problem"
         tool = action.props.get("tool", "")
         arguments = json.loads(action.props.get("arguments", "{}"))
         return dispatch(tool, arguments)  # returns the JSON-string envelope
@@ -152,19 +153,19 @@ def startup(self):
         pass
 ```
 
-The MCP Server subscribes to this key from every installed plugin (and from any
+MCP Advanced Tools subscribes to this key from every installed plugin (and from any
 plugin id the user has allowlisted, installed or not), and re-reads your manifest
 on receipt, so your tools register (or refresh after an update) the moment your
-plugin starts — no MCP Server restart needed, and no allowlist entry on the MCP
-Server side. That includes a provider upgrade that adds a manifest to an
-already-installed plugin. A plugin installed for the first time while the MCP
-Server is running is subscribed to on the next `tools/list` (checked at most once
+plugin starts — no MCP Advanced Tools restart needed, and no allowlist entry on
+its side. That includes a provider upgrade that adds a manifest to an
+already-installed plugin. A plugin installed for the first time while MCP
+Advanced Tools is running is subscribed to on the next `tools/list` (checked at most once
 a minute), which also registers its tools. Also broadcast the key any time your
 effective tool set changes at runtime. Without the broadcast, tools are still
-picked up at MCP Server startup or via its "Rescan Plugin-Provided MCP Tools"
+picked up at MCP Advanced Tools startup or via its "Rescan Plugin-Provided MCP Tools"
 menu item.
 
-The MCP Server's plugin config can exclude providers ("Plugins that may provide
+MCP Advanced Tools' plugin config can exclude providers ("Plugins that may provide
 MCP tools": all, an allowlist or a blocklist). An excluded provider's manifest is
 ignored entirely — its tools are not listed and its invoke action is never
 called — so a provider needs no special handling for it.
@@ -176,13 +177,13 @@ called — so a provider needs no special handling for it.
   plugin's UI interactions. Stay well under your declared `timeout_seconds`;
   for anything slow (hardware, network), acquire
   `indigo.acquireCallbackCompleteHandler()` and finish on a worker thread.
-- **Never call back into the MCP Server synchronously.** A tool handler must
+- **Never call back into MCP Advanced Tools synchronously.** A tool handler must
   not `executeAction` into `com.vtmikel.mcp_server` with `waitUntilDone=True`:
-  the MCP Server may be blocked waiting on *you*, `executeAction` has no
+  MCP Advanced Tools may be blocked waiting on *you*, `executeAction` has no
   timeout, and the resulting mutual deadlock does not self-heal.
 - **Validate your inputs.** Calls do not pass through your ConfigUI validation.
   Validate every argument in the handler and return `validation` errors with
   precise messages — that is what lets the AI correct itself.
-- **Timeouts are real.** If your handler exceeds its `timeout_seconds`, the MCP
-  Server abandons the call (your handler keeps running to completion) and
+- **Timeouts are real.** If your handler exceeds its `timeout_seconds`, MCP
+  Advanced Tools abandons the call (your handler keeps running to completion) and
   reports a timeout to the AI.

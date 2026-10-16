@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-plugin_path = Path(__file__).parent.parent / "MCP Server.indigoPlugin/Contents/Server Plugin"
+plugin_path = Path(__file__).parent.parent / "MCP Advanced Tools.indigoPlugin/Contents/Server Plugin"
 sys.path.insert(0, str(plugin_path))
 
 from mcp_server.external_tools.manifest import (

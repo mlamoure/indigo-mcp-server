@@ -15,7 +15,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-plugin_path = Path(__file__).parent.parent / "MCP Server.indigoPlugin/Contents/Server Plugin"
+plugin_path = Path(__file__).parent.parent / "MCP Advanced Tools.indigoPlugin/Contents/Server Plugin"
 sys.path.insert(0, str(plugin_path))
 
 # Import everything plugin.py imports BEFORE it is loaded with a fake
@@ -203,7 +203,7 @@ def test_describe_policy_result_lines():
 def test_plugin_list_options_labels_sorting_and_self_excluded():
     installed = [
         ("com.vtmikel.roomie", "Roomie Remote", True),
-        (SELF_ID, "MCP Server", True),
+        (SELF_ID, "MCP Advanced Tools", True),
         ("com.vtmikel.autofan", "Auto Fan", True),
         ("com.vtmikel.dometic", "Dometic CFX", False),
         ("com.vtmikel.autolights", "Auto Lights", True),
@@ -351,7 +351,7 @@ def test_tools_call_on_blocked_tool_returns_config_message():
     assert reply["error"]["code"] == -32602
     assert reply["error"]["message"] == (
         "Tool 'roomie_press_button' is provided by Roomie Remote, which is blocked "
-        "in the MCP Server plugin config (\"Plugins that may provide MCP tools\")."
+        "in the MCP Advanced Tools plugin config (\"Plugins that may provide MCP tools\")."
     )
 
     unknown = handler._handle_tools_call(8, {"name": "nope_tool", "arguments": {}})
@@ -505,7 +505,7 @@ def test_subscriptions_cover_installed_and_allowlist_without_duplicates(plugin_m
     installed = [
         FakePlugin("com.vtmikel.autolights", "Auto Lights"),
         FakePlugin("com.vtmikel.roomie", "Roomie Remote", enabled=False),
-        FakePlugin(SELF_ID, "MCP Server"),
+        FakePlugin(SELF_ID, "MCP Advanced Tools"),
     ]
     plugin = make_plugin(plugin_module, installed, allowlist=["com.example.future"])
     server = plugin_module.indigo.server
@@ -542,7 +542,7 @@ def test_failed_subscription_is_retried(plugin_module):
 def test_external_tool_plugin_list_method(plugin_module):
     installed = [
         FakePlugin("com.vtmikel.roomie", "Roomie Remote"),
-        FakePlugin(SELF_ID, "MCP Server"),
+        FakePlugin(SELF_ID, "MCP Advanced Tools"),
         FakePlugin("com.vtmikel.dometic", "Dometic CFX", enabled=False),
         FakePlugin("com.vtmikel.autolights", "Auto Lights"),
     ]
@@ -588,5 +588,32 @@ def test_apply_policy_swaps_registry_and_logs_result(plugin_module):
     reply = plugin.mcp_handler._handle_tools_call(
         1, {"name": "roomie_list_rooms", "arguments": {}}
     )
-    assert "blocked in the MCP Server plugin config" in reply["error"]["message"]
+    assert "blocked in the MCP Advanced Tools plugin config" in reply["error"]["message"]
     assert json.dumps(reply)  # serializable
+
+
+def test_retired_influxdb_prefs_are_removed(plugin_module):
+    plugin = make_plugin(plugin_module, [])
+    plugin.pluginPrefs = {
+        "openai_api_key": "k",
+        "enable_influxdb": True,
+        "influx_url": "https://influx.example.com",
+        "influx_password": "secret-token",
+        "influx_database": "indigo",
+    }
+
+    plugin._drop_retired_prefs()
+
+    assert plugin.pluginPrefs == {"openai_api_key": "k"}
+    plugin_module.indigo.server.savePluginPrefs.assert_called_once()
+    assert plugin.logger.info.called
+
+
+def test_no_retired_prefs_means_no_save(plugin_module):
+    plugin = make_plugin(plugin_module, [])
+    plugin.pluginPrefs = {"openai_api_key": "k"}
+
+    plugin._drop_retired_prefs()
+
+    assert plugin.pluginPrefs == {"openai_api_key": "k"}
+    plugin_module.indigo.server.savePluginPrefs.assert_not_called()

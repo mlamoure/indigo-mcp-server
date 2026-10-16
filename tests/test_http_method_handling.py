@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 # Add plugin to path
-plugin_path = Path(__file__).parent.parent / "MCP Server.indigoPlugin/Contents/Server Plugin"
+plugin_path = Path(__file__).parent.parent / "MCP Advanced Tools.indigoPlugin/Contents/Server Plugin"
 sys.path.insert(0, str(plugin_path))
 
 from mcp_server.mcp_handler import MCPHandler
@@ -59,7 +59,7 @@ class TestHTTPMethodHandling:
         assert session_id
         assert session_id in handler._sessions
         result = json.loads(response["content"])
-        assert result["result"]["serverInfo"]["name"] == "Indigo MCP Server"
+        assert result["result"]["serverInfo"]["name"] == "MCP Advanced Tools"
 
     @patch('mcp_server.mcp_handler.VectorStoreManager')
     def test_server_info_reports_injected_version(self, mock_vsm):

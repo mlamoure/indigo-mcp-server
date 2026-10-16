@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 # Base path for plugin source
-PLUGIN_SRC = Path(__file__).parent.parent / "MCP Server.indigoPlugin/Contents/Server Plugin"
+PLUGIN_SRC = Path(__file__).parent.parent / "MCP Advanced Tools.indigoPlugin/Contents/Server Plugin"
 
 
 def _load_module_from_file(name: str, file_path: Path):

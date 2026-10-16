@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-plugin_path = Path(__file__).parent.parent / "MCP Server.indigoPlugin/Contents/Server Plugin"
+plugin_path = Path(__file__).parent.parent / "MCP Advanced Tools.indigoPlugin/Contents/Server Plugin"
 sys.path.insert(0, str(plugin_path))
 
 import mcp_server.adapters.indigo_data_provider as idp_module  # noqa: E402
@@ -227,10 +227,10 @@ class TestGetDependencies:
 class TestServerPaths:
     def test_paths(self, provider):
         fake = Mock()
-        fake.server.getDbFilePath.return_value = "/x/Westwood.indiDb"
+        fake.server.getDbFilePath.return_value = "/x/Home.indiDb"
         fake.server.getLogsFolderPath.return_value = "/x/Logs"
         with with_indigo(fake):
-            assert provider.get_db_file_path() == "/x/Westwood.indiDb"
+            assert provider.get_db_file_path() == "/x/Home.indiDb"
             assert provider.get_logs_folder_path() == "/x/Logs"
 
     def test_exception_returns_none(self, provider):

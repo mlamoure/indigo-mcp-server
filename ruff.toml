@@ -6,4 +6,4 @@ select = ["E9", "F"]
 
 # `indigo` is injected by the Indigo plugin host at runtime
 [lint.per-file-ignores]
-"MCP Server.indigoPlugin/Contents/Server Plugin/plugin.py" = ["F821"]
+"MCP Advanced Tools.indigoPlugin/Contents/Server Plugin/plugin.py" = ["F821"]

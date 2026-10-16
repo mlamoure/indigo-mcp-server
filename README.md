@@ -1,44 +1,76 @@
-# Indigo MCP Server Plugin
+# MCP Advanced Tools for Indigo
 
-A Model Context Protocol (MCP) server plugin that lets AI assistants like Claude search, understand, and
-control your [Indigo](https://www.indigodomo.com/) home automation system through natural language.
+> **Beta: 2026.11.0.** This is a beta for **Indigo 2026.1**. It works *alongside* Indigo's built-in
+> MCP server, **MCP Control**. On Indigo 2025.2, stay on **MCP Server 2026.10.1**: that release still
+> includes the tools this beta removes.
+
+Indigo 2026.1 ships its own Model Context Protocol (MCP) server, MCP Control, which lets an AI assistant
+run your home: control devices, set variables, run action groups. It deliberately stops there. It doesn't
+look inside your automations or your history, and it only sees what you have published for remote display.
+
+MCP Advanced Tools (formerly the **MCP Server** plugin) is the companion that covers the rest. Connect
+both servers to your AI client (see
+[Use it with Indigo MCP Control](#use-it-with-indigo-mcp-control)):
+
+- **Search everything**: natural-language search across devices, variables, action groups, triggers and
+  schedules, including the ones not published for remote display.
+- **See inside automations**: every action step and condition tree of a trigger, schedule or action group,
+  plus reverse references ("what could turn this light on?").
+- **Investigate**: "what caused this?" for a device change, and full historical event-log search.
+- **History** comes from the Grafana Home Dashboard plugin: its `influxlog_query_history` tool is listed
+  here as a [plugin-provided tool](#plugin-provided-tools-v202681) while that plugin is installed.
+- **Manage automations**: enable/disable (with timed auto-revert), duplicate, move, delete, and edit
+  names, descriptions and trigger event settings.
+- **Event webhooks**: outbound push notifications when device or variable conditions match.
+- **Plugin-provided tools**: tools that other Indigo plugins contribute.
+
+Example questions:
 
 - "Find all light switches in the bedroom"
-- "What devices are currently on?"
-- "Turn on the garage lights" / "Execute the bedtime scene"
 - "What trigger turned off the porch light last night?"
+- "What could change the hallway thermostat?"
+- "Disable the motion trigger for two hours"
+
+## What's new in 2026.11.0 (beta)
+
+- **New name:** the MCP Server plugin is now **MCP Advanced Tools**. Existing installs upgrade in place:
+  same plugin id, endpoint, device, settings and plugin-provided tools.
+- **Works with Indigo MCP Control:** device control, variables, running action groups, triggers and
+  schedules, and plain listings and lookups moved to MCP Control, Indigo 2026.1's built-in MCP server
+  ([details](#moved-to-mcp-control-in-this-release)). A call to a removed tool name gets an error
+  naming its replacement.
+- **History moved** to the Grafana Home Dashboard plugin's `influxlog_query_history` tool
+  ([details](#moved-to-another-plugin)). The InfluxDB settings are gone from this plugin.
+- **Requires Indigo 2026.1.** On Indigo 2025.2, stay on MCP Server 2026.10.1.
 
 ## Requirements
 
-- **Indigo Domotics** 2025.2 or later (ships Python 3.13)
-- **macOS** 10.15 (Catalina) or later
-- **Apple Silicon** (M-series) only — LanceDB 0.30+ no longer ships Intel Mac wheels
+- **Indigo Domotics** 2026.1 or later (plugin API 3.9; ships Python 3.13). On Indigo 2025.2, stay on MCP
+  Server 2026.10.1.
+- **Apple Silicon** (M-series) only: LanceDB 0.30+ no longer ships Intel Mac wheels.
 - **OpenAI API key** for semantic search ([get one](https://platform.openai.com/api-keys)). Only device
-  names, types, and descriptions are sent, to generate embeddings (minimal cost) — see
+  names, types, and descriptions are sent, to generate embeddings (minimal cost). See
   [Privacy & Security](#privacy--security).
 - **Node.js** (for Claude Desktop only, which connects via `npx mcp-remote`): `brew install node`
 
 ## Installation
 
-1. Install the **MCP Server** plugin in Indigo via the Plugin Manager.
+1. Install the **MCP Advanced Tools** plugin in Indigo via the Plugin Manager.
 2. Enter your **OpenAI API key** in the plugin's preferences.
-3. Add a new **MCP Server** device in Indigo (this creates the actual server; one per install).
+3. Add a new **MCP Advanced Tools** device in Indigo (this creates the actual server; one per install).
 4. Wait for the plugin to **index your database** — the first run takes a minute or two (longer for
    very large databases). The index rebuilds itself the same way after an upgrade that changes it.
 5. **Connect an MCP client** — see below.
 
 Optional integrations, all off by default:
 
-- **InfluxDB** — required for the `analyze_historical_data` tool. Works with InfluxDB 1.x and
-  InfluxDB 3 (via its v1-compatibility API): use an `https://` URL to enable TLS, and for v3 enter a
-  database token as the password (the username is ignored by v3).
 - **Event Webhooks** — real-time outbound push notifications; requires a server you run, **not** stock
   Claude Desktop. See [Event Subscriptions & Webhooks](#event-subscriptions--webhooks). *(v2026.1.0)*
 - **LangSmith** — AI prompt tracing for debugging; most people don't need it.
 
 The **Model** setting (default `gpt-6-luna`) picks the OpenAI model the plugin uses for its own small
-jobs: search keywords, search query expansion, and choosing history properties. Search embeddings
-always use `text-embedding-3-large`.
+jobs: search keywords and search query expansion. Search embeddings always use
+`text-embedding-3-large`.
 
 ## Connecting an MCP Client
 
@@ -74,7 +106,7 @@ settings (`.vscode/mcp.json`, Cursor MCP settings, or `~/.claude.json` / project
 ```json
 {
   "mcpServers": {
-    "indigo": {
+    "indigo-advanced-tools": {
       "type": "http",
       "url": "http://localhost:8176/message/com.vtmikel.mcp_server/mcp/",
       "headers": { "Authorization": "Bearer YOUR_API_KEY" }
@@ -91,7 +123,7 @@ Swap the `url` for the LAN or Reflector variant from the table above.
 ```json
 {
   "mcpServers": {
-    "indigo": {
+    "indigo-advanced-tools": {
       "command": "npx",
       "args": [
         "-y", "mcp-remote",
@@ -127,117 +159,171 @@ notifications) are not offered — Indigo Web Server plugin responses are one-sh
 SSE channel to deliver them on. `Origin`-header validation is likewise not enforced: the Indigo Web
 Server authenticates every request before the plugin sees it, which already defeats DNS rebinding.
 
+## Use it with Indigo MCP Control
+
+Connect **both** servers to your AI client. Both are served by the Indigo Web Server and accept the same
+Indigo API key or local secret:
+
+| Server | Endpoint path | Use it for |
+|--------|---------------|------------|
+| **Indigo MCP Control** (built into Indigo 2026.1) | `/v3/api/mcp` | controlling devices, setting and creating variables, running action groups, triggers and schedules now, listing and looking up objects, plugin status and restarts |
+| **This plugin** | `/message/com.vtmikel.mcp_server/mcp/` | search, automation internals and editing, investigation and event-log history, webhooks, plugin-provided tools |
+
+For a client with direct HTTP transport (VS Code, Cursor, Claude Code):
+
+```json
+{
+  "mcpServers": {
+    "indigo": {
+      "type": "http",
+      "url": "http://localhost:8176/v3/api/mcp",
+      "headers": { "Authorization": "Bearer YOUR_API_KEY" }
+    },
+    "indigo-advanced-tools": {
+      "type": "http",
+      "url": "http://localhost:8176/message/com.vtmikel.mcp_server/mcp/",
+      "headers": { "Authorization": "Bearer YOUR_API_KEY" }
+    }
+  }
+}
+```
+
+Both paths share one base URL: swap `http://localhost:8176` for the LAN or Reflector base from
+[Pick your endpoint URL](#2-pick-your-endpoint-url). Claude Desktop takes two `mcp-remote` entries the same
+way.
+
+Good to know:
+
+- **Visibility differs.** MCP Control only sees objects marked for remote display. This plugin's search
+  and automation tools see every object, so `search_entities` can find a device that MCP Control can't
+  control until you publish it.
+- **A few tool names exist on both servers** (`list_triggers`, `list_schedules`, `query_event_log`). Clients
+  keep each server's tools separate. This plugin's versions add trigger summaries, next execution times,
+  and full historical log search.
+- **The plugin tells clients about the split.** Both protocol eras carry server instructions naming MCP
+  Control for control. A call to a removed tool name (for example from a cached tool list) gets an error
+  that names its MCP Control replacement.
+
+### Moved to MCP Control in this release
+
+| Removed from this plugin | Use in Indigo MCP Control |
+|--------------------------|---------------------------|
+| `device_turn_on`, `device_turn_off` | `turn_on`, `turn_off` (also `toggle`) |
+| `device_set_brightness` | `set_brightness` (also `brighten`, `dim`) |
+| `device_set_rgb_color`, `device_set_rgb_percent`, `device_set_hex_color`, `device_set_named_color`, `device_set_white_levels` | `set_color` |
+| `thermostat_set_heat_setpoint`, `thermostat_set_cool_setpoint`, `thermostat_set_hvac_mode`, `thermostat_set_fan_mode` | `set_heat_setpoint`, `set_cool_setpoint`, `set_hvac_mode`, `set_fan_mode` |
+| `variable_update`, `variable_create` | `update_variable`, `create_variable` |
+| `action_execute_group` | `execute_action_group` (then `confirm` with the token it returns) |
+| `control_trigger` / `control_schedule` / `control_action_group` with `action: "execute"` | `execute_trigger` / `execute_schedule` / `execute_action_group` (then `confirm`) |
+| `list_devices`, `list_variables`, `list_action_groups`, `list_variable_folders` | `list_devices`, `list_variables`, `list_action_groups`, `list_folders` |
+| `get_devices_by_type`, `get_devices_by_state`, `get_device_by_id`, `get_variable_by_id`, `get_action_group_by_id` | the same names |
+| `list_plugins`, `get_plugin_by_id`, `get_plugin_status`, `restart_plugin` | `list_plugins`, `get_plugin`, `get_plugin_status`, `restart_plugin` |
+| MCP resources `indigo://devices`, `indigo://variables`, `indigo://actions`, `indigo://triggers`, `indigo://schedules` | MCP Control's `indigo://` resources |
+
+This plugin no longer publishes MCP resources and no longer advertises the resources capability.
+
+### Moved to another plugin
+
+| Removed from this plugin | Use instead |
+|--------------------------|-------------|
+| `analyze_historical_data` | `influxlog_query_history` from the Grafana Home Dashboard (InfluxDB logging) plugin, listed on this server as a plugin-provided tool |
+
+The InfluxDB settings are gone from this plugin's configuration; the Grafana Home Dashboard plugin uses
+its own InfluxDB connection.
+
 ## What's Possible
 
-What the plugin can and can't do with each kind of Indigo entity.
+What this plugin adds on top of Indigo MCP Control.
 
-| Entity | Read | Create | Edit definition | Control / run | Delete |
-|--------|------|--------|-----------------|---------------|--------|
-| **Devices** | ✓ full — state, properties, model, type, address | ✗ | ✗ | ✓ on/off, brightness, RGB/RGBW color, thermostat setpoints & modes | ✗ |
-| **Variables** | ✓ full — value, folder | ✓ `variable_create` | ~ value only | — | ✗ |
-| **Action groups** | ✓ full — every action step (scripts, plugin configs) | ✗ | ~ name / description | ✓ execute, duplicate, move | ✓ *gated* |
-| **Triggers** | ✓ full — event, condition tree, action steps | ✗ | ~ name / description, event settings | ✓ enable/disable (timed auto-revert), execute, duplicate, move, remove delayed actions | ✓ *gated* |
-| **Schedules** | ✓ full — timing, next run, condition tree, action steps | ✗ | ~ name / description | ✓ enable/disable (timed auto-revert), execute, duplicate, move, remove delayed actions | ✓ *gated* |
+| You want to… | Indigo MCP Control | This plugin |
+|--------------|--------------------|-------------|
+| Control devices (on/off, dim, color, thermostats, speed controls, sprinklers) | ✓ | — |
+| Set or create a variable | ✓ | — |
+| Run an action group, trigger or schedule | ✓ (asks for confirmation) | — |
+| List and look up objects | ✓ published objects | ~ triggers and schedules (`list_triggers`, `list_schedules`) |
+| Find things by meaning ("entryway light" → *Foyer Light*) | ✓ `find_*` (published objects) | ✓ `search_entities` (every object) |
+| See an automation's action steps and condition tree | ✗ | ✓ `get_*_details` |
+| Ask "what could change this device?" | ✗ | ✓ `find_automation_references` |
+| Ask "what caused this?" | ✗ | ✓ `investigate_event` |
+| Search the event log | recent lines | ✓ full history, text/regex/type/time filters |
+| Query InfluxDB history | ✗ | ✓ with the Grafana Home Dashboard plugin (`influxlog_query_history`) |
+| Enable/disable an automation (with timed auto-revert), duplicate, move, delete | ✗ | ✓ `control_*` (delete is *gated*) |
+| Edit an automation's name/description or a trigger's event settings | ✗ | ✓ `update_*` |
+| Push events to your own webhook | ✗ (resource subscriptions instead) | ✓ `create_event_subscription` |
+| Use tools other Indigo plugins provide | ✗ | ✓ plugin-provided tools |
 
-**Legend:** ✓ supported · ~ partial (see the cell) · ✗ not possible · — not applicable.
+**Legend:** ✓ supported · ~ partial · ✗ not possible · — not this server's job.
 
-- Action steps, conditions, and schedule timing are not editable via MCP — change those in the Indigo UI.
+- Action steps, conditions, and schedule timing are not editable via MCP. Change those in the Indigo UI.
 - To make a variant: duplicate an automation (`control_trigger` / `control_schedule` /
   `control_action_group`, `action: "duplicate"`), then edit the copy.
 - **Delete** requires the *Allow AI to delete automations* preference (off by default) and `confirm=true`.
 
 ## Available Tools
 
-Most list tools paginate with `limit` (default 50, max 500) and `offset`, and return
-`total_count` / `has_more` for navigation. `search_entities` returns its 10 best matches unless
-you pass a larger `limit`.
+Fifteen tools, plus three more when event webhooks are enabled, and any plugin-provided tools. Most list
+tools paginate with `limit` (default 50, max 500) and `offset`, and return `total_count` / `has_more` for
+navigation. `search_entities` returns its 10 best matches unless you pass a larger `limit`.
 
-### Search and query
+### Search
 
-- **search_entities** — natural-language search across devices, variables, action groups, triggers, and
-  schedules. An exact name ("living room lamp" → *Living Room Lamp*) is always the first result; otherwise
-  results rank by both the name and the meaning, so other words for the same thing also work ("entryway
-  light" → *Foyer Light*). `device_types` (dimmer, relay, sensor, …) filters before ranking, so
-  `limit` really returns that many devices of the type. Above 20 results, devices come back with minimal
-  fields.
-- **list_devices** — all devices, with optional state filtering
-- **list_variables** / **list_variable_folders** — variables (with values) and their folders
-- **list_action_groups** — action groups / scenes
-- **get_devices_by_state** — devices matching state conditions
-- **get_devices_by_type** — devices of a type (dimmer, relay, sensor, …)
-- **get_device_by_id** / **get_variable_by_id** / **get_action_group_by_id** — exact lookups
+- **search_entities**: natural-language search across devices, variables, action groups, triggers, and
+  schedules, including those not published for remote display. An exact name ("living room lamp" →
+  *Living Room Lamp*) is always the first result; otherwise results rank by both the name and the meaning,
+  so other words for the same thing also work ("entryway light" → *Foyer Light*). `device_types` (dimmer,
+  relay, sensor, …) filters before ranking, so `limit` really returns that many devices of the type, and
+  `state_filter` narrows by state. Above 20 results, devices come back with minimal fields. To act on a
+  result, use MCP Control (`turn_on`, `set_brightness`, `update_variable`, `execute_action_group`, …).
 
 ### Automation introspection *(v2026.6.0)*
 
-Inspect triggers, schedules, and action groups in full — including the action steps and condition trees
+Inspect triggers, schedules, and action groups in full, including the action steps and condition trees
 that Indigo's scripting API does not expose (read from the server's database file, refreshed within
 minutes of a change).
 
-- **list_triggers** — triggers with a one-line summary of what each watches; filter by name/type/enabled/folder
-- **list_schedules** — schedules with **next execution time** and a timing summary
-- **get_trigger_details** / **get_schedule_details** / **get_action_group_details** — the full explanation of
+- **list_triggers**: triggers with a one-line summary of what each watches; filter by name/type/enabled/folder
+- **list_schedules**: schedules with **next execution time** and a timing summary
+- **get_trigger_details** / **get_schedule_details** / **get_action_group_details**: the full explanation of
   one automation: its event/timing, condition tree (or embedded Python condition script), and every action
   step (device commands, variable writes, nested action groups, embedded Python, plugin actions with config),
   IDs resolved to names
-- **find_automation_references** — reverse lookup: which automations watch, act on, set, or condition-read a
-  device/variable/action group — including indirect paths through nested action groups, heuristic id/name
+- **find_automation_references**: reverse lookup: which automations watch, act on, set, or condition-read a
+  device/variable/action group, including indirect paths through nested action groups, heuristic id/name
   matches inside embedded Python (condition scripts and action scripts), cross-checked against Indigo's own
   dependency graph
 
 ### Investigation *(v2026.6.0)*
 
-- **investigate_event** — "what caused this?" Finds a device's state-change in the log, collects the
+- **investigate_event**: "what caused this?" Finds a device's state-change in the log, collects the
   automations that fired around it, and ranks candidate causes by structural evidence (does it actually act
   on that device, directly or through action-group chains?) plus temporal proximity.
-- **query_event_log** — read the event log, newest first. With no filters it returns the recent tail from
+- **query_event_log**: read the event log, newest first. With no filters it returns the recent tail from
   Indigo's live log; add `query`/`regex`/`types`/`start_time`/`end_time` to scan the full historical daily
   log files instead. Each entry is `{timestamp, type, message}`.
 
 ### Automation control *(v2026.6.0)*
 
-- **control_trigger** / **control_schedule** / **control_action_group** — lifecycle actions: `enable`/`disable`
-  (with a `duration_seconds` auto-revert — "disable this trigger for 2 hours"), `execute`, `duplicate`,
-  `move_to_folder`, `remove_delayed_actions`, and `delete`. (Action groups support execute/duplicate/move/delete
-  only.) **Delete** requires `confirm=true` **and** the *Allow AI to delete automations* preference (off by
+- **control_trigger** / **control_schedule** / **control_action_group**: lifecycle actions: `enable`/`disable`
+  (with a `duration_seconds` auto-revert: "disable this trigger for 2 hours", or a `delay_seconds` start),
+  `duplicate`, `move_to_folder`, `remove_delayed_actions`, and `delete`. (Action groups support
+  duplicate/move/delete only.) **Delete** requires `confirm=true` **and** the *Allow AI to delete automations* preference (off by
   default); every other action is always available.
-- **update_trigger** — edit a trigger's name/description and its event settings (watched device/variable,
+- **update_trigger**: edit a trigger's name/description and its event settings (watched device/variable,
   comparison, value), returning a before/after diff.
-- **update_schedule** / **update_action_group** — edit name/description only.
+- **update_schedule** / **update_action_group**: edit name/description only.
 
-Action steps, conditions, and schedule timing are read-only in Indigo's scripting API — change those in the
+Action steps, conditions, and schedule timing are read-only in Indigo's scripting API. Change those in the
 Indigo UI. Since there's no API to author actions from scratch, `duplicate` (via `control_trigger`) followed by
 `update_trigger` is the supported way to make a trigger variant.
 
-`delay_seconds` on `execute` (and `delay` on `action_execute_group`) is emulated inside the MCP Server plugin —
-Indigo has no delayed execute for triggers, schedules, or action groups — so a pending delayed execute does not
-appear in Indigo's UI or event log, cannot be cancelled with `remove_delayed_actions`, and is lost if the plugin
-restarts. The reply carries `job_id` and `scheduled_in_seconds` for a delayed run.
-
-### Device control
-
-- **device_turn_on** / **device_turn_off** — power state
-- **device_set_brightness** — dimmer level (0–100 or 0–1)
-- **device_set_rgb_color** / **device_set_rgb_percent** / **device_set_hex_color** / **device_set_named_color**
-  (954 XKCD colors + aliases) / **device_set_white_levels** — RGB / RGBW control
-- **thermostat_set_heat_setpoint** / **thermostat_set_cool_setpoint** / **thermostat_set_hvac_mode** /
-  **thermostat_set_fan_mode** — thermostat control
-
-### Variables, actions, and system
-
-- **variable_create** / **variable_update** — create or update variables
-- **action_execute_group** — run an action group / scene (optional `delay`, emulated plugin-side — see
-  Automation control)
-- **list_plugins** / **get_plugin_by_id** / **get_plugin_status** / **restart_plugin** — plugin management
-- **analyze_historical_data** — AI analysis of device/variable history (requires InfluxDB). Pass
-  `time_range_hours` for "last N hours" questions; `time_range_days` cannot express windows shorter
-  than a day. Numeric sensors also get a current/min/max/mean/trend summary, and a warning when the
-  value never moved during the window — usually the sign of a sensor that has stopped reporting.
+To run a trigger, schedule or action group, use MCP Control's `execute_trigger`, `execute_schedule` or
+`execute_action_group`: each returns a confirmation token that its `confirm` tool redeems.
 
 ### Event subscriptions *(v2026.1.0, only when webhooks are enabled)*
 
-- **create_event_subscription** — POST a JSON event to your webhook URL when device/variable conditions match
-- **list_event_subscriptions** — active subscriptions with delivery health stats (or one by ID)
-- **delete_event_subscription** — delete a subscription (cancels pending dwell timers)
+- **create_event_subscription**: POST a JSON event to your webhook URL when device/variable conditions match
+- **list_event_subscriptions**: active subscriptions with delivery health stats (or one by ID)
+- **delete_event_subscription**: delete a subscription (cancels pending dwell timers)
 
 See [Event Subscriptions & Webhooks](#event-subscriptions--webhooks) for the full guide.
 
@@ -257,17 +343,17 @@ to the provider.
   plugins marked "MCP tools: N" ship tools today, and you can select any plugin so one
   that adds tools later is already covered. An empty allowlist turns off every
   plugin-provided tool. A provider the setting excludes is left out completely: its
-  tools are not listed, it never claims its tool prefix, and the MCP Server never calls
-  it; a client that calls one of its tools from a cached tool list is told the provider
+  tools are not listed, it never claims its tool prefix, and MCP Advanced Tools never
+  calls it; a client that calls one of its tools from a cached tool list is told the provider
   is blocked in the plugin config. Takes effect immediately. Built-in tools are not
   affected.
 - **Write gate**: the plugin config checkbox "Allow plugin-provided tools to make changes"
   (default on) controls whether provider *write* tools work; read tools always do. It
   applies to the providers the setting above allows. Takes effect immediately.
 - **Refresh**: provider tools register automatically when the provider starts or updates.
-  A provider installed for the first time while the MCP Server is running appears on the
+  A provider installed for the first time while MCP Advanced Tools is running appears on the
   client's next `tools/list` (at most a minute later). The menu item **Plugins → MCP
-  Server → Rescan Plugin-Provided MCP Tools** forces a re-discovery.
+  Advanced Tools → Rescan Plugin-Provided MCP Tools** forces a re-discovery.
 - **Client cache caveat**: `tools/list` responses carry a 1-hour cache hint, so an
   already-connected MCP client may not see newly installed provider tools until it starts
   a fresh session.
@@ -318,7 +404,7 @@ def handle_mcp_tool_invoke(self, action, dev=None, caller_waiting_for_result=Tru
 ```
 
 **3. Announce yourself** (recommended) — one line in your `startup()` so your tools
-register the moment your plugin starts, without an MCP Server restart:
+register the moment your plugin starts, without restarting MCP Advanced Tools:
 
 ```python
 try:
@@ -327,7 +413,7 @@ except Exception:
     pass
 ```
 
-Your plugin stays fully functional for users who don't have the MCP Server installed — the
+Your plugin stays fully functional for users who don't have MCP Advanced Tools installed — the
 manifest is inert data, the hidden action is never called, and the broadcast is a no-op.
 
 ## Event Subscriptions & Webhooks
@@ -343,7 +429,7 @@ stays open for 10 minutes".
 > off-the-shelf MCP clients, which have no way to receive a proactive notification. It's meant for custom
 > agents / automation systems that own a persistent HTTP endpoint (for example, [OpenClaw](https://openclaw.ai/)).
 
-Enable it under **Plugins → MCP Server → Configure → Enable Event Webhooks** (the three tools are hidden
+Enable it under **Plugins → MCP Advanced Tools → Configure → Enable Event Webhooks** (the three tools are hidden
 until then).
 
 ### Creating a subscription
@@ -470,7 +556,7 @@ them** (create/edit stays with the MCP tools; auth tokens are never shown).
 
 - **URL:** `http://<your-indigo-host>:8176/message/com.vtmikel.mcp_server/events_ui/` — served by the Indigo
   Web Server under the **same authentication** as the rest of IWS (open it from a browser logged into Indigo).
-- **Plugins → MCP Server → Print Event Subscriptions Web UI URL** prints the local/LAN/Reflector URLs to the log.
+- **Plugins → MCP Advanced Tools → Print Event Subscriptions Web UI URL** prints the local/LAN/Reflector URLs to the log.
 
 ### Minimal example receiver
 
@@ -497,16 +583,15 @@ HTTPServer(("0.0.0.0", 8888), Handler).serve_forever()
 
 - **Be specific** — include location and device type in queries.
 - **Use device Notes** — descriptions in the Notes field are included in the AI's context.
-- **State vs. search** — use `list_devices({"onState": true})` for state queries, `search_entities("lights")`
-  for discovery.
+- **State vs. search**: for "what's on?" over published devices, use MCP Control's `get_devices_by_state`;
+  `search_entities` (with a `state_filter` if needed) finds anything, published or not.
 
 ## Privacy & Security
 
 **Sent to OpenAI** (only to build the search index, which is stored locally on your Indigo server): device
 name/description/model/type, variable name/description, action-group name/description, and trigger and
 schedule names — sent on install and when entities are added or changed. Search queries are sent too, to
-expand and embed them, and analyze_historical_data sends the question and a device's property names to pick
-the properties to chart. **Never sent:** device states or values, device addresses, credentials, URLs,
+expand and embed them. **Never sent:** device states or values, device addresses, credentials, URLs,
 IP/network configuration, or historical/usage data.
 
 **Network** — every MCP connection requires Bearer-token authentication. Local HTTP stays on your LAN; use the

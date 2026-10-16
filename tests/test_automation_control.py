@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
-plugin_path = Path(__file__).parent.parent / "MCP Server.indigoPlugin/Contents/Server Plugin"
+plugin_path = Path(__file__).parent.parent / "MCP Advanced Tools.indigoPlugin/Contents/Server Plugin"
 sys.path.insert(0, str(plugin_path))
 
 from mcp_server.adapters.indidb.store import IndiDbStructureStore  # noqa: E402
@@ -55,14 +55,27 @@ class TestControlMatrix:
         handler, _ = make_handler()
         assert "error" in handler.control("action_group", 3000001, "remove_delayed_actions")
 
-    def test_execute_schedule_with_delay(self):
+    def test_enable_with_delay_is_indigo_native(self):
         handler, provider = make_handler()
-        handler.control("schedule", 5000001, "execute", delay_seconds=10)
+        handler.control("schedule", 5000001, "enable", delay_seconds=10)
         provider.automation_command.assert_called_once_with(
-            "schedule", 5000001, "execute",
-            value=None, delay=10, duration=None,
+            "schedule", 5000001, "enable",
+            value=True, delay=10, duration=None,
             duplicate_name=None, folder_id=None,
         )
+
+    @pytest.mark.parametrize("entity_type, entity_id, mcp_control_tool", [
+        ("trigger", 4000001, "execute_trigger"),
+        ("schedule", 5000001, "execute_schedule"),
+        ("action_group", 3000001, "execute_action_group"),
+    ])
+    def test_execute_points_to_mcp_control(self, entity_type, entity_id, mcp_control_tool):
+        handler, provider = make_handler()
+        result = handler.control(entity_type, entity_id, "execute", delay_seconds=10)
+        assert result["success"] is False
+        assert f"`{mcp_control_tool}`" in result["error"]
+        assert "`confirm`" in result["error"]
+        provider.automation_command.assert_not_called()
 
     def test_duplicate_passes_name(self):
         handler, provider = make_handler()
@@ -92,7 +105,7 @@ class TestControlMatrix:
     def test_provider_error_passes_through(self):
         handler, provider = make_handler()
         provider.automation_command.return_value = {"error": "boom", "success": False}
-        result = handler.control("trigger", 4000001, "execute")
+        result = handler.control("trigger", 4000001, "enable")
         assert result["error"] == "boom"
 
 
@@ -163,43 +176,12 @@ class TestProviderCommandMapping:
 
     def test_exception_becomes_error(self, provider_and_indigo):
         provider, fake = provider_and_indigo
-        fake.trigger.execute.side_effect = RuntimeError("nope")
-        result = provider.automation_command("trigger", 1, "execute")
+        fake.trigger.enable.side_effect = RuntimeError("nope")
+        result = provider.automation_command("trigger", 1, "enable", value=True)
         assert result == {"error": "nope", "success": False}
 
-    @pytest.mark.parametrize("entity_type, namespace", [
-        ("trigger", "trigger"),
-        ("schedule", "schedule"),
-        ("action_group", "actionGroup"),
-    ])
-    def test_execute_calls_execute_with_only_the_id(
-        self, provider_and_indigo, entity_type, namespace
-    ):
+    def test_execute_is_not_a_provider_command(self, provider_and_indigo):
         provider, fake = provider_and_indigo
-        result = provider.automation_command(entity_type, 1, "execute")
-        getattr(fake, namespace).execute.assert_called_once_with(1)
-        assert result["success"] is True
-        assert "job_id" not in result
-
-    @pytest.mark.parametrize("entity_type, namespace", [
-        ("trigger", "trigger"),
-        ("schedule", "schedule"),
-        ("action_group", "actionGroup"),
-    ])
-    def test_execute_with_delay_is_scheduled_plugin_side(
-        self, provider_and_indigo, entity_type, namespace
-    ):
-        # Indigo's execute() has no delay kwarg (the 2026-09-04 failure); the
-        # delay must be emulated and the eventual call must be execute(id).
-        provider, fake = provider_and_indigo
-        provider.delayed_executor = Mock()
-        provider.delayed_executor.schedule.return_value = "job-9"
-        result = provider.automation_command(entity_type, 1, "execute", delay=10)
-        getattr(fake, namespace).execute.assert_not_called()
-        seconds, fn, _label = provider.delayed_executor.schedule.call_args[0]
-        assert seconds == 10
-        fn()
-        getattr(fake, namespace).execute.assert_called_once_with(1)
-        assert result["success"] is True
-        assert result["job_id"] == "job-9"
-        assert result["scheduled_in_seconds"] == 10
+        result = provider.automation_command("trigger", 1, "execute")
+        assert result == {"error": "Unsupported command: execute"}
+        fake.trigger.execute.assert_not_called()

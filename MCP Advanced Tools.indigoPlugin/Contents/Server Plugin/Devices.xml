@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<Devices>
+    <Device type="custom" id="mcpServer">
+        <Name>MCP Advanced Tools</Name>
+        <ConfigUI>
+            <Field id="serverName" type="textfield" defaultValue="MCP Advanced Tools">
+                <Label>Server Name:</Label>
+                <Description>Display name for this server</Description>
+            </Field>
+            
+            <Field id="separator1" type="separator"/>
+            
+            <Field id="iws_info" type="label" fontSize="small" alignWithControl="false" alignText="left">
+                <Label>MCP Advanced Tools is served through Indigo's built-in web server.
+The endpoint URL is: /message/com.vtmikel.mcp_server/mcp/
+
+Configure Claude Desktop to connect using:
+npx mcp-remote http://[indigo_host]:[indigo_port]/message/com.vtmikel.mcp_server/mcp/
+                </Label>
+            </Field>
+        </ConfigUI>
+        
+        <States>
+            <State id="serverStatus">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Server Status</TriggerLabel>
+                <ControlPageLabel>Status</ControlPageLabel>
+            </State>
+
+            <State id="accessMode">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Access Mode</TriggerLabel>
+                <ControlPageLabel>Access Mode</ControlPageLabel>
+            </State>
+            
+            <State id="lastActivity">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last Activity</TriggerLabel>
+                <ControlPageLabel>Last Activity</ControlPageLabel>
+            </State>
+        </States>
+    </Device>
+</Devices>

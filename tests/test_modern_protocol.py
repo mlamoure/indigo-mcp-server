@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 # Add plugin to path
-plugin_path = Path(__file__).parent.parent / "MCP Server.indigoPlugin/Contents/Server Plugin"
+plugin_path = Path(__file__).parent.parent / "MCP Advanced Tools.indigoPlugin/Contents/Server Plugin"
 sys.path.insert(0, str(plugin_path))
 
 from mcp_server.mcp_handler import MCPHandler
@@ -128,8 +128,8 @@ class TestServerDiscover:
         result = rpc(response)["result"]
         assert result["resultType"] == "complete"
         assert result["supportedVersions"] == ["2026-07-28", "2025-11-25", "2025-06-18"]
-        assert result["capabilities"] == {"prompts": {}, "resources": {}, "tools": {}}
-        assert result["_meta"][META_SERVER_INFO]["name"] == "Indigo MCP Server"
+        assert result["capabilities"] == {"prompts": {}, "tools": {}}
+        assert result["_meta"][META_SERVER_INFO]["name"] == "MCP Advanced Tools"
         assert result["ttlMs"] == 3600000
         assert result["cacheScope"] == "private"
 
@@ -235,7 +235,7 @@ class TestEnvelopeValidation:
         handler = make_handler(mock_vsm)
 
         response = post_modern(handler, "tools/call",
-                               {"name": "list_devices", "arguments": {}}, mcp_name=None)
+                               {"name": "list_triggers", "arguments": {}}, mcp_name=None)
 
         assert response["status"] == 400
         assert rpc(response)["error"]["code"] == -32020
@@ -243,11 +243,11 @@ class TestEnvelopeValidation:
     @patch('mcp_server.mcp_handler.VectorStoreManager')
     def test_tools_call_with_base64_mcp_name_succeeds(self, mock_vsm):
         handler = make_handler(mock_vsm)
-        handler._tools["list_devices"]["function"] = lambda **kwargs: '{"devices": []}'
+        handler._tools["list_triggers"]["function"] = lambda **kwargs: '{"triggers": []}'
 
         response = post_modern(handler, "tools/call",
-                               {"name": "list_devices", "arguments": {}},
-                               mcp_name=b64_sentinel("list_devices"))
+                               {"name": "list_triggers", "arguments": {}},
+                               mcp_name=b64_sentinel("list_triggers"))
 
         assert response["status"] == 200
         assert rpc(response)["result"]["resultType"] == "complete"
@@ -273,9 +273,9 @@ class TestCacheableResults:
 
         result = rpc(post_modern(handler, "tools/list"))["result"]
 
-        assert len(result["tools"]) == 44
+        assert len(result["tools"]) == 15
         assert result["resultType"] == "complete"
-        assert result["_meta"][META_SERVER_INFO]["name"] == "Indigo MCP Server"
+        assert result["_meta"][META_SERVER_INFO]["name"] == "MCP Advanced Tools"
         assert result["ttlMs"] == 3600000
         assert result["cacheScope"] == "private"
 
@@ -285,7 +285,7 @@ class TestCacheableResults:
 
         result = rpc(post_modern(handler, "resources/list"))["result"]
 
-        assert len(result["resources"]) == 10
+        assert result["resources"] == []
         assert result["resultType"] == "complete"
         assert result["ttlMs"] == 3600000
         assert result["cacheScope"] == "private"
@@ -301,26 +301,12 @@ class TestCacheableResults:
         assert result["ttlMs"] == 3600000
 
     @patch('mcp_server.mcp_handler.VectorStoreManager')
-    def test_resources_read_is_immediately_stale(self, mock_vsm):
-        handler = make_handler(mock_vsm)
-        handler._resources["indigo://devices"]["function"] = lambda: '{"devices": []}'
-
-        response = post_modern(handler, "resources/read", {"uri": "indigo://devices"})
-
-        assert response["status"] == 200
-        result = rpc(response)["result"]
-        assert result["contents"][0]["uri"] == "indigo://devices"
-        assert result["resultType"] == "complete"
-        assert result["ttlMs"] == 0  # live device state must not be cached
-        assert result["cacheScope"] == "private"
-
-    @patch('mcp_server.mcp_handler.VectorStoreManager')
     def test_tools_call_has_no_cache_fields(self, mock_vsm):
         handler = make_handler(mock_vsm)
-        handler._tools["list_devices"]["function"] = lambda **kwargs: '{"devices": []}'
+        handler._tools["list_triggers"]["function"] = lambda **kwargs: '{"triggers": []}'
 
         result = rpc(post_modern(handler, "tools/call",
-                                 {"name": "list_devices", "arguments": {}}))["result"]
+                                 {"name": "list_triggers", "arguments": {}}))["result"]
 
         assert result["resultType"] == "complete"
         assert "ttlMs" not in result
@@ -373,10 +359,10 @@ class TestModernErrors:
 
         def failing_tool(**kwargs):
             raise ValueError("bad input")
-        handler._tools["list_devices"]["function"] = failing_tool
+        handler._tools["list_triggers"]["function"] = failing_tool
 
         response = post_modern(handler, "tools/call",
-                               {"name": "list_devices", "arguments": {}})
+                               {"name": "list_triggers", "arguments": {}})
 
         assert response["status"] == 200
         result = rpc(response)["result"]
@@ -433,9 +419,10 @@ class TestDualEraCoexistence:
         assert response["status"] == 200
         assert session_id
         result = rpc(response)["result"]
-        # No logging (no setLevel handler) and no listChanged/subscribe
-        # (POST-only transport, no push channel).
-        assert result["capabilities"] == {"prompts": {}, "resources": {}, "tools": {}}
+        # No logging (no setLevel handler), no listChanged/subscribe
+        # (POST-only transport, no push channel), and no resources (none
+        # are published; Indigo's MCP Control serves them).
+        assert result["capabilities"] == {"prompts": {}, "tools": {}}
 
     @patch('mcp_server.mcp_handler.VectorStoreManager')
     def test_interleaved_legacy_and_modern_requests_both_work(self, mock_vsm):
@@ -452,7 +439,7 @@ class TestDualEraCoexistence:
 
         assert modern_response["status"] == 200
         assert legacy_response["status"] == 200
-        assert len(rpc(legacy_response)["result"]["tools"]) == 44
+        assert len(rpc(legacy_response)["result"]["tools"]) == 15
 
     @patch('mcp_server.mcp_handler.VectorStoreManager')
     def test_legacy_results_share_the_modern_native_shape(self, mock_vsm):
@@ -504,6 +491,82 @@ class TestDualEraCoexistence:
 
         assert response["status"] == 200
         assert rpc(response)["result"] == {}
+
+
+class TestServerInstructions:
+    """Both eras carry `instructions` pointing clients at Indigo MCP Control."""
+
+    @patch('mcp_server.mcp_handler.VectorStoreManager')
+    def test_discover_carries_instructions(self, mock_vsm):
+        handler = make_handler(mock_vsm)
+
+        result = rpc(post_modern(handler, "server/discover"))["result"]
+
+        assert result["instructions"] == MCPHandler.SERVER_INSTRUCTIONS
+        assert "MCP Control" in result["instructions"]
+        assert "/v3/api/mcp" in result["instructions"]
+
+    @patch('mcp_server.mcp_handler.VectorStoreManager')
+    def test_legacy_initialize_carries_the_same_instructions(self, mock_vsm):
+        handler = make_handler(mock_vsm)
+
+        response, _ = do_initialize(handler)
+
+        assert rpc(response)["result"]["instructions"] == MCPHandler.SERVER_INSTRUCTIONS
+
+
+class TestNoResources:
+    """No MCP resources are published (Indigo's MCP Control serves indigo://).
+
+    The resources capability is not advertised in either era; resources/list
+    and resources/templates/list still answer, empty, for clients that call
+    them regardless, and resources/read reports every URI as not found.
+    """
+
+    @patch('mcp_server.mcp_handler.VectorStoreManager')
+    def test_modern_resources_and_templates_lists_are_empty(self, mock_vsm):
+        handler = make_handler(mock_vsm)
+
+        resources = post_modern(handler, "resources/list")
+        templates = post_modern(handler, "resources/templates/list")
+
+        assert resources["status"] == 200
+        assert rpc(resources)["result"]["resources"] == []
+        assert templates["status"] == 200
+        assert rpc(templates)["result"]["resourceTemplates"] == []
+
+    @patch('mcp_server.mcp_handler.VectorStoreManager')
+    def test_legacy_resources_and_templates_lists_are_empty(self, mock_vsm):
+        handler = make_handler(mock_vsm)
+        _, session_id = do_initialize(handler)
+        headers = {"Accept": "application/json", "Mcp-Session-Id": session_id}
+
+        resources = handler.handle_request("POST", headers, json.dumps(
+            {"jsonrpc": "2.0", "id": 2, "method": "resources/list"}))
+        templates = handler.handle_request("POST", headers, json.dumps(
+            {"jsonrpc": "2.0", "id": 3, "method": "resources/templates/list"}))
+
+        assert rpc(resources)["result"]["resources"] == []
+        assert rpc(templates)["result"]["resourceTemplates"] == []
+
+    @patch('mcp_server.mcp_handler.VectorStoreManager')
+    def test_resources_capability_not_advertised_in_either_era(self, mock_vsm):
+        handler = make_handler(mock_vsm)
+
+        discover = rpc(post_modern(handler, "server/discover"))["result"]
+        initialize, _ = do_initialize(handler)
+
+        assert "resources" not in discover["capabilities"]
+        assert "resources" not in rpc(initialize)["result"]["capabilities"]
+
+    @patch('mcp_server.mcp_handler.VectorStoreManager')
+    def test_former_resource_uris_are_not_found(self, mock_vsm):
+        handler = make_handler(mock_vsm)
+
+        for uri in ("indigo://devices", "indigo://devices/42", "indigo://triggers"):
+            response = post_modern(handler, "resources/read", {"uri": uri})
+            assert response["status"] == 400, uri
+            assert rpc(response)["error"]["code"] == -32602, uri
 
 
 class TestModernEraPureFunctions:

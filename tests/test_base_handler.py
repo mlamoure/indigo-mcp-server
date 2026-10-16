@@ -1,14 +1,13 @@
-"""Tests for BaseToolHandler — validation, error handling, response shaping."""
+"""Tests for BaseToolHandler — parameter validation, error handling, response shaping."""
 
 import logging
 import pytest
-from unittest.mock import Mock
 import sys
 import importlib
 from pathlib import Path
 
 # Add plugin to path
-plugin_path = Path(__file__).parent.parent / "MCP Server.indigoPlugin/Contents/Server Plugin"
+plugin_path = Path(__file__).parent.parent / "MCP Advanced Tools.indigoPlugin/Contents/Server Plugin"
 sys.path.insert(0, str(plugin_path))
 
 # conftest pre-loads this module standalone (stdlib-only chain)
@@ -22,20 +21,6 @@ def handler():
     lg.setLevel(logging.DEBUG)
     h = BaseToolHandler(tool_name="test_tool", logger=lg)
     return h
-
-
-class TestValidateDeviceId:
-    @pytest.mark.parametrize("bad", [0, -1, -999, True, False, "42", 4.2, None, [1]])
-    def test_rejects_invalid(self, handler, bad):
-        result = handler.validate_device_id(bad)
-
-        assert result is not None
-        assert result["success"] is False
-        assert "positive integer" in result["error"]
-
-    @pytest.mark.parametrize("good", [1, 42, 25405119])
-    def test_accepts_positive_ints(self, handler, good):
-        assert handler.validate_device_id(good) is None
 
 
 class TestValidateRequiredParams:
@@ -110,26 +95,3 @@ class TestActivityLog:
             handler.activity_log("Search 'x' → 0 results", write=False)
 
         assert caplog.records[0].levelno == logging.DEBUG
-
-
-class TestDeviceLabel:
-    def test_uses_provider_name(self, handler):
-        handler.data_provider = Mock()
-        handler.data_provider.get_device.return_value = {"name": "Kitchen Lights"}
-
-        assert handler.device_label(42) == "Kitchen Lights"
-
-    def test_falls_back_without_provider(self, handler):
-        assert handler.device_label(42) == "device 42"
-
-    def test_falls_back_on_provider_error(self, handler):
-        handler.data_provider = Mock()
-        handler.data_provider.get_device.side_effect = RuntimeError("down")
-
-        assert handler.device_label(42) == "device 42"
-
-    def test_falls_back_on_missing_device(self, handler):
-        handler.data_provider = Mock()
-        handler.data_provider.get_device.return_value = None
-
-        assert handler.device_label(42) == "device 42"
