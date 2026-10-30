@@ -1,8 +1,8 @@
 # MCP Advanced Tools for Indigo
 
-> **Beta: 2026.11.1.** This is a beta for **Indigo 2026.1**. It works *alongside* Indigo's built-in
-> MCP server, **MCP Control**. On Indigo 2025.2, stay on **MCP Server 2026.10.1**: that release still
-> includes the tools this beta removes.
+> **For Indigo 2026.1.** MCP Advanced Tools works *alongside* Indigo's built-in MCP server,
+> **MCP Control**. On Indigo 2025.2, stay on **MCP Server 2026.10.1**: that release still includes the
+> tools this one removes.
 
 Indigo 2026.1 ships its own Model Context Protocol (MCP) server, MCP Control, which lets an AI assistant
 run your home: control devices, set variables, run action groups. It deliberately stops there. It doesn't
@@ -34,7 +34,12 @@ Example questions:
 - "Disable the motion trigger for two hours"
 - "Tag every outdoor light and the schedules that run them as `outside`"
 
-## What's new in 2026.11.1 (beta)
+## What's new in 2026.11.2
+
+- **Stable release** for Indigo 2026.1.0, now that Indigo 2026.1 is out of beta. Same code as the
+  2026.11.1 beta; no changes since.
+
+## What's new in 2026.11.1
 
 - **Tags** (Indigo 2026.1): two new tools. `manage_tags` creates, renames, recolors and deletes tags in
   Indigo's tag library; `tag_objects` puts a tag on, or takes it off, up to 200 objects of any type per call.
@@ -46,7 +51,7 @@ Example questions:
   `ask-first`) need `confirm=true` before an AI can enable, disable, edit, move, duplicate or delete them.
 - `get_*_details` now names the folder of triggers, schedules and action groups (it was always empty).
 
-## What's new in 2026.11.0 (beta)
+## What's new in 2026.11.0
 
 - **New name:** the MCP Server plugin is now **MCP Advanced Tools**. Existing installs upgrade in place:
   same plugin id, endpoint, device, settings and plugin-provided tools.
