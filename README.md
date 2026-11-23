@@ -370,3 +370,7 @@ Every MCP request needs a key. Use the Indigo Reflector for encrypted remote acc
 
 - **Issues:** the project repository
 - **Questions:** [Indigo Domotics Forum](https://forums.indigodomo.com/viewforum.php?f=274)
+
+## License
+
+MIT. See [LICENSE](LICENSE).
