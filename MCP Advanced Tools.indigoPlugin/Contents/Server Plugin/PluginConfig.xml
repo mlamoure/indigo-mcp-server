@@ -2,13 +2,13 @@
 <PluginConfig>
     <!-- OpenAI Configuration -->
     <Field id="openai_api_key" type="textfield" defaultValue="" secure="true"
-           tooltip="Required for semantic search capabilities">
+           tooltip="Required for semantic search (search_entities) on Apple Silicon Macs">
         <Label>OpenAI API Key:</Label>
     </Field>
 
     <Field id="api_key_help" type="label" fontSize="small" alignWithControl="false" alignText="left">
-        <Label>Enter your OpenAI API key to enable semantic search. Get your API key from
-            https://platform.openai.com/api-keys
+        <Label>Enter your OpenAI API key to enable semantic search (Apple Silicon Macs only; not
+            needed on an Intel Mac). Get your API key from https://platform.openai.com/api-keys
         </Label>
     </Field>
 

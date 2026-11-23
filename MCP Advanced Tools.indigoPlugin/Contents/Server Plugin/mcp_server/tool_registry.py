@@ -118,48 +118,50 @@ def get_tool_schemas(tool_functions):
         },
     }
 
-    # Search entities tool
-    tools["search_entities"] = {
-        "description": "Search for Indigo entities using natural language with pagination support. Covers every device, variable, action group, trigger and schedule, including ones not published for remote display. Each result carries its Indigo tags; tags narrows the search to tagged entities ('basement lighting' -> tags [basement, lighting]). To act on a result (turn on, dim, set a variable, run an action group), use Indigo MCP Control's tools (turn_on, set_brightness, update_variable, execute_action_group, ...).",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Natural language search query"
+    # Search entities tool (only where the search index runs: LanceDB is
+    # Apple Silicon only, and MCPHandler leaves the tool out without it)
+    if "search_entities" in tool_functions:
+        tools["search_entities"] = {
+            "description": "Search for Indigo entities using natural language with pagination support. Covers every device, variable, action group, trigger and schedule, including ones not published for remote display. Each result carries its Indigo tags; tags narrows the search to tagged entities ('basement lighting' -> tags [basement, lighting]). To act on a result (turn on, dim, set a variable, run an action group), use Indigo MCP Control's tools (turn_on, set_brightness, update_variable, execute_action_group, ...).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Natural language search query"
+                    },
+                    "device_types": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional device types to filter. Valid types: dimmer, relay, sensor, multiio, speedcontrol, sprinkler, thermostat, device. Common aliases supported: light→dimmer, switch→relay, motion→sensor, fan→speedcontrol, etc."
+                    },
+                    "entity_types": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional entity types to search: device, variable, action, trigger, schedule (default: all)"
+                    },
+                    "state_filter": {
+                        "type": "object",
+                        "description": "Optional state conditions to filter results"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return (default: 10, or more when the query asks for a list). Results are ranked best first; an exact name match is always first. Above 20 results, devices come back with minimal fields.",
+                        "minimum": 1,
+                        "maximum": 500
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "description": "Number of results to skip (default: 0)",
+                        "default": 0,
+                        "minimum": 0
+                    },
+                    **_tag_filter_props,
                 },
-                "device_types": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Optional device types to filter. Valid types: dimmer, relay, sensor, multiio, speedcontrol, sprinkler, thermostat, device. Common aliases supported: light→dimmer, switch→relay, motion→sensor, fan→speedcontrol, etc."
-                },
-                "entity_types": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Optional entity types to search: device, variable, action, trigger, schedule (default: all)"
-                },
-                "state_filter": {
-                    "type": "object",
-                    "description": "Optional state conditions to filter results"
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum number of results to return (default: 10, or more when the query asks for a list). Results are ranked best first; an exact name match is always first. Above 20 results, devices come back with minimal fields.",
-                    "minimum": 1,
-                    "maximum": 500
-                },
-                "offset": {
-                    "type": "integer",
-                    "description": "Number of results to skip (default: 0)",
-                    "default": 0,
-                    "minimum": 0
-                },
-                **_tag_filter_props,
+                "required": ["query"]
             },
-            "required": ["query"]
-        },
-        "function": tool_functions["search_entities"]
-    }
+            "function": tool_functions["search_entities"]
+        }
 
     # Event log tool — recent tail by default, historical search when filtered
     tools["query_event_log"] = {

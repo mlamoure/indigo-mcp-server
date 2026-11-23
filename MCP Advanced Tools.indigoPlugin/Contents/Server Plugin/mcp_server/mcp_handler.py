@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 from .adapters.data_provider import DataProvider
 from .adapters.indidb import IndiDbStructureStore
 from .common.json_encoder import safe_json_dumps
+# vector_store_manager imports lancedb only when the store is created, so
+# this import is safe on Macs without LanceDB (see vector_store/availability.py)
 from .common.vector_store.vector_store_manager import VectorStoreManager
 from .external_tools.external_tool_handler import ExternalToolHandler
 from .legacy_era import LegacyEra
@@ -44,14 +46,20 @@ class MCPHandler:
     SERVER_NAME = "MCP Advanced Tools"
 
     # Natural-language guidance for clients (legacy initialize and modern
-    # server/discover both carry an optional `instructions` field).
-    SERVER_INSTRUCTIONS = (
+    # server/discover both carry an optional `instructions` field). Built from
+    # two parts so a Mac without semantic search does not advertise it.
+    _INSTRUCTIONS_HEAD = (
         "MCP Advanced Tools: companion to Indigo's built-in MCP Control server (Indigo 2026.1+, "
         "Web Server path /v3/api/mcp). Use MCP Control to control devices, set "
         "variables, run action groups, triggers and schedules, and list or look up "
-        "objects. Use this server for what MCP Control does not do: semantic "
-        "search across every entity, including ones not published for remote "
-        "display (search_entities); automation internals such as action "
+        "objects. Use this server for what MCP Control does not do: "
+    )
+    _INSTRUCTIONS_SEARCH = (
+        "semantic search across every entity, including ones not published for "
+        "remote display (search_entities); "
+    )
+    _INSTRUCTIONS_TAIL = (
+        "automation internals such as action "
         "steps, condition trees and reverse references (get_*_details, "
         "find_automation_references); event investigation and full event-log "
         "history (investigate_event, query_event_log); automation lifecycle "
@@ -62,6 +70,9 @@ class MCPHandler:
         "(default ask-first) answers requires_confirmation: confirm only when "
         "the user asked for that specific change."
     )
+    SERVER_INSTRUCTIONS = _INSTRUCTIONS_HEAD + _INSTRUCTIONS_SEARCH + _INSTRUCTIONS_TAIL
+    # Without semantic search (no LanceDB on this Mac)
+    SERVER_INSTRUCTIONS_NO_SEARCH = _INSTRUCTIONS_HEAD + _INSTRUCTIONS_TAIL
 
     # Legacy (session-based) protocol versions, newest first. Aliased here for
     # existing callers and tests; the authoritative tuple lives in LegacyEra.
@@ -88,6 +99,7 @@ class MCPHandler:
         external_tool_manager=None,
         provider_scan_supplier: Optional[Callable[[], bool]] = None,
         clock: Callable[[], float] = time.monotonic,
+        semantic_search: bool = True,
     ):
         """
         Initialize the MCP handler.
@@ -111,6 +123,10 @@ class MCPHandler:
                 newly installed plugin and returns True when it found one, so
                 a provider installed after startup appears without a restart
             clock: Monotonic time source (injectable for tests)
+            semantic_search: Whether the search index can run here (the
+                plugin passes semantic_search_status().available). False
+                starts no vector store and leaves search_entities out of
+                tools/list, as on an Intel Mac where LanceDB is not installed
         """
         self.data_provider = data_provider
         self.logger = logger or logging.getLogger("Plugin")
@@ -122,6 +138,10 @@ class MCPHandler:
         self.external_tool_manager = external_tool_manager
         self.provider_scan_supplier = provider_scan_supplier
         self._clock = clock
+        self.semantic_search = semantic_search
+        self.instructions = (
+            self.SERVER_INSTRUCTIONS if semantic_search else self.SERVER_INSTRUCTIONS_NO_SEARCH
+        )
         self._last_provider_scan: Optional[float] = None
         # Last registered plugin-provided tool set, for change-only logging
         self._external_signature = None
@@ -131,24 +151,27 @@ class MCPHandler:
             logger=self.logger,
             server_name=self.SERVER_NAME,
             server_version=server_version,
-            instructions=self.SERVER_INSTRUCTIONS,
+            instructions=self.instructions,
         )
 
-        # Get database path from environment variable
-        db_path = os.environ.get("DB_FILE")
-        if not db_path:
-            raise ValueError("DB_FILE environment variable must be set")
+        # The search index (vector store) behind search_entities. Without
+        # LanceDB it is never created; the plugin has already logged why.
+        self.vector_store_manager = None
+        if semantic_search:
+            # Get database path from environment variable
+            db_path = os.environ.get("DB_FILE")
+            if not db_path:
+                raise ValueError("DB_FILE environment variable must be set")
 
-        # Initialize vector store manager
-        self.vector_store_manager = VectorStoreManager(
-            data_provider=data_provider,
-            db_path=db_path,
-            logger=self.logger,
-            update_interval=300,  # 5 minutes
-        )
+            self.vector_store_manager = VectorStoreManager(
+                data_provider=data_provider,
+                db_path=db_path,
+                logger=self.logger,
+                update_interval=300,  # 5 minutes
+            )
 
-        # Start vector store manager (it will log its own progress)
-        self.vector_store_manager.start()
+            # Start vector store manager (it will log its own progress)
+            self.vector_store_manager.start()
 
         # Initialize handlers
         self._init_handlers()
@@ -164,12 +187,14 @@ class MCPHandler:
         
     def _init_handlers(self):
         """Initialize all handler instances."""
-        # Search handler with vector store
-        self.search_handler = SearchEntitiesHandler(
-            data_provider=self.data_provider,
-            vector_store=self.vector_store_manager.get_vector_store(),
-            logger=self.logger,
-        )
+        # Search handler with vector store (none without semantic search)
+        self.search_handler = None
+        if self.vector_store_manager:
+            self.search_handler = SearchEntitiesHandler(
+                data_provider=self.data_provider,
+                vector_store=self.vector_store_manager.get_vector_store(),
+                logger=self.logger,
+            )
 
         # Device control, variable writes, plain listings/lookups and plugin
         # management are served by Indigo's built-in MCP Control (2026.1+),
@@ -512,6 +537,15 @@ class MCPHandler:
                 # tools/list carries a 1-hour cache hint, and gateways keep
                 # their own catalogs, so pre-2026.11 tool names still arrive
                 return self._json_error(msg_id, -32602, f"Unknown tool: {tool_name}. {moved_hint}")
+            if tool_name == "search_entities" and not self.search_handler:
+                # A client may still hold a tool list from another server
+                return self._json_error(
+                    msg_id,
+                    -32602,
+                    "Unknown tool: search_entities. Semantic search is not available "
+                    "on this Mac: it needs LanceDB, which runs only on Apple Silicon. "
+                    "Use MCP Control's list and lookup tools to find objects."
+                )
             return self._json_error(msg_id, -32602, f"Unknown tool: {tool_name}")
         
         try:
@@ -603,7 +637,7 @@ class MCPHandler:
                 "prompts": {},
                 "tools": {}
             },
-            "instructions": self.SERVER_INSTRUCTIONS
+            "instructions": self.instructions
         }, ttl_ms=3600000)
 
     def _handle_modern_post(
@@ -701,7 +735,6 @@ class MCPHandler:
         """Register all available tools using extracted tool registry."""
         # Create tool functions dictionary mapping tool names to wrapper methods
         tool_functions = {
-            "search_entities": self.tool_wrappers.tool_search_entities,
             "query_event_log": self.tool_wrappers.tool_query_event_log,
             "list_triggers": self.tool_wrappers.tool_list_triggers,
             "list_schedules": self.tool_wrappers.tool_list_schedules,
@@ -719,6 +752,10 @@ class MCPHandler:
             "manage_tags": self.tool_wrappers.tool_manage_tags,
             "tag_objects": self.tool_wrappers.tool_tag_objects,
         }
+
+        # Semantic search (only when the search index runs on this Mac)
+        if self.search_handler:
+            tool_functions["search_entities"] = self.tool_wrappers.tool_search_entities
 
         # Event subscription tools (only when webhooks are enabled)
         if self.subscription_handler:

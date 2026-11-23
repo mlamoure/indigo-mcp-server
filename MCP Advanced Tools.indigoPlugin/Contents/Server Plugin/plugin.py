@@ -11,7 +11,6 @@ except ImportError:
 import json
 import logging
 import os
-import platform
 import socket
 
 import openai
@@ -25,6 +24,7 @@ from mcp_server.common.openai_client.main import (
     DEFAULT_SMALL_MODEL,
     embedding_request_params,
 )
+from mcp_server.common.vector_store.availability import semantic_search_status
 from mcp_server.external_tools.discovery import SELF_PLUGIN_ID, discover_manifests
 from mcp_server.external_tools.manager import ExternalToolManager
 from mcp_server.external_tools.policy import (
@@ -187,6 +187,12 @@ class Plugin(indigo.PluginBase):
         """
         all_required_connections_ok = True
 
+        # OpenAI is used only by semantic search (the search index and query
+        # expansion); without LanceDB on this Mac the key is not needed.
+        if not self.semantic_search_available():
+            self.logger.debug("OpenAI check skipped: semantic search is not available on this Mac")
+            return all_required_connections_ok
+
         # Test OpenAI API key (required)
         try:
             # Validate API key format
@@ -224,33 +230,25 @@ class Plugin(indigo.PluginBase):
 
         return all_required_connections_ok
 
-    def check_cpu_compatibility(self) -> bool:
+    @staticmethod
+    def semantic_search_available() -> bool:
+        """Whether search_entities can run here (checked once, then cached)."""
+        return semantic_search_status().available
+
+    def log_semantic_search_status(self) -> None:
         """
-        Check and log CPU architecture information.
-
-        Note: LanceDB requires Intel Haswell (2013+) or Apple Silicon processors with AVX2 support.
-        However, this check is informational only - the plugin will attempt to start regardless.
-
-        Returns:
-            Always returns True to allow plugin to start
+        Say once at startup when semantic search is off. LanceDB ships for
+        Apple Silicon only: on an Intel Mac this is expected (INFO), while a
+        failed import on Apple Silicon is a broken install (WARNING).
         """
-        machine = platform.machine()
-
-        # Apple Silicon Macs are always compatible
-        if machine == 'arm64':
-            self.logger.debug("Apple Silicon detected (M1/M2/M3/M4)")
-            return True
-
-        # Log info for Intel Macs
-        if machine == 'x86_64':
-            self.logger.info("Intel Mac detected - LanceDB requires AVX2 CPU support (Intel Haswell 2013+ or newer)")
-            self.logger.info("If the plugin fails to start, your CPU may not support AVX2 instructions")
-            return True
-
-        # Unknown architecture - log warning but continue
-        self.logger.warning(f"⚠️ Unknown CPU architecture: {machine}")
-        self.logger.warning("⚠️ Plugin will attempt to start; if it fails, check system requirements.")
-        return True
+        status = semantic_search_status()
+        if status.available:
+            return
+        if status.expected:
+            self.logger.info(f"{log_style.INDEX} {status.reason}")
+        else:
+            self.logger.warning(f"{log_style.WARN} {status.reason}")
+            self.logger.debug(f"LanceDB import failed: {status.detail}")
 
     def _get_mcp_client_urls(self, path: str = "/message/com.vtmikel.mcp_server/mcp/") -> list:
         """
@@ -547,13 +545,13 @@ class Plugin(indigo.PluginBase):
 
         self._drop_retired_prefs()
 
+        # Semantic search needs LanceDB (Apple Silicon only); say so once if not
+        self.log_semantic_search_status()
+
         # Test connections before proceeding
         if not self.test_connections():
             self.logger.error("❌ MCP Advanced Tools can't start until the connection problems above are fixed")
             return
-
-        # Log CPU architecture information
-        self.check_cpu_compatibility()
 
         # Apply configuration to environment for the modules to use
         self._apply_environment()
@@ -614,7 +612,7 @@ class Plugin(indigo.PluginBase):
                 self.subscription_manager = None
                 self.webhook_dispatcher = None
 
-        # Initialize MCP handler (includes vector store initialization)
+        # Initialize MCP handler (starts the search index when semantic search is available)
         try:
             external_tool_manager = ExternalToolManager(
                 logger=self.logger,
@@ -633,6 +631,7 @@ class Plugin(indigo.PluginBase):
                 confirm_tag_supplier=lambda: self.confirm_tag,
                 external_tool_manager=external_tool_manager,
                 provider_scan_supplier=self._check_for_new_provider_plugins,
+                semantic_search=self.semantic_search_available(),
             )
             self._subscribe_to_provider_broadcasts()
 
@@ -972,9 +971,11 @@ class Plugin(indigo.PluginBase):
         """
         errors_dict = indigo.Dict()
 
-        # Validate OpenAI API key
+        # Validate OpenAI API key (only semantic search uses it)
         api_key = values_dict.get("openai_api_key", "")
-        if not api_key or api_key == "xxxxx-xxxxx-xxxxx-xxxxx":
+        if self.semantic_search_available() and (
+            not api_key or api_key == "xxxxx-xxxxx-xxxxx-xxxxx"
+        ):
             errors_dict["openai_api_key"] = "Please enter a valid OpenAI API key"
 
 

@@ -16,6 +16,16 @@
       "enabled": false
     },
     {
+      "description": "Keep pyarrow on the line the production Indigo server runs: the installed MCP Advanced Tools plugin has pyarrow 23.0.1 in its Packages folder (Indigo 2026.1, Python 3.13). Mike's decision 2026-11-02 after pyarrow 26 was merged but never shipped. Raise this cap deliberately, together with a live test of the vector store on the Indigo server.",
+      "matchDatasources": [
+        "pypi"
+      ],
+      "matchPackageNames": [
+        "pyarrow"
+      ],
+      "allowedVersions": "<24"
+    },
+    {
       "description": "Batch every non-major update into ONE weekly PR. Rationale: merging several Renovate PRs into the same docker-configs repo back-to-back triggers the deploy coalescing bug (homelab-deployment-support-assets#52) — the first queued deploy_repo_updates run pulls all pending commits, later runs see an empty delta and silently skip their stacks while reporting success. One grouped PR means one merge, one delta, one deploy, and every affected stack restarts. Majors are deliberately NOT grouped so they still get individual review.",
       "matchUpdateTypes": [
         "minor",

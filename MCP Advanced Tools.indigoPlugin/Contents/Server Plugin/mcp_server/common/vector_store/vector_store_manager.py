@@ -11,7 +11,6 @@ from typing import Optional, Dict, Any
 
 from ...adapters.data_provider import DataProvider
 from ...adapters.vector_store_interface import VectorStoreInterface
-from .main import VectorStore
 
 
 class VectorStoreManager:
@@ -104,7 +103,10 @@ class VectorStoreManager:
             # Ensure directory exists
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
 
-            # Create vector store instance
+            # Create vector store instance. Imported here, not at module
+            # level, so this module loads without lancedb (see availability.py)
+            from .main import VectorStore
+
             self.logger.debug("Vector store: initializing...")
             self.vector_store = VectorStore(self.db_path, logger=self.logger)
             self.logger.debug("Vector store: database connected")

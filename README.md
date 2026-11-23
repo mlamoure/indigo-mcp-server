@@ -26,17 +26,18 @@ Example questions:
 ## Requirements
 
 - **Indigo** 2026.1 or later. (On Indigo 2025.2, use MCP Server 2026.10.1.)
-- **Apple Silicon** Mac.
-- **OpenAI API key** for semantic search ([get one](https://platform.openai.com/api-keys)). See
-  [Privacy & Security](#privacy--security) for what is sent.
+- **Apple Silicon** Mac for semantic search (`search_entities`): its search index uses LanceDB, which runs
+  only on Apple Silicon. Intel Macs run every other tool; there the plugin leaves `search_entities` out.
+- **OpenAI API key** for semantic search ([get one](https://platform.openai.com/api-keys)); not needed on an
+  Intel Mac. See [Privacy & Security](#privacy--security) for what is sent.
 - **Node.js** only for Claude Desktop, which connects through `npx mcp-remote`: `brew install node`.
 
 ## Installation
 
 1. Install the **MCP Advanced Tools** plugin in Indigo.
-2. Enter your **OpenAI API key** in the plugin's preferences.
+2. Enter your **OpenAI API key** in the plugin's preferences (Apple Silicon only).
 3. Create one **MCP Advanced Tools** device. This starts the server.
-4. Wait a minute or two while the plugin indexes your database.
+4. Wait a minute or two while the plugin indexes your database (Apple Silicon only).
 5. Connect your AI client (below).
 
 The **Model** preference (default `gpt-6-luna`) is the OpenAI model used to expand search queries.
@@ -133,15 +134,15 @@ It serves protocol `2026-07-28` statelessly and the older session-based `2025-11
 
 ## Tools
 
-Seventeen tools, three more when webhooks are on, plus any plugin-provided tools. List tools page with
-`limit` (default 50, max 500) and `offset`.
+Seventeen tools (sixteen on an Intel Mac, without `search_entities`), three more when webhooks are on, plus
+any plugin-provided tools. List tools page with `limit` (default 50, max 500) and `offset`.
 
 ### Search
 
-- **search_entities**: natural-language search across every device, variable, action group, trigger and
-  schedule. An exact name match comes first; otherwise results rank by name and meaning. Filter by
-  `device_types`, `state_filter` and `tags` (`tag_match`: `all` or `any`). Returns 10 results unless you set
-  `limit`.
+- **search_entities** (Apple Silicon only): natural-language search across every device, variable, action
+  group, trigger and schedule. An exact name match comes first; otherwise results rank by name and meaning.
+  Filter by `device_types`, `state_filter` and `tags` (`tag_match`: `all` or `any`). Returns 10 results unless
+  you set `limit`.
 
 ### Automations
 

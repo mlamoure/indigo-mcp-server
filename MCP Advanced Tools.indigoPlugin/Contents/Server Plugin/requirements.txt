@@ -1,15 +1,20 @@
 # MCP Advanced Tools Core Dependencies (IWS Integration)
-# Requires Python >=3.10 (Indigo 2026.1 ships Python 3.13). Apple Silicon only —
-# lancedb 0.27+ dropped Intel Mac (x86) wheels.
-lancedb>=0.30.2,<0.31.0
-pyarrow>=23.0.0,<24.0.0
+# Requires Python >=3.10 (Indigo 2026.1 ships Python 3.13).
+#
+# lancedb powers semantic search (search_entities) and ships macOS wheels for
+# Apple Silicon only. The marker makes pip skip it on Intel Macs, where an
+# uninstallable requirement would fail the whole plugin install; there the
+# plugin hides search_entities and serves every other tool. pyarrow stays
+# unconditional: it has Intel wheels, and the vector-store tests import it in CI.
+lancedb>=0.41.0,<0.42.0; platform_machine == "arm64"
+pyarrow>=23.0.1,<24.0.0
 
 # OpenAI Integration
-openai>=2.15.0,<3
+openai>=3.42,<4
 tiktoken>=0.12.0,<1
 
 # LangSmith Tracing
-langsmith>=0.10.15,<0.11.0
+langsmith>=0.16.0,<0.17.0
 
 # Data Processing (required by lancedb/langsmith)
 pandas>=3.0.6,<4
@@ -20,14 +25,14 @@ pyyaml>=6.0
 pydantic>=2.12.5,<3
 
 # HTTP Client (required by langsmith)
-requests>=2.32.4
+requests>=2.33.0
 requests-toolbelt>=1.0.0
 
 # Security
-certifi>=2025.8.3
+certifi>=2026.11.20
 
 # Template Engine
-jinja2>=3.1.5
+jinja2>=3.1.6
 
 # Utility Dependencies (transitive, kept explicit for reproducibility)
 attrs>=25.3.0
@@ -35,7 +40,7 @@ charset-normalizer>=3.4.2
 frozenlist>=1.7.0
 idna>=3.10
 multidict>=6.6.3
-urllib3>=2.5.0
+urllib3>=2.8.0
 aiosignal>=1.4.0
 yarl>=1.20.1
 typing-extensions>=4.8.0

@@ -303,7 +303,7 @@ class VectorStore(VectorStoreInterface):
             self.db = lancedb.connect(self.db_path)
             self.logger.debug(f"Vector database connected at: {self.db_path}")
 
-            existing_tables = self.db.table_names()
+            existing_tables = set(self.db.list_tables())
             for table_name in ENTITY_TABLES:
                 if table_name not in existing_tables:
                     self._create_table(table_name)
@@ -342,7 +342,7 @@ class VectorStore(VectorStoreInterface):
         """Rebuild the index when the embedding model or the index format changed."""
         wanted = self._index_signature()
 
-        if "metadata" not in self.db.table_names():
+        if "metadata" not in set(self.db.list_tables()):
             self._create_metadata_table()
             if not self._tables_match_schema():
                 self._rebuild_vector_store()
